@@ -74,8 +74,17 @@ def _validate_member(info: zipfile.ZipInfo) -> str:
         raise InspectionError("Archive contains an unsafe file path.")
 
     mode = info.external_attr >> 16
+    mode_type = stat.S_IFMT(mode)
     if stat.S_ISLNK(mode):
         raise InspectionError("Archive contains a symbolic link; inspection stopped.")
+    # ZIP entries may encode Unix special files (FIFO, devices, sockets).
+    # They are not ordinary repository files and must never be treated as such.
+    if mode_type not in (0, stat.S_IFREG, stat.S_IFDIR):
+        raise InspectionError("Archive contains an unsupported special file type.")
+    if info.is_dir() and mode_type == stat.S_IFREG:
+        raise InspectionError("Archive contains inconsistent file metadata.")
+    if not info.is_dir() and mode_type == stat.S_IFDIR:
+        raise InspectionError("Archive contains inconsistent file metadata.")
     if info.flag_bits & 0x1:
         raise InspectionError("Password-protected ZIP files are not supported.")
 
