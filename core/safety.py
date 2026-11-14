@@ -19,7 +19,7 @@ _NEVER_ALLOWED_MARKERS = {
 def _normalize(action: str) -> str:
     if not isinstance(action, str):
         return ""
-    return re.sub(r"[-\\s]+", "_", action.strip().lower())
+    return re.sub(r"[-\s]+", "_", action.strip().lower())
 
 
 def authorize_action(action: str, approved_action: str | None = None) -> SafetyDecision:
@@ -34,7 +34,7 @@ def authorize_action(action: str, approved_action: str | None = None) -> SafetyD
         return SafetyDecision(False, "A valid action must be specified.")
 
     tokens = set(normalized.split("_"))
-    if tokens & _NEVER_ALLOWED_MARKERS:
+    if tokens & _NEVER_ALLOWED_MARKERS or any(marker in normalized for marker in _NEVER_ALLOWED_MARKERS):
         return SafetyDecision(False, "Payment, paid services, and external provider calls are disabled.")
 
     if normalized in _READ_ONLY_ACTIONS:
