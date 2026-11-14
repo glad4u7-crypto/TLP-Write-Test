@@ -1,4 +1,6 @@
 import io
+import stat
+import unicodedata
 import zipfile
 
 import pytest
@@ -69,3 +71,40 @@ def test_rejects_too_many_entries():
 def test_rejects_archive_over_upload_limit():
     with pytest.raises(InspectionError, match="10 MB"):
         inspect_zip(b"x" * (10 * 1024 * 1024 + 1))
+
+
+
+def make_zip_with_info(entries):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for info, content in entries:
+            archive.writestr(info, content)
+    return buffer.getvalue()
+
+
+def test_rejects_symbolic_link_entries():
+    link = zipfile.ZipInfo("src/link.py")
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with pytest.raises(InspectionError, match="symbolic link"):
+        inspect_zip(make_zip_with_info([(link, "target.py")]))
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        ["src/app.py", "src/app.py"],
+        ["src/App.py", "src/app.py"],
+        ["caf\u00e9.py", unicodedata.normalize("NFD", "caf\u00e9.py")],
+    ],
+)
+def test_rejects_duplicate_or_portable_path_collisions(names):
+    with pytest.raises(InspectionError, match="duplicate or colliding"):
+        inspect_zip(make_zip([(name, "x") for name in names]))
+
+
+@pytest.mark.parametrize("name", ["src//app.py", "src/./app.py", "src/../app.py", ""])
+def test_rejects_empty_and_dot_path_segments(name):
+    info = zipfile.ZipInfo(name)
+    with pytest.raises(InspectionError, match="unsafe file path"):
+        inspect_zip(make_zip_with_info([(info, "x")]))
