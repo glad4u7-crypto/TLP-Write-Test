@@ -1,7 +1,7 @@
 name: Agent Foundation CI
 on:
   push:
-    branches: ["main", "feature/agent-v0.1-foundation"]
+    branches: ["main", "feature/**"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
