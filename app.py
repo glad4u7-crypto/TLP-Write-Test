@@ -3,6 +3,7 @@ import streamlit as st
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
 from core.providers.rule_based import RuleBasedProvider
+from core.repository_inspector import InspectionError, inspect_zip
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -71,6 +72,51 @@ if registry.list_projects():
         st.caption(f"Project ID: {selected.project_id}")
 else:
     st.write("Create your first project to start organizing agent tasks.")
+
+st.divider()
+st.header("Repository Inspector")
+st.caption(
+    "Upload a ZIP archive for local, read-only inspection. Files are not extracted, "
+    "executed, uploaded to an external service, or saved permanently."
+)
+st.warning(
+    "Safety limits: ZIP up to 10 MB, at most 500 entries, 20 MB expanded size, "
+    "and 256 KB per inspected text file. Sensitive configuration files are skipped."
+)
+uploaded_zip = st.file_uploader("Choose a repository ZIP file", type=["zip"], key="repository_zip")
+if st.button("Inspect repository", disabled=uploaded_zip is None):
+    try:
+        report = inspect_zip(uploaded_zip.getvalue())
+        st.success("Read-only inspection completed.")
+        st.write(
+            f"**Files:** {report.total_files} · "
+            f"**Text files inspected:** {report.text_files} · "
+            f"**Files skipped:** {report.skipped_files}"
+        )
+        st.dataframe(
+            [
+                {
+                    "Path": item.path,
+                    "Size (bytes)": item.size_bytes,
+                    "Type": item.kind,
+                    "Lines": item.line_count if item.line_count is not None else "—",
+                }
+                for item in report.files
+            ],
+            use_container_width=True,
+        )
+        st.subheader("Inspection findings")
+        if report.findings:
+            for finding in report.findings:
+                st.warning(finding)
+        else:
+            st.info("No configured risk patterns or possible credentials were detected.")
+        st.caption(
+            "This is a deterministic pattern-based inspection, not a complete security audit. "
+            "Findings require human review."
+        )
+    except InspectionError as exc:
+        st.error(str(exc))
 
 st.divider()
 st.header("Task Workspace")
