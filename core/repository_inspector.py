@@ -5,6 +5,7 @@ import io
 import re
 import stat
 import zipfile
+import unicodedata
 from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
 
@@ -59,18 +60,30 @@ class InspectionReport:
         return result
 
 
-def _validate_member(info: zipfile.ZipInfo) -> None:
+def _validate_member(info: zipfile.ZipInfo) -> str:
+    """Validate a ZIP member and return a portable collision-detection key."""
     name = info.filename
     if not name or "\\" in name or name.startswith("/") or ":" in name:
         raise InspectionError("Archive contains an unsafe file path.")
-    path = PurePosixPath(name)
-    if any(part in {"", ".", ".."} for part in path.parts):
+
+    # A trailing slash is valid only for a directory entry. Empty interior
+    # segments, dot segments, and parent segments are never accepted.
+    candidate = name[:-1] if info.is_dir() and name.endswith("/") else name
+    parts = candidate.split("/")
+    if not candidate or any(part in {"", ".", ".."} for part in parts):
         raise InspectionError("Archive contains an unsafe file path.")
+
     mode = info.external_attr >> 16
     if stat.S_ISLNK(mode):
         raise InspectionError("Archive contains a symbolic link; inspection stopped.")
     if info.flag_bits & 0x1:
         raise InspectionError("Password-protected ZIP files are not supported.")
+
+    # ZIP paths are case-sensitive by specification, but repositories are
+    # often unpacked on case-insensitive filesystems. NFC + casefold rejects
+    # portable path collisions before an archive is used elsewhere.
+    normalized = unicodedata.normalize("NFC", "/".join(parts)).casefold()
+    return normalized
 
 
 def inspect_zip(data: bytes) -> InspectionReport:
@@ -102,13 +115,12 @@ def inspect_zip(data: bytes) -> InspectionReport:
                 raise InspectionError("ZIP contains too many files (maximum 500).")
 
             for info in entries:
+                normalized_name = _validate_member(info)
+                if normalized_name in seen_names:
+                    raise InspectionError("ZIP contains duplicate or colliding file paths.")
+                seen_names.add(normalized_name)
                 if info.is_dir():
-                    _validate_member(info)
                     continue
-                _validate_member(info)
-                if info.filename in seen_names:
-                    raise InspectionError("ZIP contains duplicate file paths.")
-                seen_names.add(info.filename)
 
                 total_bytes += info.file_size
                 if total_bytes > MAX_TOTAL_UNCOMPRESSED_BYTES:
