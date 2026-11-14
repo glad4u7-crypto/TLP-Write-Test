@@ -16,7 +16,7 @@ This repository contains a reusable general-purpose agent application. TradeLab 
 
 The ModelProvider protocol remains the stable interface for future provider choices. New adapters may be developed later to give the user more control over model choice and capabilities. They must be separate modules, disabled by default, and require explicit user opt-in before any external data transfer. A paid provider additionally requires a separate explicit cost approval. No provider is activated merely because credentials happen to exist in an environment.
 
-The OpenAI adapter is dormant extension code. The current dashboard imports and calls only RuleBasedProvider.
+The OpenAI adapter is dormant extension code. The current dashboard imports and calls only RuleBasedProvider. It is not part of the zero-cost execution path and must not be enabled without separate review and approval.
 
 ## Implemented foundation
 
@@ -29,7 +29,14 @@ The OpenAI adapter is dormant extension code. The current dashboard imports and 
 - Built-in offline RuleBasedProvider (core/providers/rule_based.py).
 - Project model and in-memory CRUD registry (core/projects.py).
 - Project Manager UI in Streamlit, scoped to the current browser session.
+- Read-only ZIP Repository Inspector with path validation, archive limits, sensitive-file skipping, and pattern-based findings.
 - Unit tests, compile check, and GitHub Actions workflow.
+
+## Repository Inspector boundary
+
+The inspector accepts ZIP bytes and reads selected text members in memory. It never extracts files to disk, imports uploaded modules, executes code, calls external services, or persists uploaded content. It rejects unsafe paths, symbolic links, encrypted entries, duplicate file paths, suspicious compression ratios, and archives over configured limits. Sensitive configuration files are skipped. Its findings are heuristic indicators, not proof of vulnerabilities or a complete security audit.
+
+Limits: 10 MB compressed upload, 500 entries, 20 MB total uncompressed size, 256 KB per inspected text file, and maximum compression ratio 100:1.
 
 ## Current storage limitation
 
@@ -41,4 +48,4 @@ The built-in planner generates deterministic planning text only. This version do
 
 ## Next modules
 
-Repository Inspector, Tool Registry, persistent memory, execution queue, audit log, and approval UI. Each must be introduced with tests, least-privilege permissions, and documented zero-cost constraints.
+Tool Registry, persistent memory, execution queue, audit log, and approval UI. Each must be introduced with tests, least-privilege permissions, and documented zero-cost constraints.
