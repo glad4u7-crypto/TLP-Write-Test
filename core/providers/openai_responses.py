@@ -1,17 +1,10 @@
 """Minimal OpenAI Responses API adapter using only the Python standard library."""
 import json
 import os
-from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
-class ProviderError(RuntimeError):
-    """Safe, user-facing provider error without credential disclosure."""
-
-
-class ModelProvider(Protocol):
-    def generate(self, prompt: str, instructions: str = "") -> str: ...
+from core.providers.base import ProviderError
 
 
 class OpenAIResponsesProvider:
