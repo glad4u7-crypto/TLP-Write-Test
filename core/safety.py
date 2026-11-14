@@ -19,22 +19,34 @@ _NEVER_ALLOWED_MARKERS = {
 def _normalize(action: str) -> str:
     if not isinstance(action, str):
         return ""
-    return re.sub(r"[-\s]+", "_", action.strip().lower())
+    # Convert punctuation and whitespace to separators before checking markers.
+    return re.sub(r"[^a-z0-9]+", "_", action.strip().lower()).strip("_")
+
+
+def _contains_blocked_marker(normalized: str) -> bool:
+    tokens = set(normalized.split("_"))
+    if tokens & {"payment", "purchase", "checkout", "billing", "recharge", "paid", "premium"}:
+        return True
+    # Match compound markers as whole token sequences, not arbitrary substrings
+    # (for example, "unpaid" must not match "paid").
+    return any(
+        re.search(rf"(?:^|_){re.escape(marker)}(?:_|$)", normalized)
+        for marker in ("external_api", "provider_call")
+    )
 
 
 def authorize_action(action: str, approved_action: str | None = None) -> SafetyDecision:
     """Authorize read-only work or one specifically approved mutation.
 
     A generic boolean approval is deliberately not accepted: approval must name
-    the exact action. Payment, purchase, billing, and paid/external provider
-    actions remain blocked in the current zero-cost build, even if approved.
+    the exact normalized action. Payment, purchase, billing, paid, and external
+    provider actions remain blocked in the current zero-cost build.
     """
     normalized = _normalize(action)
     if not normalized:
         return SafetyDecision(False, "A valid action must be specified.")
 
-    tokens = set(normalized.split("_"))
-    if tokens & _NEVER_ALLOWED_MARKERS or any(marker in normalized for marker in _NEVER_ALLOWED_MARKERS):
+    if _contains_blocked_marker(normalized):
         return SafetyDecision(False, "Payment, paid services, and external provider calls are disabled.")
 
     if normalized in _READ_ONLY_ACTIONS:
