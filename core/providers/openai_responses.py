@@ -16,8 +16,10 @@ class ModelProvider(Protocol):
 
 class OpenAIResponsesProvider:
     def __init__(self, api_key: str | None = None, model: str | None = None, timeout: int = 30):
-        self.api_key = (api_key or os.getenv("OPENAI_API_KEY", "")).strip()
-        self.model = (model or os.getenv("AGENT_MODEL", "gpt-6-luna")).strip()
+        key = os.getenv("OPENAI_API_KEY", "") if api_key is None else api_key
+        selected_model = os.getenv("AGENT_MODEL", "gpt-6-luna") if model is None else model
+        self.api_key = key.strip()
+        self.model = selected_model.strip()
         self.timeout = timeout
         if not self.model:
             raise ValueError("Model name must not be empty.")
@@ -63,7 +65,7 @@ class OpenAIResponsesProvider:
                 for content in item.get("content", []):
                     if content.get("type") == "output_text" and isinstance(content.get("text"), str):
                         chunks.append(content["text"])
-        result = "\\n".join(chunks).strip()
+        result = "\n".join(chunks).strip()
         if not result:
             raise ProviderError("The model response did not contain text output.")
         return result
