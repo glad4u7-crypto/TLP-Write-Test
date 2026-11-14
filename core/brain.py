@@ -1,5 +1,5 @@
 """AI Brain orchestration layer; delegates language generation to a provider."""
-from core.providers.openai_responses import ModelProvider
+from core.providers.base import ModelProvider
 
 
 class AIBrain:
