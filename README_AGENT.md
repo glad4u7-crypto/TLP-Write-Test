@@ -22,10 +22,21 @@ Future provider integrations may be added behind the existing provider interface
 - Streamlit agent dashboard.
 - Session-based Project Manager: create, list, and select projects.
 - Deterministic offline task planner.
+- Read-only ZIP Repository Inspector with bounded archive handling.
 - Provider-neutral interface reserved for future opt-in integrations.
 - Explicit approval policy foundation for mutating actions.
 
 **Project storage note:** Projects currently live only in the active Streamlit session. They are not yet durable across a new session, browser reset, or app restart. This avoids a paid database dependency.
+
+## Repository Inspector limits
+
+- ZIP upload only; maximum archive size 10 MB.
+- Maximum 500 archive entries and 20 MB expanded size.
+- Text files larger than 256 KB are skipped.
+- Sensitive configuration files such as .env are skipped without reading their contents.
+- No archive extraction, code execution, network calls, or permanent upload storage.
+- Reports file paths, sizes, line counts, and simple pattern-based risk findings. It does not expose source contents or detected credential values.
+- Pattern matching is not a complete security audit; findings require human review.
 
 ## Run locally
 
