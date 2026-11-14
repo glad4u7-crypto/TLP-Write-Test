@@ -69,3 +69,30 @@ def test_generic_boolean_approval_is_not_accepted():
 @pytest.mark.parametrize("action", ["", "   ", None, 123])
 def test_invalid_action_is_rejected(action):
     assert authorize_action(action).allowed is False
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "unpaid_report",
+        "provider_call_extra",
+        "external_apiary",
+    ],
+)
+def test_blocked_markers_do_not_match_unrelated_substrings(action):
+    # Avoid false positives from matching arbitrary substrings.
+    decision = authorize_action(action, approved_action=action)
+    assert decision.allowed is True
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "provider-call",
+        "external api request",
+        "make-payment",
+        "purchase_now",
+    ],
+)
+def test_blocked_markers_are_normalized_and_always_rejected(action):
+    decision = authorize_action(action, approved_action=action)
+    assert decision.allowed is False
