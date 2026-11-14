@@ -91,6 +91,18 @@ def test_rejects_symbolic_link_entries():
 
 
 @pytest.mark.parametrize(
+    "special_type",
+    [stat.S_IFIFO, stat.S_IFCHR, stat.S_IFBLK, stat.S_IFSOCK],
+)
+def test_rejects_unix_special_file_entries(special_type):
+    entry = zipfile.ZipInfo("src/special")
+    entry.create_system = 3
+    entry.external_attr = (special_type | 0o600) << 16
+    with pytest.raises(InspectionError, match="special file type"):
+        inspect_zip(make_zip_with_info([(entry, "not a regular file")]))
+
+
+@pytest.mark.parametrize(
     "names",
     [
         ["src/app.py", "src/app.py"],
