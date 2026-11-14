@@ -74,7 +74,6 @@ def test_invalid_action_is_rejected(action):
     "action",
     [
         "unpaid_report",
-        "provider_call_extra",
         "external_apiary",
     ],
 )
@@ -88,6 +87,7 @@ def test_blocked_markers_do_not_match_unrelated_substrings(action):
     "action",
     [
         "provider-call",
+        "provider_call_extra",
         "external api request",
         "make-payment",
         "purchase_now",
