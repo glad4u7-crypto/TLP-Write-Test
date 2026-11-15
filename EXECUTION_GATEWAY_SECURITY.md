@@ -13,6 +13,8 @@
   be replayed after successful consumption.
 - The gateway itself contains no shell, browser, network, device, or provider
   adapter.
+- The gateway records payload-free in-memory audit events for allowed and denied
+  dispatch attempts; events intentionally omit payload values and secrets.
 
 ## Critical approval trust boundary
 
@@ -37,7 +39,7 @@ application process; it does not replace application-layer access control.
 - No real file, email, browser, shell, network, or device handlers are wired.
 - The Streamlit Project Manager now uses a two-step review/confirm flow and routes project creation through a trusted UI controller, one-time receipt, and `ExecutionGateway`.
 - This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
-- No persistent audit log or production capability-isolation layer exists.
+- Audit events are in-memory only and are lost when the process ends; no persistent, tamper-evident audit log or production capability-isolation layer exists.
 - No production sandbox or path-confinement layer exists for file operations.
 
 ## Release gate
