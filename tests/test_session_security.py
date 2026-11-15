@@ -87,3 +87,25 @@ def test_same_identity_does_not_clear_pending_work():
 def test_identity_binding_rejects_invalid_subject(subject):
     with pytest.raises(ValueError):
         bind_session_identity({}, subject)
+
+
+def test_logout_clears_all_identity_bound_state_immediately():
+    from core.session_security import clear_session_identity
+
+    state = {
+        "active_identity_subject": "https://issuer.example\\nalice",
+        "pending_project": {"name": "private draft"},
+        "approval_session_scope": "old-session-secret",
+        "approval_authority": object(),
+        "execution_gateway": object(),
+        "execution_gateway_owner": "alice",
+        "project_registry": object(),
+        "project_registry_tenant": "alice",
+        "selected_project_id": "private-project",
+        "free_plan": "private plan",
+        "draft_task": "private task",
+    }
+
+    clear_session_identity(state)
+
+    assert state == {}
