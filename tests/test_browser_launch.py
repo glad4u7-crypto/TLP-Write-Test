@@ -97,7 +97,7 @@ def test_launch_uses_headless_browser_and_fresh_non_download_context():
 
     assert manager.started is True
     assert playwright.chromium.options == {"headless": True, "timeout": 15_000}
-    assert browser.context_options == {"accept_downloads": False}
+    assert browser.context_options == {"accept_downloads": False, "service_workers": "block"}
     assert session.page is browser.context.page
     assert session.closed is False
 
@@ -191,3 +191,23 @@ def test_cleanup_continues_when_one_resource_close_fails():
     assert session.closed is True
     assert browser.closed is True
     assert manager.stopped is True
+
+
+
+def test_android_runtime_is_rejected_before_playwright_factory_is_called(monkeypatch):
+    from core.browser_launch import BrowserLaunchError
+
+    called = False
+
+    def factory():
+        nonlocal called
+        called = True
+        raise AssertionError("factory must not be called on Android")
+
+    monkeypatch.setenv("ANDROID_ROOT", "/system")
+    launcher = PlaywrightBrowserLauncher(playwright_factory=factory)
+
+    with pytest.raises(BrowserLaunchError, match="Android"):
+        launcher.launch()
+
+    assert called is False
