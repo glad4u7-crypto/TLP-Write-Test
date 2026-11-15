@@ -6,6 +6,7 @@ import pytest
 
 from core.storage import TenantKey
 from core.sqlite_security_store import DurableAuditEvent, SQLiteSecurityStore
+from core.sqlite_project_store import SQLiteProjectStore
 
 
 @pytest.fixture
@@ -711,4 +712,28 @@ def test_security_store_rejects_database_symlink_replacement_after_initializatio
         pytest.skip("symlink creation is not permitted in this environment")
 
     with pytest.raises(ValueError, match="non-symlink"):
+        store._connect()
+
+
+
+@pytest.mark.parametrize("store_type", [SQLiteSecurityStore, SQLiteProjectStore])
+def test_sqlite_stores_reject_parent_directory_symlink_replacement_after_init(
+    tmp_path, store_type
+):
+    original_parent = tmp_path / "private"
+    original_parent.mkdir(mode=0o700)
+    database_path = original_parent / "store.sqlite3"
+    store = store_type(database_path)
+
+    moved_parent = tmp_path / "moved-private"
+    original_parent.rename(moved_parent)
+    try:
+        original_parent.symlink_to(moved_parent, target_is_directory=True)
+    except OSError:
+        moved_parent.rename(original_parent)
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    # The database file itself is still a regular file, but its lexical parent
+    # has been replaced. Revalidation must reject this path before SQLite opens.
+    with pytest.raises(ValueError, match="parent path.*symlinks"):
         store._connect()
