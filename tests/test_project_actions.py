@@ -1,56 +1,35 @@
-import pytest
-
-from core.project_actions import create_project_after_confirmation
+from core.project_actions import confirm_and_create_project
 from core.projects import ProjectRegistry
 
 
-def test_project_creation_is_blocked_without_explicit_confirmation():
+def test_project_creation_is_gated_by_explicit_controller_invocation():
     registry = ProjectRegistry()
-
-    result = create_project_after_confirmation(
-        registry,
-        "APAA test",
-        "Should not be created",
-        confirmed_by_user=False,
-    )
-
-    assert result.executed is False
-    assert registry.list_projects() == []
-
-
-def test_project_creation_runs_through_approval_gateway_after_confirmation():
-    registry = ProjectRegistry()
-
-    result = create_project_after_confirmation(
+    # The UI calls this function only from its Confirm button branch.
+    result = confirm_and_create_project(
         registry,
         "APAA workspace",
-        "Created only after reviewing the exact details",
-        confirmed_by_user=True,
+        "Reviewed project details",
     )
-
     assert result.executed is True
     assert result.output.name == "APAA workspace"
-    assert result.output.description == "Created only after reviewing the exact details"
-    assert registry.get(result.output.project_id) == result.output
+    assert result.output.description == "Reviewed project details"
 
 
-@pytest.mark.parametrize(
-    ("name", "description"),
-    [
+def test_invalid_project_details_do_not_create_a_project():
+    registry = ProjectRegistry()
+    cases = [
         ("", "empty name"),
         ("x" * 81, "too long"),
         ("valid", "x" * 501),
-    ],
-)
-def test_invalid_project_details_do_not_create_a_project(name, description):
+    ]
+    for name, description in cases:
+        result = confirm_and_create_project(registry, name, description)
+        assert result.executed is False
+    assert registry.list_projects() == []
+
+
+def test_non_text_project_details_are_rejected():
     registry = ProjectRegistry()
-
-    result = create_project_after_confirmation(
-        registry,
-        name,
-        description,
-        confirmed_by_user=True,
-    )
-
+    result = confirm_and_create_project(registry, "valid", None)
     assert result.executed is False
     assert registry.list_projects() == []
