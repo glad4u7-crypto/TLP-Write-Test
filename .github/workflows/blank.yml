@@ -2,7 +2,7 @@ name: Python Demo CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/apaa-s08-c02-conditional-multistep"]
   pull_request:
     branches: ["main", "feature/agent-v0.3-zero-cost-core"]
   workflow_dispatch:
