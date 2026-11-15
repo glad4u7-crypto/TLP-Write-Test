@@ -1,16 +1,23 @@
-# Verification — APAA-S08-C02-P04
+# Verification — APAA-S08-C02-P05
 
-## Added security primitives
-- Action/payload validation: normalized action identifier, finite JSON only, max 64 KiB, max nesting depth 12, detached validated copy.
-- Versioned action policy registry; missing or disabled policy denies.
-- Persistent scoped consent ledger with expiry and revocation.
-- SQLite online backup, integrity check, HMAC-SHA256 external signature, verified restore.
+## Runtime integration
+- Task factory applies P04 action/payload validation before queueing.
+- Tasks persist a policy version; schema migration preserves existing task rows with v1 default.
+- ExecutionEngine now owns/injects PolicyRegistry and ConsentRegistry.
+- Policy is deny-by-default and must match both action and policy version.
+- Explicit consent is persisted as a task-scoped grant with 15-minute default TTL.
+- Consent revocation and policy disablement are checked at execution time.
+- Handler is not invoked if permission, policy, consent, or handler registration is missing.
 
-## Test matrix
-15 tests: validation bounds/injection/non-JSON, deny-by-default policy/version mismatch/revocation, consent scope/expiry/revocation, signed backup/restore, wrong key, tampering, missing signature, short key and source immutability.
+## Added regression cases
+- Missing policy blocks execution.
+- Policy revoked after submission blocks execution.
+- Consent revoked after submission blocks execution.
+- Expired consent blocks execution.
+- Invalid action and unsafe payload rejected before queueing.
+- Prior queue, retry, lease, dead-letter, audit, P04 validation, policy, consent, and backup tests remain in the suite.
 
-## Integration boundary
-These are security primitives and tested independently. They are not yet enforced as mandatory gates inside every existing ExecutionEngine path. Do not claim full runtime integration or production readiness. Next package should wire these controls into task submission and execution, then re-run all regression suites.
-
-## Key management
-Signing key is supplied by caller (minimum 32 bytes), never persisted or committed. HMAC signature is not encryption.
+## Security limits
+- Consent is represented by the caller's explicit `user_consented=True` input; a real application UI must ensure this flag can only follow actual user approval.
+- Authorization is rechecked immediately before handler invocation, but this in-process design does not provide an atomic lock across the authorization check and arbitrary external side effect.
+- No production deployment, external adapter, payments, purchases, network or device control is included.
