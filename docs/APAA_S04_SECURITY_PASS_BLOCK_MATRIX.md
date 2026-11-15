@@ -177,3 +177,39 @@ Both workflows completed successfully on the exact same SHA. The regression test
 ### Updated status
 
 Code-level exact-head CI: **PASS**. JSONL crash-tail behavior: **PASS (fail-closed)**. Full S04 release readiness: **BLOCKED**. Unauthenticated prototype mode is not suitable for public exposure. PR #5 remains Open + Draft; no merge/deploy. Production remains **NOT APPROVED**.
+
+
+## P08-P09-BW — Backup/restore and operational closure gates (2026-11-15)
+
+### New local automated evidence
+
+- Test commit: `b2ef2fa1b4456b763c4e4bf7c5b448f4148011e9`.
+- Added SQLite online-backup and restore regression coverage. The restored DB must pass `PRAGMA integrity_check`, preserve the exact audit-chain head, verify the chain, and accept a subsequent append.
+- Added tamper fail-closed atomicity coverage. When a stored audit row is modified, append must raise and the event count must remain unchanged.
+- These tests are committed; do not mark PASS until both required CI workflows finish successfully on the exact PR head.
+
+### Updated control matrix
+
+| Control | Status | Evidence / remaining boundary |
+|---|---|---|
+| SQLite local backup/restore mechanics | PENDING EXACT-HEAD CI | Automated source → backup → restore → verify → append regression test added. |
+| SQLite audit tamper blocks append atomically | PENDING EXACT-HEAD CI | Regression test asserts append failure and no row-count increase after direct tampering. |
+| Independent audit hash anchor | BLOCKED | No independent trust boundary or immutable checkpoint service is configured. A same-database hash chain is not independently tamper-proof. |
+| Scheduled/off-site encrypted backup and retention | BLOCKED | Requires operator-controlled storage, schedule, access policy and restore evidence. |
+| Live OIDC and two-user browser isolation | BLOCKED | Requires private non-production deployment, OIDC test client and two controlled identities. |
+| Browser cookie/CSRF/redirect/reverse-proxy verification | BLOCKED | Requires real-browser testing against the chosen deployment topology. |
+| Host/process/container isolation and hostile-code sandbox | BLOCKED | Requires deployment-specific OS/container controls and adversarial validation. |
+| Repository branch protection and required checks | BLOCKED / ADMIN UNVERIFIED | Requires repository-administrator verification; repository API integration cannot establish administrative enforcement. |
+
+### Operational closure procedure
+
+The companion final-review document now contains the three work-package procedures:
+1. Local SQLite backup/restore validation and its explicit scope.
+2. Tamper detection, fail-closed append and atomicity validation.
+3. Independent anchor design requirements plus live OIDC/browser and production host-isolation acceptance runbooks.
+
+These are documented procedures, not fabricated execution results. No external anchor, OIDC deployment, production host, credentials or paid service has been provisioned.
+
+PR #5 remains Open + Draft. No merge/deploy. Auto-Run and real-world handlers remain disabled. Payment, purchase, checkout, trading and money movement remain prohibited. Paid providers/API keys remain disabled. Production remains NOT APPROVED.
+
+Next checkpoint: P08-P09-BX — inspect exact-head CI for the new tests, fix demonstrated failures and publish final evidence.
