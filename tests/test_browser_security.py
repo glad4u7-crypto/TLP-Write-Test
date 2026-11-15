@@ -33,6 +33,7 @@ def test_canonicalizes_idn_to_ascii():
     "https://localhost", "https://127.0.0.1", "https://10.0.0.1",
     "https://169.254.169.254/latest/meta-data", "https://192.168.1.1",
     "https://[::1]", "https://[fc00::1]", "https://[fe80::1]",
+    "https://127.1", "https://0177.0.0.1", "https://0x7f000001", "https://0x7f.0.0.1",
     "https://example.com:99999", "https://example.com:bad", "https://example.com:0", "https://example.com:",
     "https://singlelabel", "https://exa mple.com", " https://example.com",
     "https://example.com ", "https://example.com\\path",
