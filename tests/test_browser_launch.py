@@ -160,3 +160,34 @@ def test_context_creation_failure_closes_browser_and_manager():
 
     assert browser.closed is True
     assert manager.stopped is True
+
+
+def test_manager_start_failure_is_reported_and_manager_is_stopped():
+    class BrokenManager(FakeManager):
+        def start(self):
+            raise RuntimeError("startup failure")
+
+    manager = BrokenManager(FakePlaywright(FakeBrowser()))
+    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager)
+
+    with pytest.raises(BrowserLaunchError, match="launch failed"):
+        launcher.launch()
+
+    assert manager.stopped is True
+
+
+def test_cleanup_continues_when_one_resource_close_fails():
+    launcher, manager, browser, _ = make_launcher()
+    session = launcher.launch()
+
+    def broken_context_close():
+        raise RuntimeError("context close failure")
+
+    browser.context.close = broken_context_close
+
+    with pytest.raises(BrowserLaunchError, match="cleanup"):
+        session.close()
+
+    assert session.closed is True
+    assert browser.closed is True
+    assert manager.stopped is True
