@@ -100,3 +100,34 @@ def test_oidc_adapter_rejects_unrepresentably_large_integer_timestamps(claim):
 def test_oidc_adapter_rejects_unrepresentably_large_integer_validation_time():
     with pytest.raises(OIDCIdentityError):
         principal_from_oidc_claims(valid_claims(), now=10**1000)
+
+
+@pytest.mark.parametrize(
+    "issuer",
+    [
+        "http://accounts.example.test",
+        "https://",
+        "https://user:password@accounts.example.test",
+        "https://accounts.example.test/path?tenant=other",
+        "https://accounts.example.test/path#fragment",
+        "https://accounts.example.test:invalid",
+        "https://accounts example.test",
+    ],
+)
+def test_oidc_adapter_rejects_ambiguous_or_non_https_issuer(issuer):
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(valid_claims(iss=issuer), now=1_500)
+
+
+@pytest.mark.parametrize("subject", ["", "x" * 256, "non-ascii-☃"])
+def test_oidc_adapter_rejects_subject_outside_oidc_ascii_length_contract(subject):
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(valid_claims(sub=subject), now=1_500)
+
+
+def test_oidc_adapter_preserves_valid_issuer_identifier_exactly():
+    issuer = "https://accounts.example.test/tenant/"
+    principal = principal_from_oidc_claims(
+        valid_claims(iss=issuer), now=1_500
+    )
+    assert principal.issuer == issuer
