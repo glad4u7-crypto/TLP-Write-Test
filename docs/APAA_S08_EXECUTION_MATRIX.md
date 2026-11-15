@@ -152,4 +152,4 @@ The historical rows above are retained as checkpoint history. Their earlier C04 
 - C04 implementation and focused tests have been copied from the separate C04 feature branch into this integration branch.
 - No financial actions, payment/purchase, paid API/provider, API keys, Auto-Run, deployment, firewall change, merge, or production Android runtime are enabled.
 
-**Disposition:** C03 and C04 implementation files are integrated on the completion branch. Do not label the full S08 subject verified until the completion workflow succeeds on the exact latest branch head and the resulting run is inspected.
+**Disposition:** C03 and C04 implementation files are integrated and the exact completion-branch snapshot `d4e965e6ca78f799a9572d5d6a5bc9d7bae4261b` passed the isolated verification workflow. Run [43734617007](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43734617007): dependency audit clear, compileall PASS, full suite **804 passed in 17.70s**, demo smoke test PASS. This verifies the Python repository snapshot only; it does not establish native Android or production/live-adapter readiness.
