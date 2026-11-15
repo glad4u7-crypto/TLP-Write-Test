@@ -303,3 +303,50 @@ def test_persistent_gateway_blocks_protected_action_when_existing_audit_chain_is
     assert registry.list_projects_for_owner(ALICE) == []
     with pytest.raises(ValueError, match="audit"):
         audit_log.verify()
+
+
+def test_two_independent_gateways_cannot_execute_one_durable_receipt_twice(tmp_path):
+    """SQLite nonce uniqueness is the cross-instance replay boundary."""
+    from concurrent.futures import ThreadPoolExecutor
+    from core.approvals import ApprovalAuthority
+    from core.project_actions import build_project_gateway
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    tenant = TenantKey(ALICE.issuer, ALICE.subject)
+    secret = b"cross-gateway-concurrency-secret-32-bytes"
+    security_path = tmp_path / "shared-security.sqlite3"
+    project_path = tmp_path / "shared-projects.sqlite3"
+    store_one = SQLiteSecurityStore(security_path)
+    store_two = SQLiteSecurityStore(security_path)
+    project_store = SQLiteProjectStore(project_path)
+    registry = PersistentProjectRegistry(project_store, tenant)
+    audit_one = SQLiteExecutionAuditLog(store_one, tenant)
+    audit_two = SQLiteExecutionAuditLog(store_two, tenant)
+    authority_one = ApprovalAuthority(nonce_store=store_one, signing_secret=secret)
+    authority_two = ApprovalAuthority(nonce_store=store_two, signing_secret=secret)
+    scope = "same-browser-session"
+    gateway_one = build_project_gateway(
+        registry, authority_one, audit_log=audit_one, principal=ALICE,
+        session_scope=scope,
+    )
+    gateway_two = build_project_gateway(
+        registry, authority_two, audit_log=audit_two, principal=ALICE,
+        session_scope=scope,
+    )
+    payload = {"name": "Exactly once", "description": "Concurrent replay test"}
+    receipt = authority_one.issue(
+        "create_project", payload, tenant=tenant, session_scope=scope
+    )
+
+    def dispatch(index):
+        gateway = gateway_one if index % 2 == 0 else gateway_two
+        return gateway.execute(
+            "create_project", payload, approval_receipt=receipt, tenant=tenant
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(dispatch, range(24)))
+
+    assert sum(result.executed for result in results) == 1
+    assert len(registry.list_projects_for_owner(ALICE)) == 1
+    assert audit_one.verify() == audit_two.verify()
