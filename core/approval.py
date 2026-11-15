@@ -72,10 +72,13 @@ class ApprovalManager:
             raise ValueError("A clear action summary is required.")
         if not isinstance(payload, dict):
             raise ValueError("Payload must be a JSON object so the proposed action can be reviewed.")
-        payload_json = json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-            allow_nan=False,
-        )
+        try:
+            payload_json = json.dumps(
+                payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                allow_nan=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Payload must contain only finite JSON-compatible values.") from exc
         if len(payload_json.encode("utf-8")) > 8192:
             raise ValueError("Payload is too large for the approval queue.")
         sensitive_names = {"password", "passwd", "secret", "token", "api_key", "authorization", "cookie"}
