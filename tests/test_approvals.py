@@ -122,7 +122,7 @@ def test_durable_nonce_store_requires_tenant_and_persists_replay_across_authorit
     )
     receipt = first_authority.issue("write_file", payload)
 
-    assert first_authority.consume(receipt, "write_file", payload) is True
+    assert first_authority.consume(receipt, "write_file", payload, tenant=tenant) is True
     second_authority = ApprovalAuthority(
         nonce_store=SQLiteSecurityStore(path), signing_secret=secret
     )
