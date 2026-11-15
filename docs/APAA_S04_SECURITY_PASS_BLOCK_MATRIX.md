@@ -83,3 +83,47 @@ PR #5 remains open and Draft. Keep base branch unchanged. Do not merge, deploy, 
 ## Next checkpoint
 
 APAA-S04-C01-P08-P09-BQ: inspect SQLite path revalidation and symlink/rename race boundaries, including connection lifecycle and sidecar handling. Only implement portable mitigations with regression tests; retain explicit OS-isolation blocks.
+
+## P08-P09-BR — CI cancellation remediation and SQLite parent-path replacement test
+
+Review date: 2026-11-15
+Verified head: 3f85425e5adff0411e4e1a7534ff3a979e60a6a0
+
+### CI cancellation policy
+
+- Feature-branch push triggers were removed for these PR-focused workflows; feature changes are validated by pull_request, while main retains push validation.
+- Concurrency groups now include workflow, event name and commit SHA, with cancel-in-progress: false. A newer commit therefore cannot cancel an older in-flight verification in the same workflow/event stream.
+- The regression test was updated to assert the intended policy. The earlier failure was a stale test expectation for cancel-in-progress: true; no runtime security test failed for that reason.
+- Historical Cancelled runs remain recorded as Cancelled. They were obsolete commit attempts and are not represented as passes or retroactively changed.
+
+### Exact-head verification
+
+| Workflow | Run | Exact head | Result |
+|---|---:|---|---|
+| Agent Foundation CI | 43698205731 | 3f85425e5adff0411e4e1a7534ff3a979e60a6a0 | PASS |
+| Python Demo CI | 43698205658 | 3f85425e5adff0411e4e1a7534ff3a979e60a6a0 | PASS |
+
+Both workflows completed all steps successfully, including dependency audit, compile, foundation test suite, demo test suite and demo execution. The new SQLite parent-directory rename/symlink regression test is included in this exact-head test run.
+
+### SQLite parent-path replacement
+
+- Added a parameterized regression test for SQLiteSecurityStore and SQLiteProjectStore.
+- Each store is initialized under a private parent; the parent is then renamed and replaced with a symlink to the moved directory.
+- A subsequent connection attempt must reject the symlinked lexical parent before SQLite opens the path.
+- Exact-head Agent Foundation CI passed with this test present.
+
+### Residual security boundary
+
+This is a deterministic post-initialization path-replacement check, not proof against a hostile same-UID process racing the validation and SQLite pathname open. Standard sqlite3 path-based opens do not pin an already-validated inode. Keep dedicated OS-account, non-writable parent directory, and process/container isolation requirements as production blockers.
+
+## Current disposition
+
+- PR #5 remains Open and Draft; no merge or deployment.
+- Auto-Run and real-world execution handlers remain disabled.
+- Payments, purchases, checkout, trading and money movement remain prohibited.
+- Paid providers/API keys remain disabled; current build remains zero-cost.
+- Production remains NOT APPROVED.
+
+### Next checkpoint
+
+APAA-S04-C01-P08-P09-BS: review JSONL audit path handling and SQLite journal/WAL sidecar lifecycle for cleanup, permission persistence, and tamper-detection limits. Do not claim protection beyond the tests and OS boundary above.
