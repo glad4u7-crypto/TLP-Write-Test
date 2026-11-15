@@ -1,7 +1,7 @@
 # APAA S06 — Structured Task Workspace and Plan Review
 
 **Checkpoint:** APAA-S06-C01-P03  
-**Status:** IMPLEMENTED — EXACT-HEAD CI PASS  
+**Status:** IMPLEMENTATION PASS; FINAL RECORD-ONLY COMMIT CI PENDING  
 **Approval:** User instructed to begin S06 on 2026-11-15  
 **Branch:** `feature/approval-ui-e2e-p06`  
 **PR:** #5 — remains Draft and unmerged
@@ -60,7 +60,7 @@ Implementation was verified on exact PR head `730c6de0f3bee756f48b33ee8d42741ff6
 - Python Demo CI #726 / run `43708182180`: **PASS**; dependency install, full suite (**427 passed**), demo smoke test and post steps succeeded.
 - Both jobs and all individual steps were re-fetched after completion. The test suite exposed a stale legacy UI assertion and AppTest interaction sequencing issue; both were corrected before these final exact-head runs.
 
-The scope and verification-matrix documentation was then reconciled on commit `c17da8588c7decd7fcb1f003ab3518577cf18de2`. Agent Foundation CI #638 / run `43708294777` and Python Demo CI #729 / run `43708294866` both passed on that exact documentation head; both full suites reported 427 passed. The current status reflects this documentation-head verification.
+The scope and verification-matrix documentation was then reconciled on commit `c17da8588c7decd7fcb1f003ab3518577cf18de2`. Agent Foundation CI #638 / run `43708294777` and Python Demo CI #729 / run `43708294866` both passed on that exact documentation head; both full suites reported 427 passed. The scope text above was verified on that documentation head. A final matrix/scope record-only commit is being checked separately; do not treat the earlier runs as testing a later commit.
 - PR #5 remains Open + Draft, unmerged; no deployment or merge was performed.
 
 S06 acceptance criteria are met within the approved read-only planning UI scope. Android physical-device verification is not claimed.
