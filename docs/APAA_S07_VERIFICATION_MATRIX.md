@@ -206,4 +206,13 @@ These CI results verify offline validators and deterministic tests only. They do
 
 P05 adds an inert launch contract and an offline validator for externally supplied pre-start observations. It does not create or start a container, inspect effective kernel state, authenticate the inspector, deploy a firewall/proxy or establish real network isolation. The attestation must come from a trusted host-side inspector and must be independently reviewed before any future start operation. Browser execution remains disabled.
 
-**P05 disposition:** IMPLEMENTATION ADDED; exact-commit CI verification pending. No new workflow created. PR #5 remains Open + Draft + unmerged. No merge or deployment.
+**P05 code + matrix snapshot:** `2cc4729b11d63edd6bc6a03465945b189d104e2e`
+
+| Existing workflow | Run | Result | Exact evidence |
+|---|---:|---|---|
+| Agent Foundation CI | [43713569838](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43713569838) | PASS | 615 passed in 16.71s; pip-audit reported no known vulnerabilities; compileall, tests and all job steps succeeded |
+| Python Demo CI | [43713569733](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43713569733) | PASS | 615 passed in 16.37s; demo smoke printed the expected `Hello TradeLab Pro`; all job steps succeeded |
+
+Both runs executed on the exact P05 code + matrix snapshot above. Their jobs and every listed step were re-fetched after completion and reported success. These results verify offline launch-contract and attestation logic only.
+
+**P05 disposition:** IMPLEMENTATION ADDED; both existing CI workflows passed on the exact P05 code + matrix snapshot. The subsequent documentation-only final record commit must also be checked by both workflows. No new workflow created. PR #5 remains Open + Draft + unmerged. No merge or deployment.
