@@ -37,6 +37,8 @@ class SQLiteSecurityStore:
     def __init__(self, database_path: str | Path, *, timeout: float = 10.0) -> None:
         self._database_path = str(database_path)
         self._timeout = timeout
+        if self._database_path == ":memory:":
+            raise ValueError("SQLiteSecurityStore requires a filesystem-backed database path; :memory: is unsupported.")
         if self._database_path != ":memory:":
             self._secure_database_file(create_parent=True)
         self._initialize()
