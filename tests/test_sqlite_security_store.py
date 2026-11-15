@@ -574,3 +574,42 @@ def test_sqlite_recovers_uncommitted_audit_event_after_process_crash(tmp_path):
         ("committed.before.crash",),
         ("committed.after.recovery",),
     ]
+
+def test_security_schema_initialization_rolls_back_on_ddl_failure(tmp_path, monkeypatch):
+    path = tmp_path / "schema-init-rollback.sqlite3"
+    original_connect = SQLiteSecurityStore._connect
+
+    def connect_with_denied_index(self):
+        connection = original_connect(self)
+
+        def authorizer(action, _arg1, _arg2, _database, _trigger):
+            if action == sqlite3.SQLITE_CREATE_INDEX:
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        connection.set_authorizer(authorizer)
+        return connection
+
+    monkeypatch.setattr(SQLiteSecurityStore, "_connect", connect_with_denied_index)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteSecurityStore(path)
+
+    # A failed schema/index migration must not leave earlier DDL committed.
+    with sqlite3.connect(path) as connection:
+        objects = connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    assert objects == []
+
+
+def test_security_store_fails_closed_on_non_sqlite_database_without_replacing_it(tmp_path):
+    path = tmp_path / "not-a-database.sqlite3"
+    original = b"preserve-this-unrecognized-file"
+    path.write_bytes(original)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteSecurityStore(path)
+
+    assert path.read_bytes() == original
