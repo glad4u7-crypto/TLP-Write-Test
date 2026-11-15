@@ -341,7 +341,9 @@ if plan is not None:
                 revised_plan = create_structured_plan(Task(description=revised_task))
                 st.session_state["structured_task_plan"] = revised_plan
                 st.session_state["structured_task_source"] = revised_plan.task_description
-                st.session_state.pop("structured_task_clarification", None)
+                # Keep the old clarification widget value inert; it is not
+                # consulted once the plan is READY and is cleared before a
+                # subsequent new task is prepared or at identity boundaries.
                 st.rerun()
             except (TypeError, ValueError) as exc:
                 st.error(str(exc))
