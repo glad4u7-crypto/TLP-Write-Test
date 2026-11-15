@@ -277,6 +277,17 @@ class SQLiteMemoryStore:
                 (document_id, issuer, subject, title, content, json.dumps(tags), source, now, now))
         return KnowledgeDocument(document_id, title, content, tags, source, now, now)
 
+    def list_knowledge(self, tenant: TenantKey) -> list[KnowledgeDocument]:
+        issuer, subject = self._tenant(tenant)
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                """SELECT * FROM knowledge_documents WHERE issuer=? AND subject=?
+                   ORDER BY updated_at DESC, document_id""", (issuer, subject)
+            ).fetchall()
+        return [KnowledgeDocument(r["document_id"], r["title"], r["content"],
+            tuple(json.loads(r["tags_json"])), r["source"], r["created_at"],
+            r["updated_at"]) for r in rows]
+
     def delete_knowledge(self, tenant: TenantKey, document_id: str) -> bool:
         issuer, subject = self._tenant(tenant)
         with closing(self._connect()) as db:
