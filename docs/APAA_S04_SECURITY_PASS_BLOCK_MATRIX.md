@@ -303,3 +303,19 @@ Both required existing workflows were fetched by exact commit SHA and their job/
 **BX disposition:** S04 repository/code-level CI scope is COMPLETE / PASS. S04 production/release readiness remains BLOCKED. PR #5 remains Open + Draft; no merge, deployment, base-branch change, or additional workflow. All zero-cost, disabled Auto-Run, no-real-world-handler, and prohibited payment/trading constraints remain in force.
 
 Next checkpoint: `APAA-S05-C01-P01` — inspect the S05 scope and current PR head before beginning S05; preserve every S04 release blocker.
+
+
+## P08-P09-BX-FINAL — final CI confirmation (2026-11-15)
+
+The exact matrix-verification commit `f6c5b4cd2f9447a96c608541f613fe01131b188a` was checked by SHA after the initially running jobs completed:
+
+| Workflow | Run ID | Run number | Conclusion | Completed job steps |
+|---|---:|---:|---|---|
+| Agent Foundation CI | 43705215410 | 609 | PASS | dependency install, pip-audit, compileall, foundation tests; all steps successful |
+| Python Demo CI | 43705215343 | 700 | PASS | dependency install, full test suite, demo smoke test; all steps successful |
+
+Both runs reached `completed/success`; job and step records were independently inspected. No failed, cancelled, or pending step remained. No remediation was required.
+
+**Final S04 disposition:** repository/code-level CI scope COMPLETE / PASS. Production/release readiness remains NOT APPROVED; BY-01 through BY-07 remain blocked pending external/operational acceptance evidence. PR #5 remains Open + Draft; no merge, deployment, base-branch change, or additional workflow. Zero-cost, disabled Auto-Run, no real-world handlers, and prohibited payment/purchase/checkout/trading/money-movement constraints remain unchanged.
+
+Next checkpoint: `APAA-S05-C01-P01` — inspect the S05 scope and current PR head before beginning S05; retain all S04 release blockers.
