@@ -87,6 +87,12 @@ def _canonical_host(host: str) -> tuple[str, int | None]:
     if len(ascii_host) > 253 or not ascii_host:
         raise BrowserPolicyError("Destination hostname is too long or empty.")
     labels = ascii_host.split(".")
+    # Browsers and URL stacks may interpret legacy numeric IPv4 spellings
+    # (integer, shortened dotted, octal or hexadecimal) as IP literals.
+    # Do not let those forms fall through as ordinary DNS hostnames.
+    numeric_ip_labels = re.compile(r"^(?:[0-9]+|0[xX][0-9a-fA-F]+)$")
+    if all(numeric_ip_labels.fullmatch(label) for label in labels):
+        raise BrowserPolicyError("Non-canonical numeric IP spellings are blocked.")
     if len(labels) < 2 or any(not _DNS_LABEL.fullmatch(label) for label in labels):
         raise BrowserPolicyError("Destination must be a fully-qualified DNS hostname.")
     return ascii_host, None
