@@ -4,7 +4,7 @@ A safety-first, zero-cost foundation for a personal digital-task agent. The curr
 
 ## Current application
 
-- Streamlit workspace and Project Manager.
+- Streamlit workspace and Project Manager.\n- Structured Task Workspace with READY / NEEDS_CLARIFICATION / BLOCKED review, ordered step details, clarification re-planning and visible mutation-approval labels; planning remains read-only.
 - Deterministic built-in `RuleBasedProvider`; no external AI model or network API is called by the current dashboard.
 - Optional OIDC authentication using Streamlit's verified identity claims. For any deployment exposed beyond a private local prototype, configure authentication as required with `[apaa].require_auth = true`.
 - Authenticated project records use SQLite persistence scoped by the OIDC issuer + subject pair.
@@ -51,9 +51,9 @@ The existing CI workflows also run `pip-audit` and the demo smoke test.
 
 ## Known limitations and release blockers
 
-- Streamlit web prototype only; a native Android application has not been built.
+- Streamlit web prototype only; a native Android application has not been built. The Task Workspace has been structured for responsive browser review but has not yet had real-device Android verification.
 - The planner is deterministic planning logic, not a generative model.
-- Only project creation is currently wired through the UI execution gateway.
+- Only project creation is currently wired through the UI execution gateway. Structured task plans are not dispatched or executed.
 - OIDC claim-adapter and authorization tests do not replace live identity-provider and real-browser testing.
 - Browser cookies, CSRF, redirects, TLS/reverse-proxy configuration, branch protection, independent audit anchoring, encrypted off-site backups, retention/restore operations, host/container isolation, single-writer deployment topology and operational ownership require separate evidence.
 - SQLite and in-process capabilities are not a hostile-code sandbox or a validated multi-host production architecture.
