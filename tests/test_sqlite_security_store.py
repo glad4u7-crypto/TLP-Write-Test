@@ -148,3 +148,27 @@ def test_audit_chain_detects_deletion_of_all_rows(tmp_path):
     with sqlite3.connect(path) as connection:
         connection.execute("DELETE FROM durable_audit_events")
     assert not store.verify_audit_chain()
+
+
+def test_security_database_file_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "private" / "security.sqlite3"
+    SQLiteSecurityStore(path)
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks unavailable")
+def test_security_database_rejects_symlink_target(tmp_path):
+    target = tmp_path / "outside.sqlite3"
+    target.write_bytes(b"do-not-open")
+    link = tmp_path / "security.sqlite3"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        SQLiteSecurityStore(link)
+    assert target.read_bytes() == b"do-not-open"
