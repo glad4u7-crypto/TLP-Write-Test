@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,7 +52,7 @@ class SQLiteProjectStore:
         # Execute statements separately so the migration ledger and schema
         # creation remain inside one explicit transaction.
         statements = [part.strip() for part in SQLITE_SCHEMA_V1.split(";") if part.strip()]
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for statement in statements:
@@ -80,7 +81,7 @@ class SQLiteProjectStore:
         _validate_fields(name, description)
         now = _utc_now()
         project_id = str(uuid.uuid4())
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
@@ -101,7 +102,7 @@ class SQLiteProjectStore:
         return self._to_project(row)
 
     def list_for_tenant(self, tenant: TenantKey) -> list[StoredProject]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """SELECT * FROM projects
                    WHERE tenant_issuer = ? AND tenant_subject = ?
@@ -111,7 +112,7 @@ class SQLiteProjectStore:
         return [self._to_project(row) for row in rows]
 
     def get_for_tenant(self, tenant: TenantKey, project_id: str) -> StoredProject | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 """SELECT * FROM projects
                    WHERE project_id = ? AND tenant_issuer = ? AND tenant_subject = ?""",
@@ -123,7 +124,7 @@ class SQLiteProjectStore:
         self, tenant: TenantKey, project_id: str, *, name: str, description: str
     ) -> StoredProject | None:
         _validate_fields(name, description)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 cursor = connection.execute(
@@ -145,7 +146,7 @@ class SQLiteProjectStore:
         return self._to_project(row) if row else None
 
     def delete_for_tenant(self, tenant: TenantKey, project_id: str) -> bool:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 cursor = connection.execute(
