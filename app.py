@@ -9,6 +9,7 @@ from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied
+from core.session_security import bind_session_identity
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -51,6 +52,11 @@ else:
         "Do not expose this instance publicly. Set [apaa].require_auth = true "
         "after configuring OIDC."
     )
+
+# Clear identity-bound drafts, approval authority and gateway if a different
+# authenticated account starts using this same Streamlit session.
+session_identity = principal.subject if principal is not None else "local-prototype"
+bind_session_identity(st.session_state, session_identity)
 
 if "project_registry" not in st.session_state:
     st.session_state["project_registry"] = ProjectRegistry()
