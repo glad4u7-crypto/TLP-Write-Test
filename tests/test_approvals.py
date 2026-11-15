@@ -107,3 +107,50 @@ def test_receipt_can_only_be_consumed_once_under_concurrency():
 
     assert results.count(True) == 1
     assert results.count(False) == 11
+
+
+def test_durable_nonce_store_requires_tenant_and_persists_replay_across_authority_restart(tmp_path):
+    from core.storage import TenantKey
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    path = tmp_path / "security.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    payload = {"path": "durable.txt"}
+    secret = b"test-only-signing-secret-material-32-bytes-minimum"
+    first_authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(path), signing_secret=secret
+    )
+    receipt = first_authority.issue("write_file", payload)
+
+    assert first_authority.consume(receipt, "write_file", payload) is True
+    second_authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(path), signing_secret=secret
+    )
+    assert second_authority.consume(receipt, "write_file", payload, tenant=tenant) is False
+
+
+def test_durable_nonce_mode_fails_closed_without_validated_tenant(tmp_path):
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(tmp_path / "security.sqlite3"),
+        signing_secret=b"test-only-signing-secret-material-32-bytes-minimum",
+    )
+    payload = {"path": "tenant-required.txt"}
+    receipt = authority.issue("write_file", payload)
+    assert authority.consume(receipt, "write_file", payload) is False
+
+
+def test_durable_nonce_mode_accepts_tenant_and_rejects_replay(tmp_path):
+    from core.storage import TenantKey
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    tenant = TenantKey("https://issuer.example", "alice")
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(tmp_path / "security.sqlite3"),
+        signing_secret=b"test-only-signing-secret-material-32-bytes-minimum",
+    )
+    payload = {"path": "tenant-bound.txt"}
+    receipt = authority.issue("write_file", payload)
+    assert authority.consume(receipt, "write_file", payload, tenant=tenant) is True
+    assert authority.consume(receipt, "write_file", payload, tenant=tenant) is False
