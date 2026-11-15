@@ -389,8 +389,7 @@ def _run_process_race(context, target, args, worker_count):
             if process.is_alive():
                 process.terminate()
             process.join(timeout=5)
-        receive_connection.close()
-        send_connection.close()
+        ready_queue.close()
         result_queue.close()
 
 
@@ -496,7 +495,8 @@ def test_sqlite_recovers_uncommitted_nonce_after_process_crash(tmp_path):
         if process.is_alive():
             process.terminate()
             process.join(timeout=5)
-        ready_queue.close()
+        receive_connection.close()
+        send_connection.close()
 
     recovered = SQLiteSecurityStore(path)
     with sqlite3.connect(path) as connection:
