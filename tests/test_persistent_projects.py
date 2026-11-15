@@ -238,3 +238,59 @@ def test_persistent_gateway_blocks_project_creation_when_sqlite_intent_audit_fai
     assert result.executed is False
     assert "not executed" in result.reason
     assert registry.list_projects_for_owner(ALICE) == []
+
+
+def test_persistent_gateway_blocks_protected_action_when_existing_audit_chain_is_tampered(
+    tmp_path,
+):
+    import sqlite3
+
+    from core.approvals import ApprovalAuthority
+    from core.project_actions import build_project_gateway
+    from core.sqlite_security_store import (
+        DurableAuditEvent,
+        SQLiteExecutionAuditLog,
+        SQLiteSecurityStore,
+    )
+
+    tenant = TenantKey(ALICE.issuer, ALICE.subject)
+    project_store = SQLiteProjectStore(tmp_path / "projects.sqlite3")
+    security_path = tmp_path / "security.sqlite3"
+    security_store = SQLiteSecurityStore(security_path)
+    authority = ApprovalAuthority(
+        nonce_store=security_store,
+        signing_secret=b"tampered-audit-gateway-secret-32-bytes",
+    )
+    audit_log = SQLiteExecutionAuditLog(security_store, tenant)
+    registry = PersistentProjectRegistry(project_store, tenant)
+
+    # Seed a valid prior event, then simulate unauthorized database tampering.
+    security_store.append_audit_event(
+        DurableAuditEvent(
+            "previous.action", "denied", "test_seed", "prior-fingerprint", "prior-request"
+        )
+    )
+    with sqlite3.connect(security_path) as connection:
+        connection.execute(
+            "UPDATE durable_audit_events SET action = 'forged.action' WHERE sequence = 1"
+        )
+
+    gateway = build_project_gateway(
+        registry, authority, audit_log=audit_log, principal=ALICE,
+        session_scope="tampered-audit-session",
+    )
+    payload = {"name": "Must not be created", "description": ""}
+    receipt = authority.issue(
+        "create_project", payload, tenant=tenant,
+        session_scope="tampered-audit-session",
+    )
+
+    result = gateway.execute(
+        "create_project", payload, approval_receipt=receipt, tenant=tenant
+    )
+
+    assert result.executed is False
+    assert "Audit persistence unavailable" in result.reason
+    assert registry.list_projects_for_owner(ALICE) == []
+    with pytest.raises(ValueError, match="audit"):
+        audit_log.verify()
