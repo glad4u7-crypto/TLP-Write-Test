@@ -264,3 +264,27 @@ No external anchor, OIDC deployment, production host, credentials or paid servic
 PR #5 remains Open + Draft; no merge, deployment or base-branch change. Auto-Run and real-world browser/email/shell/network/filesystem/device handlers remain disabled. Payment, purchase, checkout, trading and money movement remain prohibited. Paid providers, API keys and billable services remain disabled; current build remains zero-cost. Production remains **NOT APPROVED**.
 
 Next checkpoint: `APAA-S04-C01-P08-P09-BZ` — verify the post-BY matrix/closure-plan commits on the exact PR head, confirm both CI workflows, then decide whether S04 can be marked code-complete while retaining the external release blockers.
+
+
+## P08-P09-BZ — final exact-commit verification (2026-11-15)
+
+The two commits that updated the consolidated matrix and final closure plan have now both passed the existing PR workflows. These are separate exact-commit checks:
+
+| Commit | Workflow | Run ID | Run number | Result |
+|---|---|---:|---:|---|
+| `6e65da84d24e9cd8badde0a6fad240f68174746d` (matrix update) | Agent Foundation CI | 43700617825 | 605 | PASS |
+| `6e65da84d24e9cd8badde0a6fad240f68174746d` (matrix update) | Python Demo CI | 43700617781 | 696 | PASS |
+| `545924d062199f81022dec30846504d733b93740` (closure plan) | Agent Foundation CI | 43700637144 | 606 | PASS |
+| `545924d062199f81022dec30846504d733b93740` (closure plan) | Python Demo CI | 43700637180 | 697 | PASS |
+
+Every reported job step completed successfully in all four runs. No CI failure required remediation. The exact-commit run records were also fetched by commit SHA and matched the four run IDs above.
+
+### BZ disposition
+
+- S04 repository/code-level verification is **COMPLETE / PASS** for the current automated scope.
+- S04 production and release readiness remains **BLOCKED** by the seven external/operational gates in the closure plan. No live OIDC/browser or production deployment evidence is claimed.
+- PR #5 remains Open + Draft. No merge, deployment, base-branch change or new workflow.
+- Auto-Run and real-world handlers remain disabled. Payment, purchase, checkout, trading and money movement remain prohibited. Paid providers/API keys/billable services remain disabled; zero-cost constraint remains intact.
+- No unresolved CI failure or open review thread was returned by the current PR review queries.
+
+Next checkpoint: `APAA-S05-C01-P01` — begin S05 only after checking the current PR head and S05 scope in the repository; retain S04 production blockers as a hard release gate.
