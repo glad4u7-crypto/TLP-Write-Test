@@ -298,8 +298,7 @@ def test_concurrent_process_project_creates_are_all_persisted(tmp_path):
             if process.is_alive():
                 process.terminate()
             process.join(timeout=5)
-        receive_connection.close()
-        send_connection.close()
+        ready_queue.close()
         result_queue.close()
 
     project_ids = [value for _, value in results]
@@ -356,7 +355,8 @@ def test_sqlite_recovers_uncommitted_project_after_process_crash(tmp_path, tenan
         if process.is_alive():
             process.terminate()
             process.join(timeout=5)
-        ready_queue.close()
+        receive_connection.close()
+        send_connection.close()
 
     recovered = SQLiteProjectStore(path)
     assert recovered.get_for_tenant(tenants[0], committed.project_id) == committed
