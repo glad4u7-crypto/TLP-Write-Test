@@ -88,7 +88,7 @@ def test_redirect_chain_blocks_allowlist_escape_private_ip_and_loop():
     with pytest.raises(NavigationPolicyError, match="allowlist"):
         p.validate_redirect_chain("https://example.com", ["https://evil.test"])
     with pytest.raises(NavigationPolicyError, match="Private"):
-        p.validate_redirect_chain("https://example.com", ["http://10.1.2.3"])
+        p.validate_redirect_chain("https://example.com", ["https://10.1.2.3"])
     with pytest.raises(NavigationPolicyError, match="loop"):
         p.validate_redirect_chain("https://example.com", ["https://example.com"])
 
