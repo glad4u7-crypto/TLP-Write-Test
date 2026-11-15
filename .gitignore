@@ -13,3 +13,6 @@ __pycache__/
 *.db
 
 .apaa_projects/
+
+# Local persistent memory and knowledge database
+.apaa_memory/
