@@ -43,6 +43,7 @@ def test_workflows_bound_runtime_and_cancel_superseded_runs():
         source = workflow.read_text(encoding="utf-8")
         assert re.search(r"^concurrency:\s*$", source, re.MULTILINE)
         assert "cancel-in-progress: true" in source
+        assert "github.event.pull_request.head.ref || github.ref_name" in source
         assert re.search(r"^\s+timeout-minutes:\s+(15|20)\s*$", source, re.MULTILINE)
 
 
