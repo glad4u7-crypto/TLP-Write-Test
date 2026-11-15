@@ -73,3 +73,19 @@ def test_oidc_adapter_rejects_invalid_clock_skew(clock_skew):
         principal_from_oidc_claims(
             valid_claims(), now=1_500, clock_skew_seconds=clock_skew
         )
+
+
+def test_oidc_adapter_rejects_expiration_exactly_at_clock_skew_boundary():
+    # exp == now - skew is expired; the boundary must fail closed.
+    with pytest.raises(AuthenticationRequired):
+        principal_from_oidc_claims(
+            valid_claims(exp=1_440), now=1_500, clock_skew_seconds=60
+        )
+
+
+def test_oidc_adapter_accepts_issued_at_exactly_at_clock_skew_boundary():
+    # iat == now + skew is allowed; only values beyond this boundary are future-issued.
+    principal = principal_from_oidc_claims(
+        valid_claims(iat=1_560), now=1_500, clock_skew_seconds=60
+    )
+    assert principal.subject == "subject-123"
