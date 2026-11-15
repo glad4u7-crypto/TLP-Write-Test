@@ -28,19 +28,22 @@ server_metadata_url = "https://accounts.google.com/.well-known/openid-configurat
 
 [apaa]
 require_auth = true
+approval_signing_secret_hex = "REPLACE_WITH_64_HEX_CHARACTERS_FROM_LOCAL_GENERATION"
+security_db_path = ".apaa_security/security.sqlite3"
+project_db_path = ".apaa_projects/projects.sqlite3"
 ```
 
 For another provider, replace `server_metadata_url` with that provider's official OIDC discovery URL and use its issued client credentials. Keep tokens and secrets out of source control, UI, and logs.
 
 ## Local secret generation
 
-Generate a cookie secret locally with Python:
+Generate the required secrets locally with Python:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "import secrets; print('cookie_secret = ' + repr(secrets.token_urlsafe(48))); print('approval_signing_secret_hex = ' + repr(secrets.token_hex(32)))"
 ```
 
-Copy the output into `cookie_secret` in your local secrets file. Do not paste the value into GitHub or this chat.
+Copy each generated value into the corresponding key in your local secrets file. `approval_signing_secret_hex` must decode to at least 32 bytes (64 hex characters). Keep `.streamlit/secrets.toml` out of Git; never paste either secret into GitHub, logs, screenshots, or chat. Ensure the database directories are writable only by the app's runtime account and are included in a protected backup plan.
 
 ## Security limitations
 
