@@ -494,3 +494,32 @@ PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `featur
 ### Next serial work
 
 Continue S04 with an offline-verifiable review of authenticated session binding and approval-scope lifecycle across identity transitions, logout, and partially restored session state. Add focused tests for configuration-fingerprint cleanup and ensure no old gateway or receipt context survives. Live OIDC/browser verification remains blocked on a private test deployment and two controlled non-production identities.
+
+## P08-P09-AV — Invalid OIDC claim cleanup regression and current-head CI
+
+Verification date: 2026-11-15  
+Reviewed commit: `04ee526a051959dae28fc7ef6d353075081c790a`
+
+### Work completed
+
+- Expanded the existing AppTest in `tests/test_app_smoke.py` for invalid OIDC claims.
+- The regression now asserts that all identity-bound state is absent after claim validation fails: active identity marker, approval session scope/config fingerprint, approval authority, execution gateway and owner, project registry and tenant marker, pending project, selected project, free-plan state, and task draft.
+- No runtime authentication behavior was weakened or changed. The app continues to clear session identity and stop before protected workspace actions are rendered.
+- The change was committed only to PR #5 head branch `feature/approval-ui-e2e-p06`; the base branch was not modified.
+
+### Current-head CI evidence
+
+All four GitHub Actions check runs for the exact reviewed commit completed successfully:
+
+| Check | Run ID | Result |
+|---|---:|---|
+| Python Demo CI — test | 43693053820 | PASS |
+| Python Demo CI — test-demo | 43693053811 | PASS |
+| Agent Foundation CI — test | 43693057649 | PASS |
+| Agent Foundation CI — test-demo | 43693057699 | PASS |
+
+The PR remains open and Draft. These automated tests do not replace live OIDC/browser verification with two controlled identities, CSRF/cookie validation, or production deployment review. Production remains **NOT APPROVED**. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled.
+
+### Next serial work
+
+Continue the offline-verifiable S04 identity/session security review from the latest code, then proceed through the remaining S04 checkpoints in order. Keep the live OIDC/browser matrix explicitly blocked until a private test deployment and two controlled non-production identities are available. Do not advance to S05 until S04's required implementation and verification work is complete or its external blockers are clearly recorded.
