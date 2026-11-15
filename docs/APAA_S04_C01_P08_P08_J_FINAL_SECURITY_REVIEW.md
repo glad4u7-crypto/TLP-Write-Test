@@ -188,3 +188,42 @@ Python Demo CI completed dependency installation, the test suite, and the `demo.
 This verifies the automated crash-recovery regression in the GitHub Actions environment; it does not prove power-loss durability across every filesystem, host, or storage controller. The existing limitations around local SQLite deployment topology, protected audit anchoring, live OIDC/browser verification, and production capability isolation remain open.
 
 PR #5 remains open and Draft. No merge, deployment, paid-provider activation, payment, trading, or real-world handler enablement is authorized. Production remains **NOT APPROVED**.
+
+
+## P08-P09-AK — Documentation CI and authenticated-runtime regression review
+
+Verification date: 2026-11-15  
+Reviewed PR head: `b00272d25a373d96fba6d842eddd2dc9be5f69b6`
+
+### Current-head CI evidence
+
+The two documentation updates in P08-P09-AJ completed all four associated workflow runs successfully:
+
+| Workflow | Run | Commit | Result |
+|---|---:|---|---|
+| Python Demo CI | #483 / 43685624423 | `7c55186dae9f31637cea65e2d3d04feae1ffb560` | PASS |
+| Agent Foundation CI | #393 / 43685624537 | `7c55186dae9f31637cea65e2d3d04feae1ffb560` | PASS |
+| Python Demo CI | #484 / 43685627642 | `b00272d25a373d96fba6d842eddd2dc9be5f69b6` | PASS |
+| Agent Foundation CI | #394 / 43685627624 | `b00272d25a373d96fba6d842eddd2dc9be5f69b6` | PASS |
+
+Verified job steps include dependency installation, full pytest suite, demo smoke test, dependency audit, module compilation, and foundation tests, as applicable to each workflow.
+
+### Additional read-only code review
+
+Reviewed the existing `app.py`, `core/session_security.py`, `core/streamlit_auth.py`, `core/sqlite_security_store.py`, `core/sqlite_project_store.py`, and their existing session, OIDC, approval, and persistent-project tests.
+
+- Authenticated runtime derives the principal from Streamlit OIDC claims; identity is not accepted from UI input.
+- Authenticated mode fails closed when OIDC configuration is absent, the stable approval signing secret is missing/too short, or durable SQLite storage cannot be initialized.
+- The authenticated path uses issuer + subject tenant scoping, durable one-time approval nonce storage, SQLite execution audit, and persistent project storage.
+- Logout clears identity-bound Streamlit session state before calling Streamlit logout; identity transitions clear prior approval scope, gateway, registry, and user-specific drafts.
+- Existing automated tests cover malformed/expired/future OIDC claims, identity-switch cleanup, logout cleanup, stale receipt rejection, cross-session approval replay rejection, cross-tenant project access denial, and persistent gateway audit intent/completion/fail-closed behavior.
+
+No additional runtime change was justified by this read-only review. No new files were created.
+
+### Remaining blockers
+
+Automated CI and claim-adapter tests do not replace a live OIDC deployment test with two controlled identities and isolated browser profiles. The deployment must explicitly enforce `[apaa].require_auth = true`, use protected stable signing material, and validate logout/session invalidation and tenant isolation in a real browser environment.
+
+The local SQLite stores remain single-host-oriented operational components, not a verified multi-host service. Protected backup/retention/monitoring/recovery and independent audit anchoring remain production requirements. In-process Python approval/execution capabilities are not a sandbox against hostile code in the same process. The existing same-account filesystem/TOCTOU limitation remains unchanged.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
