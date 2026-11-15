@@ -62,13 +62,33 @@ registry = st.session_state["project_registry"]
 # The planner/task text never receives either object.
 if "approval_authority" not in st.session_state:
     st.session_state["approval_authority"] = ApprovalAuthority()
-if "execution_gateway" not in st.session_state:
+gateway_owner = principal.subject if principal is not None else "local-prototype"
+if (
+    "execution_gateway" not in st.session_state
+    or st.session_state.get("execution_gateway_owner") != gateway_owner
+):
     audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
     st.session_state["execution_gateway"] = build_project_gateway(
         registry,
         st.session_state["approval_authority"],
         audit_log=audit_log,
+        principal=principal,
     )
+    st.session_state["execution_gateway_owner"] = gateway_owner
+
+def visible_projects():
+    if principal is not None:
+        return registry.list_projects_for_owner(principal)
+    return [
+        project for project in registry.list_projects()
+        if project.owner_subject == "local-prototype"
+    ]
+
+def visible_project(project_id):
+    if principal is not None:
+        return registry.get_for_owner(project_id, principal)
+    project = registry.get(project_id)
+    return project if project and project.owner_subject == "local-prototype" else None
 
 st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
@@ -77,7 +97,7 @@ st.info(
 
 with st.sidebar:
     st.subheader("Workspace")
-    projects = registry.list_projects()
+    projects = visible_projects()
     if projects:
         project_ids = [project.project_id for project in projects]
         current = st.session_state["selected_project_id"]
@@ -89,7 +109,7 @@ with st.sidebar:
             format_func=lambda value: registry.get(value).name,
         )
         st.session_state["selected_project_id"] = selected_id
-        selected = registry.get(selected_id)
+        selected = visible_project(selected_id)
         if selected and selected.description:
             st.caption(selected.description)
     else:
@@ -157,8 +177,8 @@ if pending_project:
         else:
             st.error(result.reason)
 
-if registry.list_projects():
-    selected = registry.get(st.session_state["selected_project_id"])
+if visible_projects():
+    selected = visible_project(st.session_state["selected_project_id"])
     if selected:
         st.write(f"**Selected project:** {selected.name}")
         st.write(selected.description or "No description provided.")
