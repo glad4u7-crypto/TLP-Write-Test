@@ -45,14 +45,31 @@ class SQLiteProjectStore:
             self._secure_database_file(create_parent=False)
 
     def _secure_database_file(self, *, create_parent: bool) -> None:
-        """Reject symlink/non-regular database targets and restrict file access."""
+        """Reject symlinked parents/targets and restrict database file access."""
         path = Path(self._database_path)
+        # Inspect lexical parents so symlinks are not hidden by path resolution.
+        for parent in path.absolute().parents:
+            try:
+                parent_metadata = parent.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(parent_metadata.st_mode):
+                raise ValueError("Project database parent path must not contain symlinks.")
         if create_parent:
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             metadata = path.lstat()
         except FileNotFoundError:
-            return
+            # Pre-create with owner-only permissions before SQLite opens it;
+            # post-initialization chmod alone leaves a brief umask-dependent window.
+            flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(path, flags, 0o600)
+            except FileExistsError:
+                metadata = path.lstat()
+            else:
+                os.close(descriptor)
+                metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
             raise ValueError("Project database must be a regular, non-symlink file.")
         # Project names and descriptions may contain private user information.
