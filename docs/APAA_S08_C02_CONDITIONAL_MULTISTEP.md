@@ -12,7 +12,7 @@
 - Added `core/multi_step_executor.py` with immutable plan/result records and a finite ordered plan (1–25 steps).
 - Each step has a unique ID, allowlisted action candidate, bounded JSON payload and optional declarative condition.
 - A false condition skips that step; an invalid condition blocks the plan.
-- Each eligible action dispatches only through the existing `ExecutionGateway`.
+- Each eligible action dispatches only through the existing `ExecutionGateway`, carrying the optional validated tenant scope through approval receipt consumption.
 - Actions requiring permission need a fresh one-time ApprovalReceipt from a trusted UI/controller callback; payload is snapshotted before approval and dispatch.
 - Execution stops on first failed/blocked step. No retry, loop, dynamic code, handler fallback, rollback, or compensation is implemented.
 - Conditions see only caller-supplied bounded context, not prior handler outputs.
