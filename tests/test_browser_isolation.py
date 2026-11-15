@@ -81,6 +81,7 @@ def test_rejects_capability_not_dropped():
 
 @pytest.mark.parametrize("mounts", [
     ["/home/user"], ["/etc"], ["/tmp/job", "/tmp/job"], ["relative/path"],
+    ["/tmp/../etc"], ["/tmp//job"],
 ])
 def test_rejects_non_ephemeral_or_duplicate_writable_mounts(mounts):
     with pytest.raises(IsolationPolicyError):
@@ -144,5 +145,20 @@ def test_egress_policy_does_not_resolve_dns_or_open_sockets(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     result = validate_proxy_connect(
         "https://example.com/", ["https://example.com"], ["93.184.216.34"]
+    )
+    assert result.validated_addresses == ("93.184.216.34",)
+
+
+def test_ip_literal_proxy_target_must_pin_the_same_address():
+    with pytest.raises(EgressPolicyError):
+        validate_proxy_connect(
+            "https://93.184.216.34/",
+            ["https://93.184.216.34"],
+            ["93.184.216.35"],
+        )
+    result = validate_proxy_connect(
+        "https://93.184.216.34/",
+        ["https://93.184.216.34"],
+        ["93.184.216.34"],
     )
     assert result.validated_addresses == ("93.184.216.34",)
