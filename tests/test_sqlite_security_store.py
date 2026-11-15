@@ -267,12 +267,17 @@ def test_nonce_expiry_cleanup_rolls_back_when_insert_fails(tmp_path):
     tenant = TenantKey("https://issuer.example", "alice")
     assert store.consume_approval_nonce(tenant, "expired-row", 150, now=100)
 
-    with sqlite3.connect(path) as connection:
-        connection.execute(
+    trigger_connection = sqlite3.connect(path)
+    try:
+        trigger_connection.execute(
             """CREATE TRIGGER reject_nonce_insert
                BEFORE INSERT ON consumed_approval_nonces
+               WHEN NEW.nonce = 'new-row'
                BEGIN SELECT RAISE(ABORT, 'forced nonce insert failure'); END"""
         )
+        trigger_connection.commit()
+    finally:
+        trigger_connection.close()
 
     with pytest.raises(sqlite3.IntegrityError, match="forced nonce insert failure"):
         store.consume_approval_nonce(tenant, "new-row", 500, now=200)
