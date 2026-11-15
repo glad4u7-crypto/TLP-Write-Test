@@ -422,3 +422,28 @@ Both workflows ran against the exact final documentation commit. This closes the
 | CI | Both existing workflows on exact P10 implementation/test commit | PENDING |
 
 P10 does not establish its own trust anchor and does not claim key custody is solved. No private key is generated or stored. No deployment, firewall modification, worker launch or browser activation.
+
+
+## P11 implementation checkpoint — trusted inspector evidence control-plane composition
+
+**Implementation:** `core/inspector_control_plane.py`  
+**Tests:** `tests/test_inspector_control_plane.py`  
+**Contract:** `docs/APAA_S07_INSPECTOR_CONTROL_PLANE_P11.md`  
+**Implementation commit:** `2289d5f674cb844ccfac8e8719d3aaa5c4d00aba`  
+**Test commit:** `6f6ca3d1ba636b3acfe1b4c11985cfb6a2b834a9`  
+**CI:** pending exact latest verification commit
+
+| Area | Evidence | Status |
+|---|---|---|
+| Challenge issuance | P09 persisted challenge bound to validated tenant/runtime/worker | IMPLEMENTED |
+| Key resolution | P10 active, non-revoked key selected by signed envelope key ID | IMPLEMENTED |
+| Signature and evidence | P06 Ed25519, freshness, P05 attestation and exact firewall policy verification | IMPLEMENTED |
+| Identity binding | Attested runtime/worker compared with caller-supplied trusted expected IDs | IMPLEMENTED |
+| Replay guard | P09 atomic consume only after all checks pass | IMPLEMENTED |
+| Failure ordering | Invalid signature/key/identity/tenant/replay must not be accepted | TESTS ADDED — CI PENDING |
+| Caller authentication and config provenance | Authenticated principal, launch spec, runtime identity and proxy allowlist | EXTERNAL RELEASE GATE |
+| Distributed replay protection | Shared multi-host authoritative transaction store | NOT IMPLEMENTED |
+| Production service / authorization | Request handler, policy decision and permission grant | NOT IMPLEMENTED |
+| Host acceptance | Independent PID mapping and packet-level tests | NOT RUN |
+
+**P11 disposition:** OFFLINE CONTROL-PLANE COMPOSITION ONLY. No live host collection, network endpoint, deployment, firewall mutation, worker launch or browser activation.
