@@ -90,6 +90,18 @@ def test_non_json_payload_cannot_receive_or_consume_approval():
     assert authority.consume(receipt, "write_file", {"path": object()}) is False
 
 
+@pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_json_numbers_cannot_receive_or_consume_approval(non_finite):
+    authority = ApprovalAuthority()
+    with pytest.raises(ValueError):
+        authority.issue("write_file", {"amount": non_finite})
+
+    receipt = authority.issue("write_file", {"amount": 1.0})
+    assert authority.consume(
+        receipt, "write_file", {"amount": non_finite}
+    ) is False
+
+
 def test_receipt_can_only_be_consumed_once_under_concurrency():
     from concurrent.futures import ThreadPoolExecutor
 
