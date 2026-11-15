@@ -185,3 +185,34 @@ def test_project_sqlite_rollback_journal_has_owner_only_permissions(tmp_path):
     finally:
         connection.rollback()
         connection.close()
+
+
+def test_project_update_and_delete_roll_back_when_sqlite_rejects_mutation(tmp_path, tenants):
+    import sqlite3
+
+    path = tmp_path / "mutation-rollback.sqlite3"
+    store = SQLiteProjectStore(path)
+    tenant = tenants[0]
+    project = store.create(tenant, name="Original", description="preserve me")
+
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TRIGGER reject_project_update
+            BEFORE UPDATE ON projects
+            BEGIN SELECT RAISE(ABORT, 'forced update failure'); END;
+            CREATE TRIGGER reject_project_delete
+            BEFORE DELETE ON projects
+            BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END;
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced update failure"):
+        store.update_for_tenant(
+            tenant, project.project_id, name="Changed", description="must roll back"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="forced delete failure"):
+        store.delete_for_tenant(tenant, project.project_id)
+
+    retained = SQLiteProjectStore(path).get_for_tenant(tenant, project.project_id)
+    assert retained == project
