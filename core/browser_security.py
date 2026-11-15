@@ -107,8 +107,10 @@ def canonicalize_https_url(value: object) -> CanonicalURL:
             raise BrowserPolicyError("Only HTTPS destinations are permitted.")
         if not parsed.netloc or parsed.username is not None or parsed.password is not None:
             raise BrowserPolicyError("URL authority is missing or contains user information.")
+        if parsed.netloc.endswith(":"):
+            raise BrowserPolicyError("Destination port is malformed.")
         host, ip_version = _canonical_host(parsed.hostname or "")
-        port = parsed.port or 443
+        port = parsed.port if parsed.port is not None else 443
     except (ValueError, UnicodeError) as exc:
         if isinstance(exc, BrowserPolicyError):
             raise
@@ -165,6 +167,8 @@ def validate_destination(
 
     canonical_origins: set[str] = set()
     for item in allowed_origins:
+        if type(item) is not str or urlsplit(item).query or urlsplit(item).fragment:
+            raise BrowserPolicyError("Allowlist entries cannot contain query strings or fragments.")
         origin = canonicalize_https_url(item)
         if origin.url != origin.origin + "/" and origin.url != origin.origin:
             raise BrowserPolicyError("Allowlist entries must be origins, not paths or queries.")
@@ -211,6 +215,8 @@ def validate_browser_job(
     """Validate a closed-schema, read-only job. Unknown keys always fail."""
     if not isinstance(raw, Mapping):
         raise BrowserPolicyError("Browser job must be a mapping.")
+    if any(type(key) is not str for key in raw.keys()):
+        raise BrowserPolicyError("Browser job field names must be strings.")
     if set(raw.keys()) != _JOB_FIELDS:
         missing = sorted(_JOB_FIELDS - set(raw.keys()))
         unknown = sorted(set(raw.keys()) - _JOB_FIELDS)
@@ -238,6 +244,8 @@ def validate_browser_job(
         raise BrowserPolicyError("Allowed origins must be a bounded list.")
     canonical_origins: list[str] = []
     for origin_value in origins:
+        if type(origin_value) is not str or urlsplit(origin_value).query or urlsplit(origin_value).fragment:
+            raise BrowserPolicyError("Allowed origins cannot contain query strings or fragments.")
         parsed_origin = canonicalize_https_url(origin_value)
         if parsed_origin.url not in (parsed_origin.origin, parsed_origin.origin + "/"):
             raise BrowserPolicyError("Allowed origins cannot contain paths or queries.")
