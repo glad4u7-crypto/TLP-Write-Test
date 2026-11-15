@@ -111,3 +111,5 @@ The following require separate external or operational evidence; passing offline
 - Payment, purchase, checkout, trading, investment orders, money movement and financial transactions remain prohibited regardless of approval. Auto-Run remains OFF; paid providers remain disabled.
 - S07 threat and verification matrices are design requirements only; no browser security test is claimed as passed. Independent host, container and network evidence is required before operational use.
 - A separate explicit user approval and reviewed scope are required before implementing or enabling any browser capability.
+
+- The proposed typed job/action/result envelope and Android-friendly one-action review UX are documented in `APAA_S07_BROWSER_ACTION_CONTRACT.md` and `APAA_S07_MOBILE_APPROVAL_UX.md`; neither is implemented.
