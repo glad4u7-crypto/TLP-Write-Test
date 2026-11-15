@@ -39,6 +39,29 @@ class ConditionResult:
     reason: str
 
 
+def _validate_json(value: Any, depth: int = 0, budget: list[int] | None = None) -> None:
+    if budget is None:
+        budget = [0]
+    budget[0] += 1
+    if budget[0] > 2048 or depth > 12:
+        raise ConditionError("Condition data complexity limit exceeded.")
+    if value is None or type(value) in (str, int, float, bool):
+        if type(value) is float and (value != value or value in (float("inf"), float("-inf"))):
+            raise ConditionError("Non-finite numbers are not supported.")
+        return
+    if type(value) is list:
+        for item in value:
+            _validate_json(item, depth + 1, budget)
+        return
+    if type(value) is dict:
+        for key, item in value.items():
+            if type(key) is not str:
+                raise ConditionError("Condition data keys must be strings.")
+            _validate_json(item, depth + 1, budget)
+        return
+    raise ConditionError("Condition data must contain JSON-compatible primitive values.")
+
+
 def _lookup(context: Mapping[str, Any], path: str) -> Any:
     if not isinstance(path, str) or not path or len(path) > MAX_PATH_LENGTH:
         raise ConditionError("Condition path is invalid.")
