@@ -29,7 +29,7 @@ def test_mutation_dispatches_after_payload_bound_receipt():
         approval_authority=authority,
     )
     receipt = authority.issue(
-        "write_file", payload, confirmed_by_user=True
+        "write_file", payload
     )
 
     result = gateway.execute("write_file", payload, approval_receipt=receipt)
@@ -51,7 +51,7 @@ def test_receipt_cannot_authorize_different_action_or_payload():
     )
     payload = {"path": "important.txt"}
     receipt = authority.issue(
-        "write_file", payload, confirmed_by_user=True
+        "write_file", payload
     )
 
     wrong_action = gateway.execute(
@@ -75,7 +75,7 @@ def test_receipt_is_one_time_and_cannot_be_replayed():
         approval_authority=authority,
     )
     receipt = authority.issue(
-        "write_file", payload, confirmed_by_user=True
+        "write_file", payload
     )
 
     first = gateway.execute("write_file", payload, approval_receipt=receipt)
