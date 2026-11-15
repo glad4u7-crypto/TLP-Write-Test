@@ -1,64 +1,64 @@
 # APAA S05 — Task Intake and Planning Verification Matrix
 
-**Checkpoint:** APAA-S05-C01-P06  
-**Status:** IMPLEMENTED / AUTOMATED CI PASS (pre-final-doc commit)  
-**Verified implementation head:** 4c23c28620793bd0d7009fad6f9f1477bf822611  
-**Branch:** feature/approval-ui-e2e-p06  
+**Checkpoint:** APAA-S05-C01-P07  
+**Status:** COMPLETE — IMPLEMENTATION AND FINAL-HEAD AUTOMATED CI PASS  
+**Verified final PR head:** `36bd12a65d50e365f99c636b90bc1dbb2ebedfaf`  
+**Branch:** `feature/approval-ui-e2e-p06`  
 **Scope approval:** Explicit user approval recorded 2026-11-15
 
 ## 1. Scope-to-evidence matrix
 
-| Requirement | Implementation | Evidence | Status |
-|---|---|---|---|
-| Typed planning contract | IntakeResult, PlanStep, TaskPlan, PlanStatus, StepCategory | core/planner.py | PASS |
-| Deterministic plan identity | SHA-256-derived plan ID from normalized task text | test_structured_plan_is_typed_and_deterministic | PASS |
-| Stable step ordering | Sequential step IDs and invariant validation | TaskPlan.__post_init__; contract tests | PASS |
-| Bounded input | Text-only, raw and normalized 4,000-character limits | validate_task_intake; boundary tests | PASS |
-| Input hygiene | Reject empty/non-text/unsupported controls; normalize whitespace | intake tests | PASS |
-| Ambiguity handling | NEEDS_CLARIFICATION with explicit question; no guessed steps | ambiguity tests | PASS |
-| Prohibited-intent block | BLOCKED for conservative lexical financial/trading/purchase/provider markers | prohibited-intent tests | PASS* |
-| Mutation safety | PROPOSED_MUTATION requires human approval flag; no approval receipt | PlanStep invariants and mutation tests | PASS |
-| Serialization | Enum values converted to JSON-compatible strings | serialization tests | PASS |
-| Backward compatibility | Legacy create_plan() list[str] preserved | existing test suite | PASS |
-| No execution coupling | Planner does not import ApprovalAuthority or ExecutionGateway | static source inspection | PASS |
-| No external side effects | No network, subprocess, provider or handler dispatch in planner | static source inspection | PASS |
+| Requirement | Implementation / evidence | Status |
+|---|---|---|
+| Typed planning contract | `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus`, `StepCategory` in `core/planner.py` | PASS |
+| Deterministic plan identity | SHA-256-derived plan ID; deterministic contract tests | PASS |
+| Stable step ordering and schema | Sequential stable step IDs; schema version 1.0; invariant validation | PASS |
+| Bounded input and hygiene | Text-only input; empty/control-character rejection; raw and normalized 4,000-character bounds; whitespace normalization | PASS |
+| Ambiguity handling | `NEEDS_CLARIFICATION` with explicit questions for selected vague references | PASS |
+| Prohibited-intent block | Conservative lexical block for detected financial/trading/purchase/provider markers | PASS* |
+| Mutation safety | Proposed mutation requires separate action-specific approval flag; no receipt issuance | PASS |
+| Serialization | JSON-compatible enum serialization | PASS |
+| Backward compatibility | Legacy `create_plan()` four-string interface retained | PASS |
+| No execution coupling | Planner does not import `ApprovalAuthority` or `ExecutionGateway` | PASS |
+| No external side effects | No network, subprocess, provider or handler dispatch in planner | PASS |
+| Regression and focused tests | 14 focused planner contract tests plus existing full suite | PASS |
+| Final exact-head CI | Both existing workflows passed on the final PR head; all steps inspected | PASS |
 
-*The prohibited-intent classifier is intentionally lexical and conservative. It may block informational text containing a marker (for example, a request to explain trading). It is not a semantic policy classifier and must not be treated as a substitute for downstream authorization.
+`*` The prohibited-intent classifier is lexical and conservative. It may block informational text containing a marker and may miss semantically equivalent phrasing. It is not a semantic policy classifier or a substitute for downstream authorization.
 
-## 2. Exact-head CI evidence
+## 2. Final exact-head CI evidence
 
-Implementation head `4c23c28620793bd0d7009fad6f9f1477bf822611`:
+Final PR head: `36bd12a65d50e365f99c636b90bc1dbb2ebedfaf`.
 
-- Agent Foundation CI #622, run `43706514203`: **completed / success**. Dependency installation, pip-audit, compileall, foundation tests and all post steps succeeded.
-- Python Demo CI #713, run `43706514142`: **completed / success**. Dependency installation, full test suite, demo smoke test and all post steps succeeded.
-- Job records were re-fetched after completion. No failed, cancelled, pending or in-progress step remained on that implementation head.
-- Four tests failed on earlier head `0ac054c` due to test imports and validation ordering. Those failures were inspected from logs; the test file and intake validation were corrected in the subsequent head. The corrected head above passed both workflows.
+- **Agent Foundation CI #625 — run `43706654112`: PASS.** Job `test` completed successfully. Setup, pinned checkout, Python setup, dependency installation, `pip-audit`, compileall, foundation tests and all post-job steps succeeded.
+- **Python Demo CI #716 — run `43706654299`: PASS.** Job `test-demo` completed successfully. Setup, checkout, Python setup, dependency installation, full pytest suite, demo smoke test and all post-job steps succeeded.
+- Both workflow runs were re-fetched for the exact final PR head. All reported steps are completed/success; no failed, cancelled, pending or in-progress step remains.
 
-The final documentation commit that adds this matrix must itself be checked by both existing workflows before this matrix is considered final.
+Earlier implementation-head failures on `0ac054c` were inspected and corrected before the implementation-head CI pass. Those historical failures are not hidden; final-head CI is green.
 
 ## 3. Security and permission boundary
 
-- Planning output is data only. A READY plan is not approval.
-- A proposed mutation is marked as requiring separate action-specific human approval; this flag does not create an approval receipt.
+- Planning output is data only. A `READY` plan is not approval or execution authorization.
+- A proposed mutation's approval flag does not create an approval receipt.
 - Planner has no execution-gateway or approval-authority dependency.
-- No real-world handler, browser action, shell action, file write handler, email action, network action or device-control capability is activated by S05.
+- S05 adds no real-world handler, browser, shell, file-write, email, network or device action.
 - Auto-Run remains OFF.
 - Payments, purchases, checkout, trading, money movement and financial transactions remain prohibited.
 - Paid APIs/providers, API keys and billable services remain disabled and unused.
-- No merge, deployment, or base-branch change is authorized by this checkpoint.
+- No merge, deployment or base-branch change is authorized by this checkpoint.
 
 ## 4. Residual limitations and future gates
 
-1. The lexical prohibited-intent detector has known false-positive and false-negative limitations; any future classifier change needs explicit tests and policy review.
-2. Clarification patterns intentionally cover only a small set of vague deictic requests; they do not claim full natural-language understanding.
-3. Plan schema is version 1.0; schema migration/version negotiation is not in S05.
-4. No plan persistence, queue, scheduler, autonomous execution, retry loop, browser integration, or external connector dispatch is introduced.
+1. Lexical prohibited-intent detection has known false-positive and false-negative limitations.
+2. Clarification patterns cover selected vague references only; they do not claim full natural-language understanding.
+3. Schema version is 1.0; schema migration/version negotiation is outside S05.
+4. No plan persistence, queue, scheduler, autonomous execution, retry loop, browser integration or external connector dispatch is introduced.
 5. S04 production/release blockers BY-01 through BY-07 remain open and independent of S05 CI results.
 
-## 5. Disposition
+## 5. Final disposition
 
-S05 task intake and deterministic planning implementation: **PASS on implementation head 4c23c28620793bd0d7009fad6f9f1477bf822611**.
+S05 Task Intake and Deterministic Planning Contract: **PASS / COMPLETE** within the explicitly approved planning-only scope.
 
-S05 final documentation closure: **PENDING** until Agent Foundation CI and Python Demo CI both pass on the final commit containing this matrix and the reconciled scope record.
+PR #5 remains **OPEN + DRAFT**, unmerged, on `feature/approval-ui-e2e-p06`; base branch remains unchanged. No deployment was performed.
 
-Next checkpoint after exact-final-head CI: `APAA-S05-C01-P07` — final audit of matrix, PR state and recorded CI evidence; then define S06 scope only from repository evidence and user-approved boundaries.
+**Next checkpoint:** `APAA-S06-C01-P01` — repository-grounded S06 scope discovery and proposal only. No S06 implementation begins without explicit user approval of its scope.
