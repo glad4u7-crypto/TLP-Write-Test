@@ -37,6 +37,9 @@ def test_approval_for_different_action_is_rejected():
     "external_api_request", "transfer_money", "place_order",
     "fund_account", "withdraw_funds", "buy_item", "trade_stock",
     "subscription_upgrade", "refund_payment", "gemini_generate",
+    "send_money", "move_money", "transfer_funds", "send_funds",
+    "account_top_up", "top_up_account", "cash_out", "cashout",
+    "pay_vendor", "payee_transfer", "settle_invoice",
 ])
 def test_financial_and_external_provider_actions_are_always_blocked(action):
     decision = authorize_action(action, approved_action=action)
