@@ -288,3 +288,18 @@ Every reported job step completed successfully in all four runs. No CI failure r
 - No unresolved CI failure or open review thread was returned by the current PR review queries.
 
 Next checkpoint: `APAA-S05-C01-P01` — begin S05 only after checking the current PR head and S05 scope in the repository; retain S04 production blockers as a hard release gate.
+
+## P08-P09-BX — final exact-commit CI verification (2026-11-15)
+
+Verified documentation/closure commit: `52a6a7044bb06be8e69a695ca83b8ddd35dc48a4`.
+
+| Workflow | Run ID | Run number | Conclusion | Job evidence |
+|---|---:|---:|---|---|
+| Agent Foundation CI | 43704567847 | 607 | PASS | dependency install, pip-audit, compileall, foundation test suite; every job step completed successfully |
+| Python Demo CI | 43704567823 | 698 | PASS | dependency install, full test suite, demo smoke test; every job step completed successfully |
+
+Both required existing workflows were fetched by exact commit SHA and their job/step records independently inspected. No failed or cancelled step was present; no remediation was required. This closes BX's pending CI verification for the recorded commit. The matrix and closure plan remain limited to automated/code-level evidence; BY-01 through BY-07 remain release blockers until independent operational acceptance evidence is produced.
+
+**BX disposition:** S04 repository/code-level CI scope is COMPLETE / PASS. S04 production/release readiness remains BLOCKED. PR #5 remains Open + Draft; no merge, deployment, base-branch change, or additional workflow. All zero-cost, disabled Auto-Run, no-real-world-handler, and prohibited payment/trading constraints remain in force.
+
+Next checkpoint: `APAA-S05-C01-P01` — inspect the S05 scope and current PR head before beginning S05; preserve every S04 release blocker.
