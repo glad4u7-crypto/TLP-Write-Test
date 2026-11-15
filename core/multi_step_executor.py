@@ -106,6 +106,7 @@ class MultiStepTaskExecutor:
         *,
         condition_context: Mapping[str, Any],
         request_approval: ApprovalProvider | None = None,
+        tenant: TenantKey | None = None,
     ) -> PlanResult:
         validate_task_plan(plan)
         if type(condition_context) is not dict:
