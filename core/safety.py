@@ -25,13 +25,17 @@ def _normalize(action: str) -> str:
 
 def _contains_blocked_marker(normalized: str) -> bool:
     tokens = set(normalized.split("_"))
-    if tokens & {"payment", "purchase", "checkout", "billing", "recharge", "paid", "premium"}:
+    if tokens & {
+        "pay", "payment", "purchase", "buy", "checkout", "billing", "recharge",
+        "charge", "donate", "subscription", "paid", "premium",
+        "openai", "anthropic", "gemini", "claude", "gpt", "llm",
+    }:
         return True
     # Match compound markers as whole token sequences, not arbitrary substrings
     # (for example, "unpaid" must not match "paid").
     return any(
         re.search(rf"(?:^|_){re.escape(marker)}(?:_|$)", normalized)
-        for marker in ("external_api", "provider_call")
+        for marker in ("external_api", "provider_call", "api_call", "provider_request", "network_request")
     )
 
 
