@@ -104,3 +104,26 @@ def test_project_gateway_rejects_receipt_from_another_session():
     )
     assert accepted.executed is True
     assert len(first_registry.list_projects()) == 1
+
+
+def test_gateway_does_not_allow_caller_to_override_its_session_scope():
+    authority = ApprovalAuthority()
+    registry = ProjectRegistry()
+    gateway = build_project_gateway(
+        registry, authority, session_scope="trusted-session"
+    )
+    payload = {"name": "Scope protected", "description": ""}
+    receipt = authority.issue(
+        "create_project", payload, session_scope="attacker-chosen-session"
+    )
+
+    with pytest.raises(TypeError):
+        gateway.execute(
+            "create_project", payload, approval_receipt=receipt,
+            session_scope="attacker-chosen-session",
+        )
+    result = gateway.execute(
+        "create_project", payload, approval_receipt=receipt
+    )
+    assert result.executed is False
+    assert registry.list_projects() == []
