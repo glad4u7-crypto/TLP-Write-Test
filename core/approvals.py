@@ -58,9 +58,12 @@ class ApprovalAuthority:
         return re.sub(r"[^a-z0-9]+", "_", action.strip().lower()).strip("_")
 
     def _message(
-        self, action: str, payload_digest: str, expires_at: int, nonce: str
+        self, action: str, payload_digest: str, expires_at: int, nonce: str,
+        tenant: TenantKey | None = None,
     ) -> bytes:
-        return f"{action}\n{payload_digest}\n{expires_at}\n{nonce}".encode("utf-8")
+        issuer = tenant.issuer if tenant is not None else ""
+        subject = tenant.subject if tenant is not None else ""
+        return f"{action}\n{payload_digest}\n{expires_at}\n{nonce}\n{issuer}\n{subject}".encode("utf-8")
 
     def issue(
         self,
