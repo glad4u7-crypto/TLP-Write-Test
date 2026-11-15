@@ -8,6 +8,7 @@ the worker from reaching any destination except that proxy.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 from collections.abc import Sequence
 
 from core.browser_security import (
