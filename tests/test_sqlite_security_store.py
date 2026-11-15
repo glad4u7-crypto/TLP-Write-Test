@@ -120,3 +120,31 @@ def test_audit_append_fails_closed_when_existing_chain_is_tampered(tmp_path):
         connection.execute("UPDATE durable_audit_events SET action = 'forged'")
     with pytest.raises(ValueError, match="audit"):
         store.append_audit_event(DurableAuditEvent("second", "ok", "ok", "fp", "req-2"))
+
+
+def test_audit_chain_detects_deleted_tail_row(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "tail-truncated.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("one", "ok", "ok", "fp", "req-1"))
+    store.append_audit_event(DurableAuditEvent("two", "ok", "ok", "fp", "req-2"))
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "DELETE FROM durable_audit_events WHERE sequence = "
+            "(SELECT MAX(sequence) FROM durable_audit_events)"
+        )
+    assert not store.verify_audit_chain()
+    with pytest.raises(ValueError, match="tail entries"):
+        store.append_audit_event(DurableAuditEvent("three", "ok", "ok", "fp", "req-3"))
+
+
+def test_audit_chain_detects_deletion_of_all_rows(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "all-rows-deleted.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("one", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("DELETE FROM durable_audit_events")
+    assert not store.verify_audit_chain()
