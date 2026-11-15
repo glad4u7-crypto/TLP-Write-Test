@@ -12,6 +12,8 @@ def _app():
 def _prepare(app, description):
     # Text area 0 is the project description; text area 1 is the task workspace.
     app.text_area[1].set_value(description)
+    app.run()
+    assert not app.exception
     matches = [button for button in app.button if button.label == "Prepare structured plan"]
     assert len(matches) == 1
     matches[0].click().run()
@@ -53,6 +55,8 @@ def test_clarification_response_replans_without_dispatch():
     assert any("NEEDS CLARIFICATION" in item.value for item in app.warning)
 
     app.text_area[2].set_value("Review the README and summarize the setup instructions")
+    app.run()
+    assert not app.exception
     buttons = [button for button in app.button if button.label == "Prepare updated plan"]
     assert len(buttons) == 1
     buttons[0].click().run()
