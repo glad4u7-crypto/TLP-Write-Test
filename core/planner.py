@@ -82,7 +82,7 @@ _MUTATION_INTENT = re.compile(
 _AMBIGUOUS_TASKS = (
     (re.compile(r"^\s*(?:do|fix|handle|complete|finish)\s+(?:it|that|this)\s*[.!?]*\s*$", re.I),
      "What specific item or outcome should I work on?"),
-    (re.compile(r"^\s*(?:make|change|improve)\s+(?:it|that|this)\s*[.!?]*\s*$", re.I),
+    (re.compile(r"^\s*(?:make|change|improve)\s+(?:it|that|this)(?:\s+better)?\s*[.!?]*\s*$", re.I),
      "What should be changed, and what should the desired result look like?"),
 )
 
