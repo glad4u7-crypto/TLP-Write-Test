@@ -166,10 +166,13 @@ def test_gateway_audits_successful_execution_without_recording_payload():
     result = gateway.execute("write_file", payload, approval_receipt=receipt)
 
     assert result.executed is True
-    assert len(gateway.audit_events) == 1
-    event = gateway.audit_events[0]
+    assert len(gateway.audit_events) == 2
+    intent, event = gateway.audit_events
+    assert intent.executed is False
+    assert intent.reason == "authorized_dispatch_pending"
     assert event.action == "write_file"
     assert event.executed is True
+    assert "secret" not in repr(intent)
     assert "secret" not in repr(event)
 
 
