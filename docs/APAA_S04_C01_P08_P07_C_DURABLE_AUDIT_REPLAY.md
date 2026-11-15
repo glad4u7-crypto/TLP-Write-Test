@@ -32,3 +32,12 @@ Status: **Transactional storage primitives added; execution integration is defer
 - P07-C CI is pending until GitHub Actions completes.
 - PR #5 remains draft; no merge or production approval.
 - No paid service, API key, network service, payment, trading, or execution capability enabled. Auto-Run remains disabled.
+
+## Superseding implementation status — APAA-S04-C01-P08-P09-AJ
+The original P07-C status above is historical and has been superseded by later integration work. On the current feature branch:
+- `ExecutionGateway` accepts the durable SQLite audit adapter through its append interface and records a durable intent event before invoking a registered handler, followed by a completion/failure event.
+- Authenticated Streamlit mode constructs `SQLiteSecurityStore` and `SQLiteExecutionAuditLog` using the validated issuer + subject tenant context.
+- Authenticated project CRUD uses `SQLiteProjectStore` through `PersistentProjectRegistry`; legacy unscoped rows are not silently adopted.
+- Regression coverage now includes gateway-to-SQLite intent/completion persistence, fail-closed behavior when intent audit append fails, crash recovery of an uncommitted audit event, and tenant isolation.
+
+The historical deferred bullets above describe the earlier P07-C checkpoint, not the current implementation. Remaining limits are unchanged: SQLite is local single-host storage; the hash chain is not independently tamper-proof against a database writer; production still requires protected host/storage, backup/retention/monitoring, and independent anchoring. Live OIDC/browser verification and production deployment gates remain outstanding. PR #5 stays Draft; production is NOT APPROVED.
