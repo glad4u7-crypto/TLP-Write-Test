@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib, json, sqlite3, threading, time, uuid
 from typing import Any, Callable
+from apaa_security import validate_task_input, PolicyRegistry, ConsentRegistry
 
 class TaskStatus(str, Enum):
     QUEUED="queued"; RUNNING="running"; SUCCEEDED="succeeded"; FAILED="failed"
@@ -26,15 +27,18 @@ class Task:
     user_consented:bool=False
     idempotency_key:str|None=None
     max_attempts:int=3
+    policy_version:str="v1"
     @classmethod
     def create(cls,action:str,payload:dict[str,Any],*,permission_granted:bool=False,
-               user_consented:bool=False,idempotency_key:str|None=None,max_attempts:int=3)->"Task":
-        if not isinstance(action,str) or not action.strip(): raise ValueError("action required")
-        if not isinstance(payload,dict): raise ValueError("payload must be a dictionary")
+               user_consented:bool=False,idempotency_key:str|None=None,max_attempts:int=3,
+               policy_version:str="v1")->"Task":
+        payload=validate_task_input(action,payload)
         if max_attempts<1 or max_attempts>10: raise ValueError("max_attempts must be 1..10")
+        if not isinstance(policy_version,str) or not policy_version or len(policy_version)>64:
+            raise ValueError("invalid policy_version")
         if idempotency_key is not None and (not idempotency_key.strip() or len(idempotency_key)>200):
             raise ValueError("invalid idempotency_key")
-        return cls(str(uuid.uuid4()),action,payload,permission_granted,user_consented,idempotency_key,max_attempts)
+        return cls(str(uuid.uuid4()),action,payload,permission_granted,user_consented,idempotency_key,max_attempts,policy_version)
 
 class StateStore:
     """SQLite queue with atomic state transitions and a hash-chained audit journal."""
@@ -49,7 +53,7 @@ class StateStore:
             cols={r["name"] for r in self._db.execute("PRAGMA table_info(tasks)")}
             additions={"permission_granted":"INTEGER NOT NULL DEFAULT 0","user_consented":"INTEGER NOT NULL DEFAULT 0",
               "idempotency_key":"TEXT","attempts":"INTEGER NOT NULL DEFAULT 0","max_attempts":"INTEGER NOT NULL DEFAULT 3",
-              "lease_owner":"TEXT","lease_expires_at":"REAL"}
+              "lease_owner":"TEXT","lease_expires_at":"REAL","policy_version":"TEXT NOT NULL DEFAULT 'v1'"}
             for name,decl in additions.items():
                 if name not in cols:self._db.execute(f"ALTER TABLE tasks ADD COLUMN {name} {decl}")
             self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL")
@@ -83,9 +87,9 @@ class StateStore:
                 old=self._db.execute("SELECT task_id FROM tasks WHERE idempotency_key=?",(t.idempotency_key,)).fetchone()
                 if old:self._audit(old["task_id"],"duplicate_suppressed",t.task_id);return old["task_id"]
             self._db.execute("""INSERT INTO tasks(task_id,action,payload,status,created_at,updated_at,
-              permission_granted,user_consented,idempotency_key,max_attempts) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+              permission_granted,user_consented,idempotency_key,max_attempts,policy_version) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
               (t.task_id,t.action,json.dumps(t.payload,sort_keys=True),TaskStatus.QUEUED.value,now,now,
-               int(t.permission_granted),int(t.user_consented),t.idempotency_key,t.max_attempts))
+               int(t.permission_granted),int(t.user_consented),t.idempotency_key,t.max_attempts,t.policy_version))
             self._audit(t.task_id,"queued")
         return t.task_id
     def _transition(self,task_id:str,target:TaskStatus,*,result:Any=None,error:str|None=None,
@@ -183,28 +187,51 @@ class StateStore:
 
 class ExecutionEngine:
     """Explicitly consent-gated worker; no implicit external adapters."""
-    def __init__(self,store:StateStore|None=None,*,worker_id:str|None=None,lease_seconds:float=30)->None:
-        if lease_seconds<=0:raise ValueError("lease_seconds must be positive")
+    def __init__(self,store:StateStore|None=None,*,worker_id:str|None=None,lease_seconds:float=30,
+                 policy_registry:PolicyRegistry|None=None,consent_registry:ConsentRegistry|None=None,
+                 consent_ttl_seconds:float=900)->None:
+        if lease_seconds<=0 or consent_ttl_seconds<=0:raise ValueError("lease and consent TTL must be positive")
         self.store=store or StateStore();self.worker_id=worker_id or str(uuid.uuid4())
         self.lease_seconds=lease_seconds;self._handlers:dict[str,Callable[[dict[str,Any]],Any]]={}
+        self.policy_registry=policy_registry or PolicyRegistry()
+        self.consent_registry=consent_registry or ConsentRegistry()
+        self.consent_ttl_seconds=consent_ttl_seconds
         self._run_lock=threading.Lock()
+    def set_policy(self,action:str,version:str,enabled:bool)->None:
+        self.policy_registry.set_policy(action,version,enabled)
+    def grant_consent(self,task_id:str,scope:str,*,expires_at:float|None=None)->None:
+        self.consent_registry.grant(task_id,scope,expires_at=expires_at)
+    def revoke_consent(self,task_id:str)->bool:
+        return self.consent_registry.revoke(task_id)
     def register(self,action:str,handler:Callable[[dict[str,Any]],Any])->None:
         if not action or not callable(handler):raise ValueError("named callable handler required")
         if action in self._handlers:raise ValueError(f"handler already registered: {action}")
         self._handlers[action]=handler
-    def submit(self,task:Task)->str:return self.store.add(task)
+    def submit(self,task:Task)->str:
+        # The caller's explicit consent flag creates a short-lived persisted grant.
+        tid=self.store.add(task)
+        if task.user_consented:
+            self.consent_registry.grant(tid,task.action,expires_at=time.time()+self.consent_ttl_seconds)
+        return tid
     def cancel(self,task_id:str,reason:str="cancelled by user")->bool:return self.store.cancel(task_id,reason)
     def run_next(self)->str|None:
         if not self._run_lock.acquire(blocking=False):raise RuntimeError("worker already executing")
         try:
             row=self.store.claim_next(self.worker_id,self.lease_seconds)
             if row is None:return None
-            tid=row["task_id"];handler=self._handlers.get(row["action"])
-            if not row["permission_granted"] or not row["user_consented"] or handler is None:
-                self.store.finish(tid,self.worker_id,TaskStatus.BLOCKED,
-                                  error="permission, consent, or registered handler missing")
+            tid=row["task_id"];action=row["action"];handler=self._handlers.get(action)
+            # Re-check live policy and consent immediately before invoking a handler.
+            policy_ok=self.policy_registry.allows(action,row["policy_version"])
+            consent_ok=self.consent_registry.is_valid(tid,action)
+            if not row["permission_granted"] or not row["user_consented"] or not policy_ok or not consent_ok or handler is None:
+                reasons=[]
+                if not row["permission_granted"]:reasons.append("permission flag missing")
+                if not row["user_consented"] or not consent_ok:reasons.append("consent missing, expired, revoked, or wrong scope")
+                if not policy_ok:reasons.append("policy missing or disabled")
+                if handler is None:reasons.append("handler not registered")
+                self.store.finish(tid,self.worker_id,TaskStatus.BLOCKED,error="; ".join(reasons))
                 return tid
-            try:output=handler(json.loads(row["payload"]))
+            try:output=handler(validate_task_input(action,json.loads(row["payload"])))
             except Exception as exc:self.store.retry_or_fail(tid,self.worker_id,f"{type(exc).__name__}: {exc}")
             else:self.store.finish(tid,self.worker_id,TaskStatus.SUCCEEDED,result=output)
             return tid
