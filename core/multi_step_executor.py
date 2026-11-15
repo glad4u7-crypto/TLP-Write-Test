@@ -130,7 +130,7 @@ class MultiStepTaskExecutor:
                     results.append(StepResult(step.step_id, "blocked", "Approval is required but no trusted approval provider is available."))
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval required; plan stopped.")
                 try:
-                    receipt = request_approval(plan.plan_id, step.action, step.payload)
+                    receipt = request_approval(plan.plan_id, step.action, payload)
                 except Exception:
                     results.append(StepResult(step.step_id, "blocked", "Trusted approval provider failed."))
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval provider failed; plan stopped.")
@@ -139,7 +139,7 @@ class MultiStepTaskExecutor:
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval unavailable; plan stopped.")
 
             execution = self._gateway.execute(
-                step.action, step.payload, approval_receipt=receipt,
+                step.action, payload, approval_receipt=receipt,
             )
             if not execution.executed:
                 results.append(StepResult(step.step_id, "failed", execution.reason, execution))
