@@ -1,45 +1,34 @@
-"""Trusted UI controller for the project's first approval-gated mutation.
+"""Trusted project-action handler registration for the Streamlit UI.
 
-The Streamlit UI calls this controller only inside the Confirm button branch,
-after rendering the exact project name and description for user review.
-
-This is an in-process trust boundary, not protection against arbitrary Python
-code execution in the same process.
+This module deliberately does not create approvals. The UI must issue a
+one-time receipt only inside its explicit Confirm-button event and pass that
+receipt to the returned gateway.
 """
 from core.approvals import ApprovalAuthority
-from core.execution import ExecutionGateway, ExecutionResult
+from core.audit import JsonlAuditLog
+from core.execution import ExecutionGateway
 from core.projects import ProjectRegistry, _PROJECT_MUTATION_CAPABILITY
 
 
-def confirm_and_create_project(
+def build_project_gateway(
     registry: ProjectRegistry,
-    name: str,
-    description: str = "",
-) -> ExecutionResult:
-    """Create a project when invoked by the trusted UI's confirmation event."""
-    if not isinstance(name, str) or not isinstance(description, str):
-        return ExecutionResult(False, "Project details must be text.")
-    payload = {
-        "name": name.strip(),
-        "description": description.strip(),
-    }
-    if not payload["name"] or len(payload["name"]) > 80 or len(payload["description"]) > 500:
-        return ExecutionResult(False, "Project details are invalid or exceed the allowed length.")
+    approval_authority: ApprovalAuthority,
+    *,
+    audit_log: JsonlAuditLog | None = None,
+) -> ExecutionGateway:
+    """Build the project gateway without issuing or consuming any approval."""
+    if not isinstance(approval_authority, ApprovalAuthority):
+        raise TypeError("A trusted ApprovalAuthority instance is required.")
 
-    authority = ApprovalAuthority()
-    gateway = ExecutionGateway(
-        {
-            "create_project": lambda data: registry.create(
-                data["name"], data["description"],
-                _capability=_PROJECT_MUTATION_CAPABILITY,
-            )
-        },
-        approval_authority=authority,
-    )
-    # This function is invoked only from the UI's explicit Confirm branch.
-    receipt = authority.issue("create_project", payload)
-    return gateway.execute(
-        "create_project",
-        payload,
-        approval_receipt=receipt,
+    def create_project(data):
+        return registry.create(
+            data["name"],
+            data["description"],
+            _capability=_PROJECT_MUTATION_CAPABILITY,
+        )
+
+    return ExecutionGateway(
+        {"create_project": create_project},
+        approval_authority=approval_authority,
+        audit_log=audit_log,
     )
