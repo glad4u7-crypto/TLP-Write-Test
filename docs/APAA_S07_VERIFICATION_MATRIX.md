@@ -125,3 +125,35 @@ P03 adds offline policy primitives and deterministic tests only. It does not est
 | Python Demo CI | [43712348046](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43712348046) | PASS | 521 passed in 14.18s; dependency install, full test suite, demo smoke and all post steps succeeded |
 
 Both workflow jobs and every listed step were re-fetched after completion and reported `success`. These results verify the offline policy code and repository test suite only. They do not establish browser runtime safety, live SSRF resistance, worker isolation or connection-time egress enforcement.
+
+
+## P04 implementation checkpoint — worker isolation and egress policy harness
+
+**Checkpoint:** `APAA-S07-C01-P04`  
+**Implementation:** `core/browser_isolation.py`, `core/browser_egress.py`  
+**Tests:** `tests/test_browser_isolation.py`  
+**Detailed contract:** `docs/APAA_S07_ISOLATED_WORKER_EGRESS_P04.md`
+
+| Area | P04 evidence | Status |
+|---|---|---|
+| Worker launch profile schema | Closed schema; unknown/missing keys rejected | IMPLEMENTED — CI PENDING |
+| Non-root identity | UID/GID must be non-zero and bounded | IMPLEMENTED — CI PENDING |
+| Container privilege / namespaces | Privileged, host network/PID/IPC all denied | IMPLEMENTED — CI PENDING |
+| Filesystem boundary | Read-only root required; host/secret mounts denied; writable paths restricted to ephemeral /tmp children | IMPLEMENTED — CI PENDING |
+| Linux capabilities | Drop ALL required | IMPLEMENTED — CI PENDING |
+| Browser profile / CDP | Persistent profile and exposed CDP prohibited | IMPLEMENTED — CI PENDING |
+| Network egress manifest | Direct egress denied; proxy-only and proxy-side DNS required | IMPLEMENTED — CI PENDING |
+| Proxy endpoint | Explicit named internal .internal endpoint required | IMPLEMENTED — CI PENDING |
+| Resource bounds | Memory, CPU, PID and job timeout ranges validated | IMPLEMENTED — CI PENDING |
+| Proxy CONNECT decision | HTTPS/TCP 443 and exact approved origin only | IMPLEMENTED — CI PENDING |
+| Connection-time address set | Injected resolver answers checked for public-unicast and returned for IP pinning | IMPLEMENTED — OFFLINE ONLY |
+| DNS rebinding / TOCTOU | Pure policy provides validated address set; real proxy must connect to that exact pinned IP without re-resolving | DEPLOYMENT NOT IMPLEMENTED |
+| Worker network namespace / firewall | No container, namespace, firewall or proxy service created | NOT IMPLEMENTED |
+| Browser runtime / handler | No Playwright/Chromium, worker process or ExecutionGateway registration | NOT IMPLEMENTED |
+| Existing CI workflows | Both existing workflows must pass on the exact final P04 verification-record commit | PENDING |
+
+### P04 interpretation and exit gate
+
+P04 adds deterministic validators and regression tests only. A valid manifest is not an enforced sandbox. A returned address set is not a live proxy connection. Actual isolation requires a separately implemented deployment adapter, effective runtime inspection, firewall enforcement proving proxy-only egress, packet-level DNS leak tests, proxy connection pinning tests, TLS validation and independent security review. Browser execution remains disabled.
+
+**P04 disposition:** IMPLEMENTATION ADDED; exact-commit full pytest and both existing CI workflow results pending. No new workflow was added. PR #5 remains Open + Draft + unmerged.
