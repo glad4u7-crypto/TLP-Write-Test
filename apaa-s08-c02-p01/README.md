@@ -1,14 +1,14 @@
-# APAA S08-C02-P01 — Controlled Task Execution
+# APAA S08-C02 — Durable Execution Foundation
 
-Isolated implementation package for the Personal AI Automation Agent. This directory does not alter the existing GitHub write-test files.
+P01 provides guarded in-process task execution. P02 adds a durable SQLite queue, atomic claims, expiring worker leases, bounded retries, idempotency-key duplicate suppression, and an append-only audit event journal.
 
-## Safety boundary
-- No browser, device, network, payment, purchase, deployment, or firewall actions are implemented.
-- Only explicitly registered in-process handlers can run.
-- Every task requires an explicit permission grant and user consent.
-- One task executes at a time per engine instance.
-- State transitions are validated and persisted in SQLite.
-- Handler exceptions produce a failed task record; the worker continues safely.
+## Safety boundaries
+- Deny by default: both permission grant and explicit user consent are required.
+- Only explicitly registered in-process handlers can execute.
+- No browser, device, network, payment, purchase, deployment, or firewall actions are included.
+- Lease recovery is **at-least-once**, not exactly-once. A process may crash after a handler's external side effect but before recording success; handlers that may later perform side effects must enforce the supplied idempotency key at their own boundary.
+- SQLite serializes claims transactionally; leases expire and can be recovered. This is a single-host local journal, not a distributed consensus system.
+- Retries are bounded (1–10 attempts); no automatic retry for blocked tasks.
 
 ## Run
 `python -m unittest discover -s apaa-s08-c02-p01/tests -v`
