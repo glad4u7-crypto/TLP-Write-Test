@@ -1,12 +1,21 @@
-# Verification — APAA-S08-C02-P06
+# Verification — APAA-S08-C02-P08
 
-## Implemented primitives
-- Atomic SQLite claim helper with `BEGIN IMMEDIATE`, conditional queued-to-running update, lease owner and attempt increment.
-- Cooperative execution budget: deadline, cancellation and maximum step count.
-- JSON-safe bounded result validator.
+## P07 runtime integration
+- SQLite claims are serialized using BEGIN IMMEDIATE; transition, lease assignment, attempt increment and audit record share one transaction.
+- ExecutionEngine supports opt-in cooperative handler budgets.
+- Handler outputs are finite JSON and size-checked before success.
+- Legacy one-argument handler interface remains supported.
 
-## New test matrix
-11 reliability tests cover two-worker concurrent claim race, empty queue, invalid lease, crash after claim and lease recovery, cooperative step budget, cancellation, expired deadline, invalid/non-finite output and output size bound.
+## P08 end-to-end coverage
+- Independent StateStore connections race to claim the same queued task; exactly one succeeds.
+- Expired worker lease is recovered and an authorized worker subsequently completes the task.
+- Policy revocation and expired consent prevent handler invocation.
+- Injected handler failures exhaust retry count and enter the dead-letter queue.
+- Complete lifecycle events are present and the audit hash chain verifies.
 
-## Not yet integrated
-These primitives currently live in a separate module and have not replaced the existing ExecutionEngine claim/dispatch methods. Therefore P06 is a tested reliability component, not a claim of end-to-end runtime integration or production readiness.
+## Explicit limitations
+- Cooperative deadlines cannot kill non-cooperative Python code.
+- Step budget is not an OS resource quota; no process sandbox is included.
+- At-least-once retries can repeat external effects; adapters must implement destination-side idempotency.
+- SQLite remains single-host; no distributed coordination or deployment.
+- No browser, network, device, payment, purchase or firewall actions.
