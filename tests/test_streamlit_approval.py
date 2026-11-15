@@ -34,7 +34,6 @@ def test_streamlit_project_creation_requires_review_then_explicit_confirm(
 
     _prepare_project(app)
 
-    # Review is not authorization and must not mutate the registry.
     assert registry.list_projects() == []
     assert app.session_state["pending_project"] == {
         "name": "P06 UI test",
@@ -84,13 +83,29 @@ def test_streamlit_sessions_do_not_share_project_registry_or_approval_authority(
     assert second_registry.list_projects() == []
 
 
+def test_cross_session_approval_receipt_is_rejected(tmp_path, monkeypatch):
+    first = _app(tmp_path / "issuer", monkeypatch)
+    second = _app(tmp_path / "consumer", monkeypatch)
+
+    payload = {"name": "Cross session", "description": "Must not be authorized"}
+    receipt = first.session_state["approval_authority"].issue(
+        "create_project", payload
+    )
+    result = second.session_state["execution_gateway"].execute(
+        "create_project", payload, approval_receipt=receipt
+    )
+
+    assert result.executed is False
+    assert second.session_state["project_registry"].list_projects() == []
+    assert first.session_state["project_registry"].list_projects() == []
+
+
 def test_task_text_cannot_trigger_project_creation_or_issue_approval(
     tmp_path, monkeypatch
 ):
     app = _app(tmp_path, monkeypatch)
     registry = app.session_state["project_registry"]
 
-    # The task planner may prepare text, but it is not the trusted UI Confirm event.
     app.text_area[1].set_value("Create a project called Unauthorized")
     app.run()
     _click(app, "Prepare free plan")
