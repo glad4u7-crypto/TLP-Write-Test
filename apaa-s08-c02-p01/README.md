@@ -1,16 +1,18 @@
 # APAA S08-C02 — Durable Execution Foundation
 
-P01 provides guarded in-process task execution. P02 adds a durable SQLite queue, atomic claims, expiring worker leases, bounded retries, idempotency-key duplicate suppression, and an append-only audit event journal.
+P01: guarded in-process execution. P02: durable SQLite queue, leases, bounded retries and idempotency. P03: dead-letter queue, safe queued-task cancellation, and tamper-evident audit chain.
 
 ## Safety boundaries
-- Deny by default: both permission grant and explicit user consent are required.
-- Only explicitly registered in-process handlers can execute.
-- No browser, device, network, payment, purchase, deployment, or firewall actions are included.
-- Lease recovery is **at-least-once**, not exactly-once. A process may crash after a handler's external side effect but before recording success; handlers that may later perform side effects must enforce the supplied idempotency key at their own boundary.
-- SQLite serializes claims transactionally; leases expire and can be recovered. This is a single-host local journal, not a distributed consensus system.
-- Retries are bounded (1–10 attempts); no automatic retry for blocked tasks.
+- Deny by default: permission grant AND explicit user consent are both required.
+- Only explicitly registered in-process handlers execute.
+- No browser, device, network, payment, purchase, deployment, or firewall actions.
+- Lease recovery is at-least-once, not exactly-once. Side-effecting adapters must enforce idempotency at the destination.
+- Cancellation is supported only while QUEUED. Running Python handlers cannot be safely force-killed; cancellation returns false rather than pretending the work stopped.
+- Retry exhaustion and exhausted leases move tasks to DEAD_LETTER for inspection; no automatic replay from that queue.
+- Audit events use a global SHA-256 hash chain. This detects edits/deletions/reordering relative to the retained chain, but a local attacker able to rewrite the entire database can recompute it. Production requires an external append-only/WORM anchor or signed checkpoints.
+- SQLite is a single-host persistence layer, not distributed consensus.
 
-## Run
-`python -m unittest discover -s apaa-s08-c02-p01/tests -v`
+## Run tests
+`python -m unittest discover -s tests -v`
 
 Python 3.11+, standard library only.
