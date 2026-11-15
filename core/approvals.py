@@ -95,6 +95,26 @@ class ApprovalAuthority:
         """Verify action + payload + expiry + signature, then reject replay."""
         if not isinstance(receipt, ApprovalReceipt):
             return False
+
+        # Dataclass annotations are not runtime validation. Treat every receipt
+        # field as untrusted input and fail closed before hashing or set access.
+        if (
+            type(receipt.action) is not str
+            or type(receipt.payload_digest) is not str
+            or type(receipt.expires_at) is not int
+            or type(receipt.nonce) is not str
+            or type(receipt.signature) is not str
+        ):
+            return False
+        if (
+            not receipt.action
+            or self._canonical_action(receipt.action) != receipt.action
+            or re.fullmatch(r"[0-9a-f]{64}", receipt.payload_digest) is None
+            or not receipt.nonce
+            or re.fullmatch(r"[0-9a-f]{64}", receipt.signature) is None
+        ):
+            return False
+
         canonical = self._canonical_action(action)
         if canonical != receipt.action or receipt.nonce in self._consumed_nonces:
             return False
@@ -104,20 +124,23 @@ class ApprovalAuthority:
             return False
         try:
             digest = _payload_digest(payload)
-        except ValueError:
+        except (TypeError, ValueError, OverflowError):
             return False
         if not hmac.compare_digest(digest, receipt.payload_digest):
             return False
-        expected = hmac.new(
-            self._secret,
-            self._message(
-                receipt.action,
-                receipt.payload_digest,
-                receipt.expires_at,
-                receipt.nonce,
-            ),
-            hashlib.sha256,
-        ).hexdigest()
+        try:
+            expected = hmac.new(
+                self._secret,
+                self._message(
+                    receipt.action,
+                    receipt.payload_digest,
+                    receipt.expires_at,
+                    receipt.nonce,
+                ),
+                hashlib.sha256,
+            ).hexdigest()
+        except (TypeError, ValueError, UnicodeError):
+            return False
         if not hmac.compare_digest(expected, receipt.signature):
             return False
         self._consumed_nonces.add(receipt.nonce)
