@@ -1,7 +1,7 @@
 # Verification — APAA-S08-C02-P05
 
 ## Runtime integration
-- Task factory applies P04 action/payload validation before queueing.
+- Task factory and the queue-submission trust boundary apply P04 action/payload validation; direct Task construction is regression-tested.
 - Tasks persist a policy version; schema migration preserves existing task rows with v1 default.
 - ExecutionEngine now owns/injects PolicyRegistry and ConsentRegistry.
 - Policy is deny-by-default and must match both action and policy version.
