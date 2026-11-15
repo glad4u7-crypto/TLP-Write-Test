@@ -59,3 +59,25 @@ def test_proxy_constructor_accepts_loopback_but_does_not_start_server():
     )
     assert proxy.bind_host == "127.0.0.1"
     assert proxy.bind_port == 0
+
+
+@pytest.mark.parametrize("headers", [
+    b"Host: attacker.example:443\\r\\n",
+    b"Host: example.com:443\\r\\nHost: example.com:443\\r\\n",
+    b"Proxy-Authorization: Basic dXNlcjpwYXNz\\r\\n",
+    b"Content-Length: 0\\r\\n",
+    b"Transfer-Encoding: chunked\\r\\n",
+    b"Host example.com:443\\r\\n",
+])
+def test_parse_connect_request_rejects_ambiguous_or_unneeded_headers(headers):
+    raw = b"CONNECT example.com:443 HTTP/1.1\\r\\n" + headers + b"\\r\\n"
+    with pytest.raises(ProxyRequestError):
+        parse_connect_request(raw)
+
+
+def test_parse_connect_request_accepts_only_matching_host_header():
+    request = parse_connect_request(
+        b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n"
+    )
+    assert request.hostname == "example.com"
+    assert request.port == 443
