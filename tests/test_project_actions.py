@@ -25,7 +25,9 @@ def test_explicit_ui_confirmation_receipt_allows_exact_project_creation(tmp_path
     registry = ProjectRegistry()
     authority = ApprovalAuthority()
     audit = JsonlAuditLog(tmp_path / "audit.jsonl")
-    gateway = build_project_gateway(registry, authority, audit_log=audit)
+    gateway = build_project_gateway(
+        registry, authority, audit_log=audit, session_scope="session-A"
+    )
     payload = {"name": "APAA workspace", "description": "Reviewed project details"}
 
     # This receipt issuance represents the trusted UI Confirm event.
