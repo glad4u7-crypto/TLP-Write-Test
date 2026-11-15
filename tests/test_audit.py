@@ -100,6 +100,7 @@ def test_multiple_log_instances_serialize_concurrent_appends(tmp_path):
 
     verifier = JsonlAuditLog(path)
     assert len(hashes) == 64
-    assert verifier.verify() == hashes[-1] or verifier.verify() in hashes
-    records = path.read_text(encoding="utf-8").splitlines()
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 64
+    assert len(set(hashes)) == 64
+    assert verifier.verify() == records[-1]["entry_hash"]
