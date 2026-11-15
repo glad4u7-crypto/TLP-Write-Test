@@ -143,17 +143,41 @@ class SQLiteSecurityStore:
         ).encode("utf-8")
         return hashlib.sha256(canonical).hexdigest()
 
+    @staticmethod
+    def _verify_audit_connection(connection: sqlite3.Connection) -> str:
+        rows = connection.execute(
+            """SELECT timestamp, action, result, reason_code,
+                      principal_fingerprint, request_id, previous_hash, entry_hash
+               FROM durable_audit_events ORDER BY sequence"""
+        ).fetchall()
+        previous_hash = "0" * 64
+        for row in rows:
+            event_data = {
+                "timestamp": row["timestamp"],
+                "action": row["action"],
+                "result": row["result"],
+                "reason_code": row["reason_code"],
+                "principal_fingerprint": row["principal_fingerprint"],
+                "request_id": row["request_id"],
+            }
+            if row["previous_hash"] != previous_hash:
+                raise ValueError("SQLite audit hash chain linkage is broken.")
+            expected = SQLiteSecurityStore._hash(previous_hash, event_data)
+            if not hmac.compare_digest(expected, row["entry_hash"]):
+                raise ValueError("SQLite audit entry hash mismatch.")
+            previous_hash = row["entry_hash"]
+        return previous_hash
+
     def append_audit_event(self, event: DurableAuditEvent) -> str:
-        """Append one payload-free audit event in a serialized DB transaction."""
+        """Verify existing chain and append one event in the same write transaction."""
         timestamp = datetime.now(timezone.utc).isoformat()
         event_data = self._canonical_event(event, timestamp)
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                row = connection.execute(
-                    "SELECT entry_hash FROM durable_audit_events ORDER BY sequence DESC LIMIT 1"
-                ).fetchone()
-                previous_hash = row["entry_hash"] if row else "0" * 64
+                # Verify while holding the write reservation so another writer
+                # cannot change the chain between verification and append.
+                previous_hash = self._verify_audit_connection(connection)
                 entry_hash = self._hash(previous_hash, event_data)
                 connection.execute(
                     """INSERT INTO durable_audit_events
@@ -174,28 +198,15 @@ class SQLiteSecurityStore:
 
     def verify_audit_chain(self) -> bool:
         with closing(self._connect()) as connection:
-            rows = connection.execute(
-                """SELECT timestamp, action, result, reason_code,
-                          principal_fingerprint, request_id, previous_hash, entry_hash
-                   FROM durable_audit_events ORDER BY sequence"""
-            ).fetchall()
-        previous_hash = "0" * 64
-        for row in rows:
-            event_data = {
-                "timestamp": row["timestamp"],
-                "action": row["action"],
-                "result": row["result"],
-                "reason_code": row["reason_code"],
-                "principal_fingerprint": row["principal_fingerprint"],
-                "request_id": row["request_id"],
-            }
-            if row["previous_hash"] != previous_hash:
+            try:
+                self._verify_audit_connection(connection)
+                return True
+            except ValueError:
                 return False
-            expected = self._hash(previous_hash, event_data)
-            if not hmac.compare_digest(expected, row["entry_hash"]):
-                return False
-            previous_hash = row["entry_hash"]
-        return True
+
+    def last_audit_hash(self) -> str:
+        with closing(self._connect()) as connection:
+            return self._verify_audit_connection(connection)
 
 
 class SQLiteExecutionAuditLog:
@@ -230,10 +241,4 @@ class SQLiteExecutionAuditLog:
     def verify(self) -> str:
         if not self._store.verify_audit_chain():
             raise ValueError("SQLite audit hash chain verification failed.")
-        # The store exposes boolean verification; return a stable non-genesis
-        # marker when entries exist, and genesis for an empty chain.
-        with closing(self._store._connect()) as connection:
-            row = connection.execute(
-                "SELECT entry_hash FROM durable_audit_events ORDER BY sequence DESC LIMIT 1"
-            ).fetchone()
-        return row["entry_hash"] if row else self.GENESIS
+        return self._store.last_audit_hash()
