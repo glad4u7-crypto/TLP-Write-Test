@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 
@@ -19,15 +20,11 @@ def test_streamlit_app_renders_in_safe_local_prototype_mode():
 
 
 def test_streamlit_app_stops_when_auth_is_required_but_oidc_is_unconfigured(
-    tmp_path, monkeypatch
+    monkeypatch,
 ):
-    streamlit_dir = tmp_path / ".streamlit"
-    streamlit_dir.mkdir()
-    (streamlit_dir / "secrets.toml").write_text(
-        "[apaa]\nrequire_auth = true\n",
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
+    # Patch the module-level secrets mapping rather than creating secrets.toml:
+    # Streamlit caches file-backed secrets across AppTest runs in one process.
+    monkeypatch.setattr(st, "secrets", {"apaa": {"require_auth": True}})
 
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
 
