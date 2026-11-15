@@ -176,3 +176,87 @@ def test_authenticated_app_fails_closed_when_project_database_initialization_fai
     # still stop the app before any authenticated project/task controls render.
     assert security_db.is_file()
     assert not project_db.exists()
+
+
+def test_authenticated_store_failure_clears_capabilities_and_same_session_can_retry(
+    tmp_path, monkeypatch
+):
+    security_dir = tmp_path / "security"
+    project_dir = tmp_path / "projects"
+    security_dir.mkdir()
+    project_dir.mkdir()
+    security_db = security_dir / "security.sqlite3"
+    project_db = project_dir / "projects.sqlite3"
+    secret = "ef" * 32
+    base_secrets = {
+        "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+        "apaa": {
+            "require_auth": True,
+            "approval_signing_secret_hex": secret,
+            "security_db_path": str(security_db),
+            "project_db_path": str(project_db),
+        },
+    }
+    monkeypatch.setattr(st, "secrets", base_secrets)
+    _authenticated_test_user(monkeypatch)
+
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    original_authority = app.session_state["approval_authority"]
+    assert "execution_gateway" in app.session_state
+
+    # Break only project-store initialization after a previously successful
+    # authenticated run, simulating an operator changing a bad path at runtime.
+    linked_dir = tmp_path / "linked-projects"
+    try:
+        linked_dir.symlink_to(tmp_path, target_is_directory=True)
+    except OSError:
+        import pytest
+        pytest.skip("directory symlink creation is unavailable")
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": secret,
+                "security_db_path": str(security_db),
+                "project_db_path": str(linked_dir / "projects.sqlite3"),
+            },
+        },
+    )
+    app.run()
+
+    assert not app.exception
+    assert any(
+        "Durable security storage is not configured safely" in item.value
+        for item in app.error
+    )
+    for key in (
+        "active_identity_subject",
+        "approval_session_scope",
+        "approval_authority",
+        "execution_gateway",
+        "execution_gateway_owner",
+        "project_registry",
+        "project_registry_tenant",
+        "pending_project",
+        "selected_project_id",
+        "free_plan",
+        "draft_task",
+    ):
+        assert key not in app.session_state
+
+    # Correcting the path in the same browser session must initialize fresh
+    # tenant-bound objects; the previous authority must not be reused.
+    monkeypatch.setattr(st, "secrets", base_secrets)
+    app.run()
+    assert not app.exception
+    assert "approval_authority" in app.session_state
+    assert app.session_state["approval_authority"] is not original_authority
+    assert "execution_gateway" in app.session_state
+    assert "project_registry_tenant" in app.session_state
+    assert app.session_state["project_registry_tenant"] == (
+        "https://accounts.example.test\\\\napp-smoke-test-user"
+    )
