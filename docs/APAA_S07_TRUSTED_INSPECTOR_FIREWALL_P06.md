@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-S07-C01-P06  
 **Implementation:** `core/browser_inspector.py`  
 **Tests:** `tests/test_browser_inspector.py`  
-**Dependency:** `cryptography>=44,<48` (Ed25519 verification only)  
+**Dependency:** `cryptography>=50,<51` (Ed25519 verification only)  
 **Worker deployment:** NOT PERFORMED  
 **Host inspector collector:** NOT IMPLEMENTED  
 **Firewall changes:** NOT PERFORMED  
