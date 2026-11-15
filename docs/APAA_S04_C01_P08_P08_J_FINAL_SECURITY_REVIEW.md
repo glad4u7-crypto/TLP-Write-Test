@@ -97,3 +97,36 @@ The PR remains open and Draft. This CI result does not satisfy the outstanding l
 ## Next serial work
 
 Proceed with the next offline-verifiable security review item on the existing feature branch. Prioritize tests that can be completed without provider credentials or a deployment. The live P08-P06 browser matrix remains blocked until the operator supplies a configured test OIDC deployment and two controlled test identities. Keep production status **NOT APPROVED**.
+
+
+## P08-P08-W — SQLite journal and sidecar permission regression verification
+
+Verification date: 2026-11-15
+Reviewed code head: `19e043adb9f5fda885aa68e83029e2f58d800380`
+
+This checkpoint adds regression tests to the three existing SQLite store test modules; no new files or runtime code changes were required:
+
+- `tests/test_sqlite_project_store.py`: rollback-journal permission test for the tenant-scoped project store.
+- `tests/test_sqlite_security_store.py`: rollback-journal permission test for the approval nonce/audit store.
+- `tests/test_sqlite_storage.py`: rollback-journal permission test for the legacy project store.
+
+The tests explicitly select SQLite DELETE journal mode, hold a write transaction to force journal creation, and assert POSIX mode `0600` for the journal and main database. The prior P08-P08-V tests cover WAL and SHM sidecars with the same owner-only permission expectation.
+
+Current-head GitHub Actions verification for `19e043adb9f5fda885aa68e83029e2f58d800380`:
+
+| Workflow check | Result |
+|---|---|
+| Agent Foundation CI — push | PASS |
+| Python Demo CI — push | PASS |
+| Agent Foundation CI — PR | PASS |
+| Python Demo CI — PR | PASS |
+
+All four check-runs completed successfully. The tests are POSIX-only and are skipped on non-POSIX platforms; this does not constitute cross-platform filesystem permission verification.
+
+No runtime implementation was changed in P08-P08-W. These tests provide evidence for the current tested POSIX environment only; they do not eliminate same-user filesystem tampering, TOCTOU races, multi-host SQLite limitations, or the outstanding live OIDC/browser release blocker.
+
+PR #5 remains open and Draft. No merge, deployment, provider activation, or real-world handler enablement is authorized. Production remains **NOT APPROVED**.
+
+## Next serial work after P08-P08-W
+
+Continue the offline-verifiable review in small increments. Reassess SQLite path and connection lifecycle assumptions without weakening the existing permission checks. Live P08-P06 OIDC/browser verification remains blocked until a configured test deployment and two controlled identities are available.
