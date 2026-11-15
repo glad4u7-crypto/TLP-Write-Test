@@ -44,3 +44,10 @@ def bind_session_identity(
             session_state.pop(key, None)
     session_state["active_identity_subject"] = identity_subject
     return changed
+
+
+def clear_session_identity(session_state: MutableMapping) -> None:
+    """Remove all identity-bound state immediately when the user logs out."""
+    for key in _IDENTITY_BOUND_KEYS:
+        session_state.pop(key, None)
+    session_state.pop("active_identity_subject", None)
