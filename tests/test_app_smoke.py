@@ -45,6 +45,89 @@ def test_streamlit_app_stops_when_auth_is_required_but_oidc_is_unconfigured(
     assert not app.button
 
 
+def _seed_stale_authenticated_session(app):
+    """Populate capabilities that must never survive an auth boundary."""
+    for key, value in {
+        "active_identity_subject": "https://issuer.example\\nalice",
+        "approval_session_scope": "old-scope",
+        "approval_authority_config_id": "old-config",
+        "approval_authority": object(),
+        "execution_gateway": object(),
+        "execution_gateway_owner": "alice",
+        "project_registry": object(),
+        "project_registry_tenant": "alice",
+        "pending_project": {"name": "private draft"},
+        "selected_project_id": "private-project",
+        "free_plan": "private plan",
+        "draft_task": "private task",
+    }.items():
+        app.session_state[key] = value
+
+
+def test_authentication_loss_clears_stale_identity_capabilities(monkeypatch):
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {"require_auth": True},
+        },
+    )
+    monkeypatch.setattr(st, "user", SimpleNamespace(is_logged_in=False))
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+    _seed_stale_authenticated_session(app)
+
+    app.run()
+
+    assert not app.exception
+    assert any("Sign in with the configured" in item.value for item in app.warning)
+    assert not any(
+        key in app.session_state
+        for key in (
+            "active_identity_subject",
+            "approval_session_scope",
+            "approval_authority_config_id",
+            "approval_authority",
+            "execution_gateway",
+            "execution_gateway_owner",
+            "project_registry",
+            "project_registry_tenant",
+            "pending_project",
+            "selected_project_id",
+            "free_plan",
+            "draft_task",
+        )
+    )
+
+
+def test_invalid_oidc_claims_clear_stale_identity_capabilities(monkeypatch):
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {"require_auth": True},
+        },
+    )
+    monkeypatch.setattr(
+        st,
+        "user",
+        SimpleNamespace(is_logged_in=True, to_dict=lambda: {"iss": "https://issuer.example"}),
+    )
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+    _seed_stale_authenticated_session(app)
+
+    app.run()
+
+    assert not app.exception
+    assert any("Authentication could not be verified" in item.value for item in app.error)
+    assert "active_identity_subject" not in app.session_state
+    assert "approval_authority" not in app.session_state
+    assert "execution_gateway" not in app.session_state
+    assert "approval_session_scope" not in app.session_state
+    assert "pending_project" not in app.session_state
+
+
 def test_authenticated_app_fails_closed_for_short_signing_secret(monkeypatch):
     monkeypatch.setattr(
         st,
