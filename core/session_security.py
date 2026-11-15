@@ -14,6 +14,7 @@ _IDENTITY_BOUND_KEYS = (
     "free_plan",
     "draft_task",
     "approval_session_scope",
+    "approval_authority_config_id",
 )
 
 
