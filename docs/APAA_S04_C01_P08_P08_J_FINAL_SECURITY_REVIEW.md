@@ -302,3 +302,44 @@ All four runs report the exact reviewed head `bf37656745867314563a264aad476f02e5
 ### Next serial work
 
 Continue the offline-verifiable review with focused fail-closed authenticated-runtime and durable-storage initialization tests. Do not attempt live OIDC verification until a private test deployment and two controlled non-production identities are available.
+
+
+## P08-P09-AQ — Auth-required OIDC fail-closed regression and CI verification
+
+Verification date: 2026-11-15  
+Reviewed PR head: `95b33e9aacb97c1bf01ba6029287d3fee37e7d60`
+
+### Work completed
+
+- Added an AppTest regression in `tests/test_app_smoke.py` that enables `[apaa].require_auth = true` while omitting the OIDC `[auth]` configuration.
+- The test verifies the app stops with an authentication-configuration error before rendering any interactive action buttons.
+- The first test attempt used a temporary `.streamlit/secrets.toml`. CI exposed that Streamlit caches file-backed secrets across AppTest runs in the same Python process, contaminating later local-prototype tests. That first attempt failed and was not accepted.
+- Corrected the test to monkeypatch the module-level `st.secrets` mapping for the duration of the test. Pytest restores the original mapping afterward, avoiding shared configuration state and preserving test isolation.
+- No runtime application code or production configuration was changed.
+
+### Current-head CI evidence
+
+All four GitHub Actions runs completed successfully for the exact reviewed commit:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43688903523 | PASS |
+| Agent Foundation CI | push | 43688903518 | PASS |
+| Python Demo CI | pull_request | 43688907488 | PASS |
+| Agent Foundation CI | pull_request | 43688907570 | PASS |
+
+Verified job steps:
+- Python Demo CI: dependency installation, full pytest suite, and `demo.py` smoke test.
+- Agent Foundation CI: dependency installation, `pip-audit`, module compilation, and foundation tests.
+
+The failed first attempt on `f10d34523fffac8aac0bad84092fc18f7604f07c` was investigated and corrected in `95b33e9aacb97c1bf01ba6029287d3fee37e7d60`; the successful results above are for the corrected commit only.
+
+### Scope and release status
+
+This test proves the local AppTest branch stops when authentication is required but OIDC configuration is absent. It does not prove live OIDC redirects, real-browser cookie/session handling, CSRF resistance, two-identity isolation, or deployment configuration.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. The base branch is not changed by this work. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Continue with the next offline-verifiable authenticated-runtime failure-path case, prioritizing stable signing-secret validation and durable project/security-store initialization failures. Keep changes focused, test each failure mode, and verify all four CI runs before advancing. The live two-identity OIDC/browser matrix remains pending a private test deployment and two controlled non-production identities.
