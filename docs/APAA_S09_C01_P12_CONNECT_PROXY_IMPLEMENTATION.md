@@ -27,6 +27,8 @@
 This proxy is not yet an operational mandatory boundary:
 
 - The browser launcher is not yet wired to this proxy.
+- The current proxy implementation is a loopback-only development harness. It does not yet match the worker launch profile's internal proxy endpoint contract (for example, the existing profile/test fixture uses `egress-proxy.internal:3128`). Do not point the isolated worker at this harness or widen its bind address as a workaround.
+- Existing `core/browser_egress.py`, `core/browser_runtime.py`, `core/browser_inspector.py`, and `core/browser_nftables.py` contain separate egress-decision, inert worker-contract, signed-inspector, and read-only firewall-evidence primitives. P12 must reconcile the proxy with those contracts rather than create a parallel source of truth.
 - No OS/container firewall or network namespace rule has been installed or proven.
 - Browser direct TCP, direct DNS, UDP/QUIC, alternate proxy routes, and background traffic are therefore **not** proven blocked.
 - No no-direct-fallback test at the operating-system boundary exists.
@@ -56,6 +58,8 @@ Tests use no live destination and no real browser. They were authored but **not 
 - [x] Loopback-only server factory.
 - [x] Offline parser/configuration tests authored.
 - [ ] Execute tests and resolve any failures on exact branch head.
+- [ ] Reconcile CONNECT authorization with existing `browser_egress.py` and worker proxy contract.
+- [ ] Replace development loopback harness with a proxy endpoint compatible with the isolated worker topology.
 - [ ] Browser launcher configured to use mandatory proxy.
 - [ ] OS/container guard blocks direct TCP, DNS, UDP/QUIC, and alternate bypass.
 - [ ] Proxy outage proven to fail closed with no direct fallback.
