@@ -34,6 +34,7 @@ def build_project_gateway(
             data["name"],
             data["description"],
             owner_subject=owner_subject,
+            owner_issuer=principal.issuer if principal is not None else None,
             _capability=_PROJECT_MUTATION_CAPABILITY,
         )
 
