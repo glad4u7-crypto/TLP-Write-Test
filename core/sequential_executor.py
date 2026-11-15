@@ -42,11 +42,16 @@ ApprovalProvider = Callable[[str, str, Mapping[str, Any]], ApprovalReceipt | Non
 class SequentialTaskExecutor:
     """Run at most one queued task at a time, in queue order.
 
+    A process-wide dispatch lock prevents a second executor instance from
+    bypassing the sequential guarantee for a shared runtime.
+
     The resolver and approval provider are trusted application-controller
     dependencies. They must never be supplied by planner/model output or task
     descriptions. Mutating work must already be in AWAITING_APPROVAL and must
     obtain a fresh receipt from the trusted UI before gateway dispatch.
     """
+
+    _global_run_lock = threading.Lock()
 
     def __init__(
         self,
@@ -63,7 +68,7 @@ class SequentialTaskExecutor:
         self._queue = queue
         self._lifecycle = lifecycle
         self._gateway = gateway
-        self._run_lock = threading.Lock()
+        self._run_lock = self._global_run_lock
 
     def run_next(
         self,
