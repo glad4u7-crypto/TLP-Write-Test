@@ -123,12 +123,8 @@ def test_auto_run_requires_trusted_gateway_allowlist_and_registered_handler():
 
 
 def test_blocked_action_cannot_be_enabled_by_auto_run():
-    gateway = ExecutionGateway()
-    result = gateway.execute(
-        "place_order",
-        auto_run=True,
-        auto_run_actions={"place_order"},
-    )
+    gateway = ExecutionGateway(auto_run_actions={"place_order"})
+    result = gateway.execute("place_order", auto_run=True)
     assert result.executed is False
 
 
