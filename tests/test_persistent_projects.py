@@ -156,3 +156,83 @@ def test_approval_gateway_creates_project_persistently_for_authenticated_tenant(
     assert [p.project_id for p in reopened.list_projects_for_owner(ALICE)] == [
         result.output.project_id
     ]
+
+def test_persistent_gateway_uses_sqlite_audit_for_intent_and_completion(tmp_path):
+    from core.approvals import ApprovalAuthority
+    from core.project_actions import build_project_gateway
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    tenant = TenantKey(ALICE.issuer, ALICE.subject)
+    project_store = SQLiteProjectStore(tmp_path / "projects.sqlite3")
+    security_store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    authority = ApprovalAuthority(
+        nonce_store=security_store,
+        signing_secret=b"sqlite-gateway-integration-secret-32-bytes",
+    )
+    audit_log = SQLiteExecutionAuditLog(security_store, tenant)
+    registry = PersistentProjectRegistry(project_store, tenant)
+    gateway = build_project_gateway(
+        registry, authority, audit_log=audit_log, principal=ALICE,
+        session_scope="sqlite-audit-session",
+    )
+    payload = {"name": "Durably audited", "description": "intent and completion"}
+    receipt = authority.issue(
+        "create_project", payload, tenant=tenant,
+        session_scope="sqlite-audit-session",
+    )
+
+    result = gateway.execute(
+        "create_project", payload, approval_receipt=receipt, tenant=tenant
+    )
+
+    assert result.executed is True
+    assert audit_log.verify() != audit_log.GENESIS
+    assert len(registry.list_projects_for_owner(ALICE)) == 1
+    with __import__("sqlite3").connect(tmp_path / "security.sqlite3") as connection:
+        rows = connection.execute(
+            "SELECT action, result, reason_code FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("create_project", "denied", "authorized_dispatch_pending"),
+        ("create_project", "success", "action_executed"),
+    ]
+
+
+def test_persistent_gateway_blocks_project_creation_when_sqlite_intent_audit_fails(
+    tmp_path, monkeypatch
+):
+    from core.approvals import ApprovalAuthority
+    from core.project_actions import build_project_gateway
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    tenant = TenantKey(ALICE.issuer, ALICE.subject)
+    project_store = SQLiteProjectStore(tmp_path / "projects.sqlite3")
+    security_store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    authority = ApprovalAuthority(
+        nonce_store=security_store,
+        signing_secret=b"sqlite-audit-failure-secret-32-bytes",
+    )
+    audit_log = SQLiteExecutionAuditLog(security_store, tenant)
+    registry = PersistentProjectRegistry(project_store, tenant)
+    gateway = build_project_gateway(
+        registry, authority, audit_log=audit_log, principal=ALICE,
+        session_scope="sqlite-audit-failure-session",
+    )
+
+    def fail_audit(_event):
+        raise OSError("simulated durable audit storage failure")
+
+    monkeypatch.setattr(audit_log, "append", fail_audit)
+    payload = {"name": "Must not be created", "description": ""}
+    receipt = authority.issue(
+        "create_project", payload, tenant=tenant,
+        session_scope="sqlite-audit-failure-session",
+    )
+
+    result = gateway.execute(
+        "create_project", payload, approval_receipt=receipt, tenant=tenant
+    )
+
+    assert result.executed is False
+    assert "not executed" in result.reason
+    assert registry.list_projects_for_owner(ALICE) == []
