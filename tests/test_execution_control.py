@@ -20,12 +20,13 @@ def test_conditional_comparison_and_missing_path_fail_closed():
     assert not no.matched and no.branch == "false"
 
 
-def test_condition_uses_allowlisted_operators_and_no_expression_eval():
-    with pytest.raises(ExecutionControlError):
-        evaluate_condition(
-            Condition("__import__('os').system('id')", ConditionOperator.TRUTHY),
-            {},
-        )
+def test_condition_treats_code_like_path_as_data_and_never_executes_it():
+    decision = evaluate_condition(
+        Condition("__import__('os').system('id')", ConditionOperator.TRUTHY),
+        {},
+    )
+    assert not decision.matched
+    assert decision.branch == "false"
 
 
 def test_numeric_comparison_rejects_boolean_and_strings():
