@@ -128,3 +128,14 @@ def test_same_subject_from_different_issuer_cannot_list_or_read_project():
     assert registry.list_projects_for_owner(other_issuer) == []
     with pytest.raises(AuthorizationDenied):
         registry.get_for_owner(project.project_id, other_issuer)
+
+
+def test_legacy_project_without_issuer_is_not_visible_or_readable_to_authenticated_user():
+    registry = ProjectRegistry()
+    legacy = registry.create(
+        "Legacy unscoped", "", owner_subject="alice",
+        _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
+    assert registry.list_projects_for_owner(ALICE) == []
+    with pytest.raises(AuthorizationDenied):
+        registry.get_for_owner(legacy.project_id, ALICE)
