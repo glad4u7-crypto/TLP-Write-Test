@@ -1,0 +1,91 @@
+"""Strict adapter for Streamlit's verified OIDC user claims.
+
+Streamlit validates the OIDC flow and exposes the parsed ID-token claims through
+st.user. This module validates required claims and expiry before constructing a
+Principal. It does not replace identity-provider configuration or authorization.
+"""
+import math
+import time
+from typing import Any, Mapping
+from urllib.parse import urlsplit
+
+from core.identity import AuthenticationRequired, Principal, require_authenticated
+
+
+class OIDCIdentityError(ValueError):
+    """Raised when Streamlit's OIDC identity claims are missing or invalid."""
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Return False for non-finite values and integers too large for float conversion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def principal_from_oidc_claims(
+    claims: Mapping[str, Any] | None,
+    *,
+    now: float | None = None,
+    clock_skew_seconds: int = 60,
+) -> Principal:
+    """Convert trusted Streamlit OIDC claims to a validated principal."""
+    if not isinstance(clock_skew_seconds, int) or isinstance(clock_skew_seconds, bool) or clock_skew_seconds < 0:
+        raise OIDCIdentityError("OIDC clock skew must be a non-negative integer.")
+    if now is not None and not _is_finite_number(now):
+        raise OIDCIdentityError("OIDC validation time is invalid.")
+    if not isinstance(claims, Mapping):
+        raise AuthenticationRequired("OIDC identity claims are unavailable.")
+    if claims.get("is_logged_in") is not True:
+        raise AuthenticationRequired("Log in through the configured OIDC provider.")
+    issuer = claims.get("iss")
+    subject = claims.get("sub")
+    expires_at = claims.get("exp")
+    issued_at = claims.get("iat")
+    if not isinstance(issuer, str) or not issuer or issuer != issuer.strip():
+        raise OIDCIdentityError("OIDC issuer claim is missing or contains surrounding whitespace.")
+    try:
+        issuer_url = urlsplit(issuer)
+        # Force validation of malformed port syntax.
+        issuer_host = issuer_url.hostname
+        issuer_url.port
+    except ValueError as exc:
+        raise OIDCIdentityError("OIDC issuer claim is invalid.") from exc
+    if (
+        issuer_url.scheme != "https"
+        or not issuer_host
+        or issuer_url.username is not None
+        or issuer_url.password is not None
+        or issuer_url.query
+        or issuer_url.fragment
+        or any(character.isspace() or ord(character) < 32 for character in issuer)
+    ):
+        raise OIDCIdentityError("OIDC issuer claim must be an unambiguous HTTPS URL.")
+    if (
+        not isinstance(subject, str)
+        or not subject
+        or len(subject) > 255
+        or not subject.isascii()
+    ):
+        raise OIDCIdentityError("OIDC subject claim must be 1-255 ASCII characters.")
+    if not _is_finite_number(expires_at):
+        raise OIDCIdentityError("OIDC expiration claim is invalid.")
+    if not _is_finite_number(issued_at):
+        raise OIDCIdentityError("OIDC issued-at claim is invalid.")
+    current_time = time.time() if now is None else now
+    if expires_at <= current_time - clock_skew_seconds:
+        raise AuthenticationRequired("OIDC identity has expired; log in again.")
+    if issued_at > current_time + clock_skew_seconds:
+        raise AuthenticationRequired("OIDC identity was issued in the future.")
+    # OIDC sub is an opaque, case-sensitive identifier. Preserve it byte-for-
+    # byte; normalizing whitespace could collapse two distinct tenant identities.
+    principal = Principal(
+        subject=subject,
+        issuer=issuer,
+        authenticated=True,
+        roles=(),
+    )
+    return require_authenticated(principal)
