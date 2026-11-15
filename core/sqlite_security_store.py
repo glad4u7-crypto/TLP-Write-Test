@@ -35,7 +35,7 @@ class SQLiteSecurityStore:
     """Process-safe transactional nonce and audit store using SQLite writes."""
 
     def __init__(self, database_path: str | Path, *, timeout: float = 10.0) -> None:
-        self._database_path = str(database_path)
+        self._database_path = str(Path(database_path).absolute())
         self._timeout = timeout
         if self._database_path == ":memory:":
             raise ValueError("SQLiteSecurityStore requires a filesystem-backed database path; :memory: is unsupported.")
