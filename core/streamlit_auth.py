@@ -7,6 +7,7 @@ Principal. It does not replace identity-provider configuration or authorization.
 import math
 import time
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from core.identity import AuthenticationRequired, Principal, require_authenticated
 
@@ -46,8 +47,33 @@ def principal_from_oidc_claims(
     issued_at = claims.get("iat")
     if not isinstance(issuer, str) or not issuer.strip():
         raise OIDCIdentityError("OIDC issuer claim is missing.")
-    if not isinstance(subject, str) or not subject.strip():
-        raise OIDCIdentityError("OIDC subject claim is missing.")
+    issuer = issuer.strip()
+    try:
+        issuer_url = urlsplit(issuer)
+        # OIDC issuer identifiers are HTTPS URLs. Reject ambiguous authority
+        # components and query/fragment suffixes before using the value as the
+        # tenant boundary in project and audit storage.
+        issuer_host = issuer_url.hostname
+        issuer_url.port  # Force validation of malformed port syntax.
+    except ValueError as exc:
+        raise OIDCIdentityError("OIDC issuer claim is invalid.") from exc
+    if (
+        issuer_url.scheme != "https"
+        or not issuer_host
+        or issuer_url.username is not None
+        or issuer_url.password is not None
+        or issuer_url.query
+        or issuer_url.fragment
+        or any(character.isspace() or ord(character) < 32 for character in issuer)
+    ):
+        raise OIDCIdentityError("OIDC issuer claim must be an unambiguous HTTPS URL.")
+    if (
+        not isinstance(subject, str)
+        or not subject
+        or len(subject) > 255
+        or not subject.isascii()
+    ):
+        raise OIDCIdentityError("OIDC subject claim must be 1-255 ASCII characters.")
     if not _is_finite_number(expires_at):
         raise OIDCIdentityError("OIDC expiration claim is invalid.")
     if not _is_finite_number(issued_at):
@@ -59,7 +85,7 @@ def principal_from_oidc_claims(
         raise AuthenticationRequired("OIDC identity was issued in the future.")
     principal = Principal(
         subject=subject.strip(),
-        issuer=issuer.strip(),
+        issuer=issuer,
         authenticated=True,
         roles=(),
     )
