@@ -233,3 +233,36 @@ The reviewed session-scoped capability references are cleared by the identity li
 ### Next serial checkpoint
 
 P08-P09-BN: inspect tenant-bound persistent project and SQLite audit-store lifecycle for retained connections, caches or session-independent references that could survive logout or identity switching. Verify actual object ownership and cleanup behavior; do not add cleanup that would close a shared store still in use by another session.
+
+
+## P08-P09-BN — SQLite connection and tenant-store reference lifecycle
+
+Review date: 2026-11-15  
+Reviewed code head: \`6075f38b825ada059cb477be552bb9736c13c1a5\`
+
+### Findings
+
+- \`SQLiteProjectStore\` and \`SQLiteSecurityStore\` do not retain a long-lived SQLite connection. Each initialization/read/write operation opens a connection inside \`contextlib.closing\`; write paths explicitly commit or roll back before the connection is closed.
+- The tenant-bound \`PersistentProjectRegistry\` retains its \`TenantKey\` and \`SQLiteProjectStore\`, but the registry is held in Streamlit session state and is included in the central identity cleanup tuple.
+- \`SQLiteExecutionAuditLog\` retains a reference to the security store and a one-way principal fingerprint, not a live database connection or raw issuer/subject. It is retained by the session's execution gateway, which is removed during identity transition/logout.
+- SQLite nonce and audit operations open/close their own connections and use transactional write reservations. Existing tests cover tenant-scoped nonce replay, concurrent writes, multi-process audit appends, crash recovery, audit tamper/truncation detection, rollback behavior and owner-only database/sidecar permissions.
+- The local JSONL audit logger's module-level path-lock registry retains path-keyed thread locks, not principals, tenants, registries or approval capabilities. The current app configures a fixed local audit path; no per-user-controlled arbitrary path is exposed. This process-local lock registry is not a cross-process coordination mechanism and is not a production audit service.
+- No persistent SQLite connection or tenant-bound store reference outside the session-owned registry/gateway lifecycle was found in the reviewed path. No additional cleanup code was justified.
+
+### Verification basis
+
+The reviewed code head \`6075f38b825ada059cb477be552bb9736c13c1a5\` passed both required PR workflows:
+- Agent Foundation CI run \`43697006038\` — PASS; 385 tests, compile and dependency audit passed.
+- Python Demo CI run \`43697006010\` — PASS; 385 tests and exact demo output passed.
+
+The documentation-only review commit \`ce1973ec2bc1c3f2fed6e23f89b90f1d14ed51e7\` was also verified:
+- Agent Foundation CI run \`43697117613\` — PASS; 385 tests, compile and dependency audit passed.
+- Python Demo CI run \`43697117662\` — PASS; 385 tests and exact demo output passed.
+
+### Decision
+
+SQLite connections are operation-scoped and closed; tenant-bound registries and audit adapters are reachable only through session-owned objects that are cleared on identity transitions/logout. No offline-verifiable lifecycle defect was found. Production multi-host, external audit anchoring, backup/retention and live browser isolation remain unverified and blocked. PR #5 remains open and Draft; do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BO: review process-global caches and lock registries for cross-session data retention, unbounded growth and unsafe ownership assumptions. Distinguish harmless process-wide synchronization from identity-bearing state; do not remove shared locks or introduce per-session locks that would weaken concurrent audit append safety.
