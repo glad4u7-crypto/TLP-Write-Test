@@ -161,3 +161,30 @@ The live OIDC/browser matrix remains blocked pending a configured test deploymen
 ## Next serial work after P08-P08-Y
 
 Continue with the next offline-verifiable review item, prioritizing concrete authorization and failure-path tests over speculative filesystem changes. Keep the existing repository files and architecture stable; do not add new files unless a demonstrated requirement needs one.
+
+
+## P08-P09-AG — SQLite audit crash-recovery regression
+
+Verification date: 2026-11-15  
+Reviewed PR head: `a04d30d959c3eb80c193c8707ac7e1c7d919b077`
+
+### Work completed
+- Added `test_sqlite_recovers_uncommitted_audit_event_after_process_crash` to the existing `tests/test_sqlite_security_store.py`; no new file or runtime implementation change was needed.
+- The test creates a committed audit event, starts a spawned child process, writes a second event inside an uncommitted SQLite transaction, and terminates the child abruptly with `os._exit(0)`.
+- After reopening the store, it verifies the committed event and hash-chain head remain intact, the uncommitted event is absent, and a subsequent committed append succeeds.
+- Existing nonce crash-recovery and multi-process nonce/audit concurrency tests remain in the same test module.
+
+### Current-head CI evidence
+Both required workflows completed successfully for this exact PR head:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Python Demo CI | #476 / 43685211540 | PASS |
+| Agent Foundation CI | #386 / 43685211513 | PASS |
+
+Python Demo CI completed dependency installation, the test suite, and the `demo.py` smoke test. Agent Foundation CI completed dependency installation, dependency audit, module compilation, and foundation tests.
+
+### Scope and release status
+This verifies the automated crash-recovery regression in the GitHub Actions environment; it does not prove power-loss durability across every filesystem, host, or storage controller. The existing limitations around local SQLite deployment topology, protected audit anchoring, live OIDC/browser verification, and production capability isolation remain open.
+
+PR #5 remains open and Draft. No merge, deployment, paid-provider activation, payment, trading, or real-world handler enablement is authorized. Production remains **NOT APPROVED**.
