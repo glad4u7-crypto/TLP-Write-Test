@@ -10,6 +10,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 from pathlib import Path
 import sqlite3
@@ -191,7 +192,7 @@ class SQLiteSecurityStore:
             if row["previous_hash"] != previous_hash:
                 return False
             expected = self._hash(previous_hash, event_data)
-            if not hashlib.compare_digest(expected, row["entry_hash"]):
+            if not hmac.compare_digest(expected, row["entry_hash"]):
                 return False
             previous_hash = row["entry_hash"]
         return True
