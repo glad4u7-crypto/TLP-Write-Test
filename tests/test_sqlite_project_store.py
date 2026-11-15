@@ -216,3 +216,35 @@ def test_project_update_and_delete_roll_back_when_sqlite_rejects_mutation(tmp_pa
 
     retained = SQLiteProjectStore(path).get_for_tenant(tenant, project.project_id)
     assert retained == project
+
+
+def test_project_schema_initialization_rolls_back_on_ddl_failure(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "schema-init-rollback.sqlite3"
+    original_connect = SQLiteProjectStore._connect
+
+    def connect_with_denied_index(self):
+        connection = original_connect(self)
+
+        def authorizer(action, _arg1, _arg2, _database, _trigger):
+            if action == sqlite3.SQLITE_CREATE_INDEX:
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        connection.set_authorizer(authorizer)
+        return connection
+
+    monkeypatch.setattr(SQLiteProjectStore, "_connect", connect_with_denied_index)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteProjectStore(path)
+
+    # DDL and migration bookkeeping must be one transaction: a failed index
+    # creation must not leave a partially initialized schema behind.
+    with sqlite3.connect(path) as connection:
+        tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') "
+            "AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    assert tables == []
