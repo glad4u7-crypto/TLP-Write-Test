@@ -14,7 +14,7 @@ import re
 import time
 from urllib.parse import urlsplit
 
-from core.browser_isolation import WorkerIsolationProfile
+from core.browser_isolation import WorkerIsolationProfile, validate_worker_profile
 
 
 class RuntimeAttestationError(ValueError):
@@ -113,6 +113,24 @@ def build_worker_launch_spec(profile: object) -> WorkerLaunchSpec:
     """Translate a validated P04 profile into an inert launch contract only."""
     if type(profile) is not WorkerIsolationProfile:
         raise RuntimeAttestationError("A validated WorkerIsolationProfile is required.")
+    try:
+        profile = validate_worker_profile({
+            "schema_version": 1, "uid": profile.uid, "gid": profile.gid,
+            "privileged": False, "read_only_root": True,
+            "no_new_privileges": True, "capabilities_drop": ["ALL"],
+            "host_network": False, "host_pid": False, "host_ipc": False,
+            "host_mounts": [], "secret_mounts": [],
+            "writable_mounts": list(profile.writable_mounts),
+            "browser_profile_persistence": False, "cdp_exposed": False,
+            "direct_egress": False, "proxy_only_egress": True,
+            "dns_via_proxy_only": True, "egress_proxy": profile.egress_proxy,
+            "memory_limit_bytes": profile.memory_limit_bytes,
+            "cpu_limit_millis": profile.cpu_limit_millis,
+            "pids_limit": profile.pids_limit,
+            "job_timeout_seconds": profile.job_timeout_seconds,
+        })
+    except (TypeError, ValueError) as exc:
+        raise RuntimeAttestationError("Worker profile failed independent validation.") from exc
     return WorkerLaunchSpec(
         uid=profile.uid,
         gid=profile.gid,
@@ -180,6 +198,18 @@ def verify_prestart_attestation(
     """
     if type(spec) is not WorkerLaunchSpec:
         raise RuntimeAttestationError("A WorkerLaunchSpec is required.")
+    try:
+        checked_spec = build_worker_launch_spec(WorkerIsolationProfile(
+            uid=spec.uid, gid=spec.gid, egress_proxy=spec.egress_proxy,
+            memory_limit_bytes=spec.memory_limit_bytes,
+            cpu_limit_millis=spec.cpu_limit_millis, pids_limit=spec.pids_limit,
+            job_timeout_seconds=spec.job_timeout_seconds,
+            writable_mounts=spec.writable_mounts,
+        ))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeAttestationError("Launch specification failed independent validation.") from exc
+    if spec != checked_spec:
+        raise RuntimeAttestationError("Launch specification contains unsafe or unknown settings.")
     if not isinstance(raw, dict) or any(type(key) is not str for key in raw):
         raise RuntimeAttestationError("Attestation must be a string-keyed mapping.")
     if set(raw) != _ATTESTATION_FIELDS:
