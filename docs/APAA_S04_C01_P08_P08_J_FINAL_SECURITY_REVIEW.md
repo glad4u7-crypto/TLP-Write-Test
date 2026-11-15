@@ -473,3 +473,34 @@ The new local backup/restore and tamper-append regression tests are committed; t
 PR #5 remains Open + Draft. No merge, deployment, Auto-Run, paid provider, payment, purchase, checkout, trading, money movement or real-world execution handler is enabled. Production remains NOT APPROVED.
 
 Next checkpoint: P08-P09-BX — verify exact-head CI for the new backup/restore and tamper tests, fix any failures, then update the consolidated matrix with exact evidence.
+
+
+## P08-P09-BX — Exact-head CI verification for SQLite audit backup/restore and tamper tests
+
+Verification date: 2026-11-15  
+Reviewed code commit: `b2ef2fa1b4456b763c4e4bf7c5b448f4148011e9`
+
+### Exact-head CI evidence
+
+| Workflow | Run ID | Result |
+|---|---:|---|
+| Python Demo CI | 43700165143 | PASS |
+| Agent Foundation CI | 43700165203 | PASS |
+
+Both runs completed successfully on the reviewed commit. The Python Demo job completed the test suite and demo execution. The Agent Foundation job completed dependency audit, module compilation and foundation tests.
+
+### Verification outcome
+
+- SQLite online backup and restore preserves the tested audit chain and allows a subsequent append.
+- SQLite audit tampering causes append to fail closed without adding a new event.
+- The two new regression tests are included in the verified CI run.
+- No application runtime code was changed in this verification-only checkpoint.
+- This is local SQLite test evidence only; it does not establish independent audit anchoring, encrypted/off-site backup, scheduled recovery, multi-host safety or production readiness.
+
+### Decision
+
+P08-P09-BX automated CI verification: PASS for the exact reviewed code commit. The broader S04 release-readiness matrix remains BLOCKED by live OIDC/browser verification, repository branch-protection administration, host/process isolation, independent audit anchoring and deployment-specific controls. PR #5 remains open and Draft. Do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains NOT APPROVED.
+
+### Next serial checkpoint
+
+P08-P09-BY: inspect authenticated SQLite audit-store initialization and fail-closed recovery behavior for any remaining offline-verifiable gap. Keep the review focused; add tests only for a demonstrated defect. Live OIDC/browser and production operational gates remain external blockers.
