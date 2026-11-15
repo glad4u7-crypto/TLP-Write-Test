@@ -164,3 +164,24 @@ def test_jsonl_audit_path_is_anchored_when_working_directory_changes(tmp_path, m
 
     assert expected_path.is_file()
     assert not (elsewhere / "relative-audit" / "events.jsonl").exists()
+
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+def test_jsonl_audit_rejects_parent_directory_symlink_replacement_after_init(tmp_path):
+    original_parent = tmp_path / "private-audit"
+    original_parent.mkdir(mode=0o700)
+    log = JsonlAuditLog(original_parent / "events.jsonl")
+    log.append(create_audit_event("before.rename", False, "baseline"))
+
+    moved_parent = tmp_path / "moved-private-audit"
+    original_parent.rename(moved_parent)
+    try:
+        original_parent.symlink_to(moved_parent, target_is_directory=True)
+    except OSError:
+        moved_parent.rename(original_parent)
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    with pytest.raises(AuditIntegrityError, match="parent path.*symlinks"):
+        log.append(create_audit_event("after.rename", False, "must reject"))
+    assert len((moved_parent / "events.jsonl").read_text(encoding="utf-8").splitlines()) == 1
