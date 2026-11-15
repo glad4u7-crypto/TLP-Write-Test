@@ -10,8 +10,7 @@ def test_approval_requires_explicit_user_confirmation():
     with pytest.raises(PermissionError):
         authority.issue(
             "write_file",
-            {"path": "a.txt"},
-            confirmed_by_user=False,
+            {"path": "a.txt"}
         )
 
 
@@ -84,8 +83,7 @@ def test_expiry_is_bounded_and_requires_integer():
         with pytest.raises(ValueError):
             authority.issue(
                 "write_file",
-                {"path": "a.txt"},
-                confirmed_by_user=True,
+                {"path": "a.txt"}
                 ttl_seconds=ttl,
             )
 
@@ -128,8 +126,7 @@ def test_non_json_payload_cannot_receive_or_consume_approval():
     with pytest.raises(ValueError):
         authority.issue(
             "write_file",
-            {"path": object()},
-            confirmed_by_user=True,
+            {"path": object()}
         )
 
     receipt = authority.issue(
