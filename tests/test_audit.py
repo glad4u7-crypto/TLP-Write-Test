@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -58,3 +59,27 @@ def test_jsonl_audit_log_rejects_non_event_objects(tmp_path):
     log = JsonlAuditLog(tmp_path / "events.jsonl")
     with pytest.raises(TypeError):
         log.append({"action": "write_file"})
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+def test_jsonl_audit_log_rejects_symlink_target(tmp_path):
+    target = tmp_path / "outside.jsonl"
+    target.write_text("")
+    link = tmp_path / "audit.jsonl"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    log = JsonlAuditLog(link)
+    with pytest.raises(AuditIntegrityError):
+        log.append(create_audit_event("write_file", False, "denied"))
+    assert target.read_text() == ""
+
+
+def test_jsonl_audit_log_restricts_file_permissions(tmp_path):
+    log = JsonlAuditLog(tmp_path / "private" / "events.jsonl")
+    log.append(create_audit_event("write_file", False, "denied"))
+
+    if os.name == "posix":
+        assert (tmp_path / "private" / "events.jsonl").stat().st_mode & 0o777 == 0o600
