@@ -173,3 +173,37 @@ Both workflow jobs and every listed step were re-fetched after completion and re
 **CI correction record:** Early intermediate runs caught an omitted `ipaddress` import and an overly strict `/tmp` path check. Both were corrected before the final verification-record commit; the final full suite passed in both workflows.
 
 These CI results verify offline validators and deterministic tests only. They do not prove an actual container sandbox, firewall enforcement, proxy operation, packet-level DNS leak prevention, IP pinning in a live socket, browser runtime safety or production readiness.
+
+
+
+## P05 implementation checkpoint — worker launch contract and runtime attestation
+
+**Checkpoint:** `APAA-S07-C01-P05`  
+**Implementation:** `core/browser_runtime.py`  
+**Tests:** `tests/test_browser_runtime.py`  
+**Detailed contract:** `docs/APAA_S07_WORKER_RUNTIME_ATTESTATION_P05.md`
+
+| Area | P05 evidence | Status |
+|---|---|---|
+| P04 profile revalidation | Revalidates the closed P04 profile before creating a launch contract | IMPLEMENTED — TESTED |
+| Immutable launch contract | Frozen launch spec with stable SHA-256 digest and exact namespace/resource requirements | IMPLEMENTED — TESTED |
+| Runtime image identity | Requires immutable `sha256:<64 hex>` image digest | IMPLEMENTED — TESTED |
+| Attestation schema | Closed schema; unknown/missing fields rejected | IMPLEMENTED — TESTED |
+| Launch-spec binding | Evidence digest must refer to exact launch-spec digest | IMPLEMENTED — TESTED |
+| Runtime identity | Runtime, worker and attestor identifiers required | IMPLEMENTED — TESTED |
+| Pre-start state | Requires runtime state `created` and process_started=false | IMPLEMENTED — TESTED |
+| Effective privilege checks | UID/GID, empty effective capabilities, no privileged mode, no host/secret mounts, no persistent profile/CDP | IMPLEMENTED — TESTED |
+| Kernel/runtime isolation evidence | Requires namespaces, seccomp and no-new-privileges attestation | CONTRACT ONLY — INSPECTOR NOT IMPLEMENTED |
+| Network enforcement evidence | Requires isolated network namespace, host default-deny firewall, proxy-only egress and direct DNS block | CONTRACT ONLY — FIREWALL NOT DEPLOYED |
+| Freshness | Rejects stale/future timestamps; default 60-second window | IMPLEMENTED — TESTED |
+| Resource enforcement | Exact memory/CPU/PID/job-timeout comparison | IMPLEMENTED — TESTED |
+| Trusted inspector authenticity | Evidence digest is not a signature; external authenticated inspector still required | NOT IMPLEMENTED |
+| Runtime adapter / OCI deployment | Launch spec is inert data; no container API or process start | NOT IMPLEMENTED |
+| Browser runtime / ExecutionGateway handler | No browser dependency, worker process or handler registration | NOT IMPLEMENTED |
+| Existing CI workflows | Final exact-commit runs required on both existing workflows | PENDING |
+
+### P05 interpretation and exit gate
+
+P05 adds an inert launch contract and an offline validator for externally supplied pre-start observations. It does not create or start a container, inspect effective kernel state, authenticate the inspector, deploy a firewall/proxy or establish real network isolation. The attestation must come from a trusted host-side inspector and must be independently reviewed before any future start operation. Browser execution remains disabled.
+
+**P05 disposition:** IMPLEMENTATION ADDED; exact-commit CI verification pending. No new workflow created. PR #5 remains Open + Draft + unmerged. No merge or deployment.
