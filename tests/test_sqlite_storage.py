@@ -85,3 +85,32 @@ def test_project_database_rejects_symlink_target(tmp_path):
     with pytest.raises(ValueError, match="non-symlink"):
         SQLiteProjectStore(link)
     assert target.read_bytes() == b"do-not-open"
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks unavailable")
+def test_sqlite_store_preexisting_database_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "existing.sqlite3"
+    path.write_bytes(b"")
+    if os.name == "posix":
+        path.chmod(0o644)
+
+    SQLiteProjectStore(path)
+
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_sqlite_store_rejects_symlinked_parent_directory(tmp_path):
+    target_dir = tmp_path / "actual"
+    target_dir.mkdir()
+    link_dir = tmp_path / "linked"
+    try:
+        link_dir.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="parent path.*symlinks"):
+        SQLiteProjectStore(link_dir / "projects.sqlite3")
+    assert not (target_dir / "projects.sqlite3").exists()
