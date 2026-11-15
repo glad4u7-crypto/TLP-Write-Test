@@ -72,6 +72,9 @@ class SQLiteProjectStore:
         os.chmod(path, 0o600)
 
     def _connect(self) -> sqlite3.Connection:
+        # Revalidate immediately before every pathname-based SQLite open.
+        # This narrows replacement windows but cannot eliminate a hostile same-UID race.
+        self._secure_database_file(create_parent=False)
         connection = sqlite3.connect(
             self._database_path, timeout=self._timeout, isolation_level=None
         )
