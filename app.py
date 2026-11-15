@@ -1,3 +1,4 @@
+import secrets
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
@@ -61,6 +62,8 @@ else:
 # authenticated account starts using this same Streamlit session.
 session_identity = f"{principal.issuer}\\n{principal.subject}" if principal is not None else "local-prototype"
 bind_session_identity(st.session_state, session_identity)
+if "approval_session_scope" not in st.session_state:
+    st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
 
 if "project_registry" not in st.session_state:
     st.session_state["project_registry"] = ProjectRegistry()
@@ -126,6 +129,7 @@ if (
         st.session_state["approval_authority"],
         audit_log=audit_log,
         principal=principal,
+        session_scope=st.session_state["approval_session_scope"],
     )
     st.session_state["execution_gateway_owner"] = gateway_owner
 
@@ -217,13 +221,15 @@ if pending_project:
             "description": pending_project["description"],
         }
         receipt = st.session_state["approval_authority"].issue(
-            "create_project", payload, tenant=tenant
+            "create_project", payload, tenant=tenant,
+            session_scope=st.session_state["approval_session_scope"]
         )
         result = st.session_state["execution_gateway"].execute(
             "create_project",
             payload,
             approval_receipt=receipt,
             tenant=tenant,
+            session_scope=st.session_state["approval_session_scope"],
         )
         if result.executed:
             project = result.output
