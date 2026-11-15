@@ -4,7 +4,7 @@ Checkpoint: APAA-S04-C01-P08-P09-BP
 Verification date: 2026-11-15  
 Repository: glad4u7-crypto/TLP-Write-Test  
 Pull request: #5 (must remain Draft)  
-Implementation head reviewed: 9e8d52449eac691cdd442ce3c9d6fe2231ec4760  
+Implementation head reviewed: 74930fbcc505d87c42263db8712118e1635a86e2
 Head branch: feature/approval-ui-e2e-p06  
 Base branch: feature/agent-v0.3-zero-cost-core
 
@@ -153,3 +153,27 @@ Both runs completed on the exact reviewed SHA; all reported job steps succeeded.
 Code-level and offline CI gates for this exact head: **PASS**. Full S04 release readiness: **BLOCKED** by live OIDC/browser verification, repository branch-protection verification, production isolation, single-writer topology enforcement, and operational audit durability/backup/independent anchoring. PR #5 remains Open + Draft. Do not merge or deploy. Auto-Run and real-world handlers remain disabled; payment, purchases, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
 
 Next checkpoint: `APAA-S04-C01-P08-P09-BU` — add explicit single-writer runtime guard or enforceable deployment contract, then test audit crash/truncation fail-closed behavior and update the matrix from evidence.
+
+
+## P08-P09-BU — JSONL crash-tail verification and latest CI evidence
+
+Reviewed exact head: `74930fbcc505d87c42263db8712118e1635a86e2`.
+
+| Workflow | Run ID | Result | Successful steps |
+|---|---:|---|---|
+| Agent Foundation CI | 43699703242 | PASS | dependency install, pip-audit, compileall, foundation tests |
+| Python Demo CI | 43699703273 | PASS | dependency install, test suite, demo smoke test |
+
+Both workflows completed successfully on the exact same SHA. The regression test deliberately writes a partial trailing JSONL record, confirms verification rejects it, and confirms subsequent append is also rejected. No automatic truncation or silent repair is performed.
+
+### Runtime mode boundary confirmed from app.py
+
+- Authenticated mode uses `SQLiteExecutionAuditLog` and durable SQLite security storage.
+- The JSONL file logger is used only in the unauthenticated local-prototype branch. The UI explicitly warns that authentication is not enforced and the instance must not be exposed publicly.
+- Deployment must set `[apaa].require_auth = true`, configure OIDC and the protected signing secret, and use the authenticated SQLite path. The current app does not provide a production deployment approval gate; this remains an operator/deployment blocker.
+- JSONL locking is process-local only. Do not run multiple OS processes against the same JSONL file. Keep that fallback limited to one local prototype process; it is not a production audit backend.
+- The authenticated SQLite audit path is a different implementation and must be assessed separately for multi-process/multi-host use, backup, retention and recovery. Passing JSONL tests does not establish those properties.
+
+### Updated status
+
+Code-level exact-head CI: **PASS**. JSONL crash-tail behavior: **PASS (fail-closed)**. Full S04 release readiness: **BLOCKED**. Unauthenticated prototype mode is not suitable for public exposure. PR #5 remains Open + Draft; no merge/deploy. Production remains **NOT APPROVED**.
