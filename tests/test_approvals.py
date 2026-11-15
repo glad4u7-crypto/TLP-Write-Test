@@ -120,7 +120,7 @@ def test_durable_nonce_store_requires_tenant_and_persists_replay_across_authorit
     first_authority = ApprovalAuthority(
         nonce_store=SQLiteSecurityStore(path), signing_secret=secret
     )
-    receipt = first_authority.issue("write_file", payload)
+    receipt = first_authority.issue("write_file", payload, tenant=tenant)
 
     assert first_authority.consume(receipt, "write_file", payload, tenant=tenant) is True
     second_authority = ApprovalAuthority(
@@ -137,7 +137,9 @@ def test_durable_nonce_mode_fails_closed_without_validated_tenant(tmp_path):
         signing_secret=b"test-only-signing-secret-material-32-bytes-minimum",
     )
     payload = {"path": "tenant-required.txt"}
-    receipt = authority.issue("write_file", payload)
+    with pytest.raises(ValueError):
+        authority.issue("write_file", payload)
+    receipt = authority.issue("write_file", payload, tenant=TenantKey("https://issuer.example", "alice"))
     assert authority.consume(receipt, "write_file", payload) is False
 
 
@@ -151,6 +153,6 @@ def test_durable_nonce_mode_accepts_tenant_and_rejects_replay(tmp_path):
         signing_secret=b"test-only-signing-secret-material-32-bytes-minimum",
     )
     payload = {"path": "tenant-bound.txt"}
-    receipt = authority.issue("write_file", payload)
+    receipt = authority.issue("write_file", payload, tenant=tenant)
     assert authority.consume(receipt, "write_file", payload, tenant=tenant) is True
     assert authority.consume(receipt, "write_file", payload, tenant=tenant) is False
