@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
+import sqlite3
 
 import pytest
 
