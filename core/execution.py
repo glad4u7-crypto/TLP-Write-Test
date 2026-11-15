@@ -14,6 +14,7 @@ from core.audit import (
     create_audit_event,
 )
 from core.safety import authorize_action
+from core.storage import TenantKey
 
 
 ActionHandler = Callable[[Mapping[str, Any]], Any]
@@ -113,6 +114,7 @@ class ExecutionGateway:
         *,
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
+        tenant: TenantKey | None = None,
     ) -> ExecutionResult:
         """Run one handler only after policy + approval + durable intent audit."""
         if payload is not None and not isinstance(payload, Mapping):
@@ -132,7 +134,7 @@ class ExecutionGateway:
                 decision = auto_decision
 
         if not authorized and self._approval_authority is not None:
-            if self._approval_authority.consume(approval_receipt, action, payload):
+            if self._approval_authority.consume(approval_receipt, action, payload, tenant=tenant):
                 exact_action = _canonical_action(action)
                 decision = authorize_action(action, approved_action=exact_action)
                 authorized = decision.allowed
