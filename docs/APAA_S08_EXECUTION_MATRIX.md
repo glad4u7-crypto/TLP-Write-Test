@@ -92,3 +92,16 @@ P02 is verified at repository CI level. Queue remains an in-memory ordering prim
 | Python Demo CI | [43727490670](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43727490670) | PASS — full test suite and demo smoke passed |
 
 P03 is verified for the SQLite persistence adapter and its unit-test contract. It is not yet integrated into the runtime lifecycle/controller, Streamlit application, or native Android client. Those integration and platform checks remain open; P03 PASS does not imply production readiness.
+
+
+## C02-P01 sequential execution implementation (verification pending)
+
+- Added `core/sequential_executor.py` to coordinate the existing bounded queue, lifecycle state machine and trusted `ExecutionGateway`.
+- Each call dequeues at most one task. A runner lock covers dequeue, dispatch and terminal state update so concurrent calls through the same executor cannot overlap handlers.
+- Only tasks in `planned` or `awaiting_approval` are eligible. Approval-required tasks must already be `awaiting_approval` and receive a fresh `ApprovalReceipt` from a trusted UI/controller callback.
+- The gateway remains responsible for policy, exact action/payload-bound one-time receipt consumption and audit-before-dispatch. The sequential executor does not issue receipts or register handlers.
+- Gateway success maps to `succeeded`; a blocked/failed gateway result maps to `failed`. Unexpected controller errors fail closed. No automatic retry, handler fallback, payment, purchase, trading or money movement.
+- Added `tests/test_sequential_executor.py` for queue order, non-overlap, approval enforcement, invalid lifecycle state and failed dispatch.
+- Code-bearing snapshot: `798a955bf1b0290eb59a058965f20baa43d515ef`.
+- Agent Foundation CI run [43728173522](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173522) and Python Demo CI run [43728173537](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173537) were observed in progress. C02-P01 remains PENDING until both workflows finish successfully on this exact snapshot.
+- Scope limitation: this is a Python controller-level implementation, not yet wired to the Android client or production runtime. PR #5 remains Draft/Open/Unmerged; no merge or deployment performed.
