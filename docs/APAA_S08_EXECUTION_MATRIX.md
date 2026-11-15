@@ -125,3 +125,31 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 - Full test suite: **763 passed in 15.42s**.
 - Demo smoke test: PASS.
 - PR #8 remains Draft/Open/Unmerged. No deployment, payment, paid provider, or base-branch change.
+
+
+## S08 completion-branch reconciliation (2026-11-15)
+
+The historical rows above are retained as checkpoint history. Their earlier C04 "Not started" entries predate the dedicated C04 implementation branch and must not be read as the current implementation state.
+
+| Checkpoint | Current implementation on completion branch | Verification state |
+|---|---|---|
+| C02-P01 Sequential execution | `core/sequential_executor.py` | PASS — inherited from exact-head C02 CI |
+| C02-P02 Conditional execution | `core/task_conditions.py` | PASS — inherited from exact-head C02 CI |
+| C02-P03 Multi-step execution | `core/multi_step_executor.py` | PASS — inherited from exact-head C02 CI |
+| C03-P01 Timeout | `core/execution_reliability.py` cooperative monotonic deadline | Implemented; exact-head completion CI pending |
+| C03-P02 Retry/recovery | Same module; bounded 1–3 attempts, pre-dispatch-only retry | Implemented; exact-head completion CI pending |
+| C03-P03 Completion verification | Same module; read-only JSON observation and digest comparison | Implemented; exact-head completion CI pending |
+| C04-P01 Pre-execution validation | `core/execution_safety.py` | Implemented; exact-head completion CI pending |
+| C04-P02 Permission check | Exact payload-bound single-use receipt for mutations | Implemented; exact-head completion CI pending |
+| C04-P03 Execution audit | Intent-before-dispatch and completion/failure audit; fail-closed | Implemented; exact-head completion CI pending |
+
+### Completion-branch safeguards
+- Branch: `feature/apaa-s08-completion`; based on the verified C02 branch.
+- Isolated workflow: `.github/workflows/apaa-s08-completion-ci.yml`; read-only repository permission; pinned third-party actions.
+- Timeout is explicitly cooperative. It does not kill a handler that is already running.
+- Automatic retry is prohibited once dispatch starts or its outcome is uncertain.
+- Completion is independently verified only when an explicit read-only observer is supplied.
+- C04 implementation and focused tests have been copied from the separate C04 feature branch into this integration branch.
+- No financial actions, payment/purchase, paid API/provider, API keys, Auto-Run, deployment, firewall change, merge, or production Android runtime are enabled.
+
+**Disposition:** C03 and C04 implementation files are integrated and the exact completion-branch snapshot `d4e965e6ca78f799a9572d5d6a5bc9d7bae4261b` passed the isolated verification workflow. Run [43734617007](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43734617007): dependency audit clear, compileall PASS, full suite **804 passed in 17.70s**, demo smoke test PASS. This verifies the Python repository snapshot only; it does not establish native Android or production/live-adapter readiness.
