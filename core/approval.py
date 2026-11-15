@@ -21,6 +21,7 @@ class ApprovalRequest:
     tool_id: str
     summary: str
     payload_digest: str
+    payload_preview: str
     status: str
     created_at: str
     expires_at: str
@@ -63,12 +64,32 @@ class ApprovalManager:
         spec = self._registry.get(tool_id)
         if spec is None:
             raise ValueError("Tool is not present in the allow-list.")
-        if spec.category in BLOCKED_CATEGORIES:
+        if spec.category.lower() in BLOCKED_CATEGORIES:
             raise ValueError("This action category is permanently blocked.")
         if spec.enabled:
             raise ValueError("Tool execution is disabled by policy.")
         if not isinstance(summary, str) or not summary.strip():
             raise ValueError("A clear action summary is required.")
+        if not isinstance(payload, dict):
+            raise ValueError("Payload must be a JSON object so the proposed action can be reviewed.")
+        payload_json = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        )
+        if len(payload_json.encode("utf-8")) > 8192:
+            raise ValueError("Payload is too large for the approval queue.")
+        sensitive_names = {"password", "passwd", "secret", "token", "api_key", "authorization", "cookie"}
+        def contains_sensitive_key(value: object) -> bool:
+            if isinstance(value, dict):
+                return any(
+                    str(key).lower() in sensitive_names or contains_sensitive_key(child)
+                    for key, child in value.items()
+                )
+            if isinstance(value, list):
+                return any(contains_sensitive_key(child) for child in value)
+            return False
+        if contains_sensitive_key(payload):
+            raise ValueError("Credential-like fields must never be placed in approval payloads.")
         created = _utc(now)
         request_id = uuid4().hex
         item = ApprovalRequest(
@@ -76,6 +97,7 @@ class ApprovalManager:
             tool_id=tool_id,
             summary=summary.strip(),
             payload_digest=_payload_digest(payload),
+            payload_preview=json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2),
             status="pending",
             created_at=created.isoformat(),
             expires_at=(created + self._ttl).isoformat(),
@@ -87,6 +109,8 @@ class ApprovalManager:
         self, request_id: str, approve: bool, note: str = "",
         now: datetime | None = None,
     ) -> ApprovalRequest:
+        if not isinstance(approve, bool):
+            raise ValueError("Decision must be an explicit boolean.")
         item = self._requests.get(request_id)
         if item is None:
             raise KeyError("Approval request was not found.")
