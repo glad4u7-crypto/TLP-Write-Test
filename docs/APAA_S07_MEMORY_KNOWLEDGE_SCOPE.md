@@ -32,7 +32,7 @@ This is the user's S07 track: memory architecture, knowledge management and cont
 
 ## Known integration boundary
 
-The module exposes the complete storage API and is covered by unit tests. The existing authenticated UI does not yet expose user-facing memory controls or consent screens; those UI controls and a real Android client are separate integration work and must not be represented as complete here. Live multi-user OIDC verification, device-level backup/restore, encryption-at-rest beyond OS file permissions, and multi-host operation remain release gates.
+The module exposes the complete storage API and the authenticated Streamlit app now provides consent-gated controls for memories, knowledge collection/review/deletion, manual conversation continuity, preferences, and project checkpoints. Local prototype mode deliberately disables persistent memory. Conversation capture is never automatic. The native Android client is not yet built. Live multi-user OIDC verification, device-level backup/restore, encryption-at-rest beyond OS file permissions, and multi-host operation remain release gates.
 
 ## Local verification
 
