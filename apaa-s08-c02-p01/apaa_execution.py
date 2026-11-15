@@ -141,7 +141,7 @@ class StateStore:
             for row in rows:
                 target=TaskStatus.QUEUED if row["attempts"]<row["max_attempts"] else TaskStatus.DEAD_LETTER
                 self._transition(row["task_id"],target,error="execution lease expired")
-                if target==TaskStatus.QUEUED:self._audit(row["task_id],"lease_recovered",target.value)
+                if target==TaskStatus.QUEUED:self._audit(row["task_id"],"lease_recovered",target.value)
                 else:self._record_dead_letter(row["task_id"],"execution lease expired",row["attempts"])
                 count+=1
         return count
