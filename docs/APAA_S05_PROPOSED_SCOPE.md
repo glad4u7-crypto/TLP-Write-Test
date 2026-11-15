@@ -1,26 +1,26 @@
 # APAA S05 — Approved Scope and Implementation Record: Task Intake and Deterministic Planning Contract
 
-**Checkpoint:** APAA-S05-C01-P01  
-**Status:** USER APPROVED — IMPLEMENTATION IN PROGRESS  
+**Checkpoint:** APAA-S05-C01-P06  
+**Status:** IMPLEMENTED — EXACT-HEAD CI PASS; INDEPENDENT REVIEW COMPLETE  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
 **Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
 
-## 1. Why this proposal exists
+## 1. Purpose and baseline
 
 The current foundation already has a minimal `Task` model, task-status enum, a deterministic `create_plan` function, a provider-neutral brain interface, action authorization, approval receipts, audit logging and a fail-closed execution gateway.
 
-The current planner returns a fixed list of generic strings. It does not yet provide a typed, inspectable plan contract that can be validated, reviewed, safely rejected, or later connected to separately authorized tools. S05 is proposed to close this planning-contract gap without enabling execution.
+The current planner returns a fixed list of generic strings. It does not yet provide a typed, inspectable plan contract that can be validated, reviewed, safely rejected, or later connected to separately authorized tools. S05 closes this planning-contract gap without enabling execution.
 
-This proposal is derived from the current repository architecture and does not claim that the user has approved a new product feature set.
+This scope was explicitly approved by the user on 2026-11-15. Approval authorizes this planning-contract work only.
 
-## 2. Proposed objective
+## 2. Approved objective
 
 Define and implement a deterministic, offline **Task Intake and Planning Contract** that converts a user's task description plus explicit constraints into a structured plan suitable for human review.
 
 The S05 deliverable should improve clarity, validation and traceability while remaining a planning-only subsystem.
 
-## 3. Proposed in-scope work
+## 3. Approved in-scope work
 
 ### S05-P01 — Requirements and contract
 - Define typed plan, step, risk/impact classification, assumptions, missing-information questions, and validation outcomes.
@@ -108,7 +108,7 @@ This document is a proposal, not authorization to implement S05. The next decisi
 
 Until scope approval, do not change runtime code or enable any new capability.
 
-## 9. Implementation record\n\n### Implemented in this work batch (pending exact-head CI)\n- Added `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus` and `StepCategory` typed contract objects.\n- Added deterministic task intake validation: text-only input, empty/control-character rejection, 4,000-character bound and whitespace normalization.\n- Added deterministic plan IDs and stable four-step planning output.\n- Added clarification responses for a small, explicit set of deictic/underspecified requests.\n- Added conservative blocked-plan handling for detected prohibited financial/trading/purchase/provider intent.\n- Added mutation-proposal labelling; a plan cannot issue an approval receipt or dispatch an action.\n- Preserved the legacy `create_plan` four-string API for compatibility.\n- Added focused contract tests for determinism, serialization, input validation, clarification, blocked intents and mutation labelling.\n\n### Verification status\n- Code and tests committed to the feature branch.\n- Agent Foundation CI and Python Demo CI must both complete successfully on the exact final head; until then, implementation is not marked PASS.\n\n## 10. Carried-forward non-negotiable safety constraints
+## 9. Implementation record\n\n### Implemented and verified in this work batch\n- Added `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus` and `StepCategory` typed contract objects.\n- Added deterministic task intake validation: text-only input, empty/control-character rejection, 4,000-character bound and whitespace normalization.\n- Added deterministic plan IDs and stable four-step planning output.\n- Added clarification responses for a small, explicit set of deictic/underspecified requests.\n- Added conservative blocked-plan handling for detected prohibited financial/trading/purchase/provider intent.\n- Added mutation-proposal labelling; a plan cannot issue an approval receipt or dispatch an action.\n- Preserved the legacy `create_plan` four-string API for compatibility.\n- Added focused contract tests for determinism, serialization, input validation, clarification, blocked intents and mutation labelling.\n\n### Verification status\n- Code and tests committed to the feature branch.\n- Agent Foundation CI #622 / run `43706514203`: completed / success; dependency install, pip-audit, compileall, foundation tests and post steps all succeeded.\n- Python Demo CI #713 / run `43706514142`: completed / success; dependency install, full test suite, demo smoke test and post steps all succeeded.\n- Both workflows were verified against exact pre-documentation implementation head `4c23c28620793bd0d7009fad6f9f1477bf822611`; final documentation-only head must be re-run through both existing workflows before closure.\n\n## 10. Carried-forward non-negotiable safety constraints
 
 - Zero-cost/offline default; no paid provider, API key or billable service.
 - Auto-Run OFF; approval must remain explicit and action-specific.
