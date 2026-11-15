@@ -211,3 +211,11 @@ def test_attestation_validator_performs_no_runtime_or_network_operations(monkeyp
         launch_spec(), valid_attestation(), now=1000
     )
     assert result.worker_state == "created"
+
+
+def test_attestation_rejects_manually_forged_launch_spec():
+    from dataclasses import replace
+
+    forged = replace(launch_spec(), direct_egress=True)
+    with pytest.raises(RuntimeAttestationError):
+        verify_prestart_attestation(forged, valid_attestation(forged), now=1000)
