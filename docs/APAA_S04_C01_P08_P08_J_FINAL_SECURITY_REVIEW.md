@@ -3,7 +3,7 @@
 Review date: 2026-11-15
 Repository: `glad4u7-crypto/TLP-Write-Test`
 Review branch: `feature/approval-ui-e2e-p06`
-Reviewed application code snapshot: `84214318fe255d47df5638fbf27bb5f656c8a771`; CI workflow correction commit: `81a07587437e145ebcc683e6e80ba1e42a452a75`
+Reviewed application code snapshot: `84214318fe255d47df5638fbf27bb5f656c8a771`; latest dependency-audit workflow commit: `7d0b0ba2958db3b33bdaa6d028fa3df8a6c458d`
 Pull request: #5 (open, draft; base `feature/agent-v0.3-zero-cost-core`)
 
 ## 1. CI verification
@@ -20,7 +20,7 @@ Verified job steps:
 - Python Demo CI: dependency installation, pytest suite, and `demo.py` smoke test.
 - Agent Foundation CI: dependency installation, `compileall` for `app.py`, `core`, and `tests`, and foundation pytest suite.
 
-The application-code snapshot `84214318fe255d47df5638fbf27bb5f656c8a771` passed all three runs above. During this review, a first workflow-permission edit was malformed because `workflow_dispatch` was placed under `permissions`; GitHub Actions correctly reported workflow validation failures on commits `db18de13...` and `ebdb886c...`. This was identified from the failed runs and corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`, which restores `workflow_dispatch` under `on` and scopes `permissions: contents: read`. The corrected workflow's new current-head CI runs must complete successfully before this workflow change is considered verified. Do not conceal the transient failed runs.
+The application-code snapshot `84214318fe255d47df5638fbf27bb5f656c8a771` passed all three runs above. During this review, a first workflow-permission edit was malformed because `workflow_dispatch` was placed under `permissions`; GitHub Actions correctly reported workflow validation failures on commits `db18de13...` and `ebdb886c...`. This was identified from the failed runs and corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`, which restores `workflow_dispatch` under `on` and scopes `permissions: contents: read`. The corrected workflow was subsequently verified on commit `7d0b0ba...`; all four current-head push/PR workflow runs passed. The `pip-audit` step passed on both Foundation CI events and reported `No known vulnerabilities found`. Do not conceal the transient earlier workflow-validation failures.
 
 ## 2. Security controls verified in code/tests
 
@@ -55,8 +55,8 @@ SQLite transactional nonce/audit storage improves process-safe local persistence
 ### HIGH — Deployment topology and storage hardening remain
 Local SQLite project/security databases do not by themselves establish a tested multi-host deployment model. Validate filesystem permissions, backup/restore, concurrent workers, database locking, and operational recovery before multi-worker production use.
 
-### MEDIUM — CI workflow least privilege / PR coverage
-The Agent Foundation workflow previously relied on repository-default token permissions and only ran PR events targeting `main`, while PR #5 targets `feature/agent-v0.3-zero-cost-core`. The workflow has now been corrected to explicit `contents: read` permission, includes that PR base branch, and retains the `workflow_dispatch` trigger. An initial malformed edit caused two workflow-validation failures; the syntax was corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`. Current-head CI is pending and must pass before the workflow correction is considered verified.
+### RESOLVED — CI workflow least privilege / PR coverage
+The Agent Foundation workflow previously relied on repository-default token permissions and only ran PR events targeting `main`, while PR #5 targets `feature/agent-v0.3-zero-cost-core`. The workflow has now been corrected to explicit `contents: read` permission, includes that PR base branch, and retains the `workflow_dispatch` trigger. An initial malformed edit caused two workflow-validation failures; the syntax was corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`. Current-head CI on `7d0b0ba...` passed: Foundation push `43676566026`, Demo push `43676566108`, Foundation PR `43676570288`, and Demo PR `43676570332`. Dependency audit also passed with no known vulnerabilities reported.
 
 ## 4. Release decision
 
@@ -66,7 +66,7 @@ The code snapshot has passing automated CI and useful prototype security control
 
 ## 5. Next checkpoint
 
-1. Verify current-head Python Demo CI and Agent Foundation CI after the corrected workflow and this report are committed; record and fix any failures.
+1. Re-run CI after the latest documentation corrections and record any failures.
 2. Complete P08-P06 live OIDC/browser matrix with two identities.
 3. Review deployment configuration and durable storage operations.
 4. Reassess production approval only after the blockers are closed and independently verified.
