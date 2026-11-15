@@ -19,6 +19,7 @@ from core.identity import AuthorizationDenied
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
+from core.memory import SQLiteMemoryStore
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -105,6 +106,8 @@ if principal is not None:
         )
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
+        memory_db_path = apaa_settings.get("memory_db_path", ".apaa_memory/memory.sqlite3")
+        memory_store = SQLiteMemoryStore(memory_db_path)
     except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
         # A failed durable-store startup must not leave capabilities or
         # tenant-bound objects from an earlier successful run in this session.
@@ -143,6 +146,7 @@ if principal is not None:
         st.session_state["project_registry"] = PersistentProjectRegistry(project_store, tenant)
         st.session_state["project_registry_tenant"] = session_identity
 else:
+    memory_store = None
     if "approval_authority" not in st.session_state:
         st.session_state["approval_authority"] = ApprovalAuthority()
     audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
@@ -367,3 +371,159 @@ st.caption(
     "No external AI API is configured or called. Future provider integrations "
     "must remain opt-in and must never activate paid services automatically."
 )
+
+
+# Persistent memory is available only in authenticated mode. Every write has
+# a separate consent checkbox; signing in never opts a user into storage.
+st.divider()
+st.header("Memory & Knowledge")
+if principal is None:
+    st.info("Persistent memory is disabled in local prototype mode. Sign in to an authenticated deployment to use tenant-isolated memory.")
+else:
+    st.caption("Local SQLite storage · tenant-isolated · no external API · no automatic conversation capture")
+    memory_tabs = st.tabs(["Memories", "Knowledge", "Conversation", "Preferences", "Checkpoints"])
+
+    with memory_tabs[0]:
+        st.subheader("Long-term memories")
+        with st.form("memory_add_form", clear_on_submit=True):
+            memory_category = st.selectbox("Memory category", ["fact", "preference", "project", "workflow", "learning", "other"])
+            memory_content = st.text_area("Memory content", max_chars=10000)
+            memory_tags = st.text_input("Tags (comma separated)")
+            memory_pinned = st.checkbox("Pin this memory")
+            memory_consent = st.checkbox("I explicitly agree to save this memory")
+            memory_submit = st.form_submit_button("Save memory")
+        if memory_submit:
+            try:
+                tags = [tag.strip() for tag in memory_tags.split(",") if tag.strip()]
+                memory_store.add_memory(
+                    tenant, category=memory_category, content=memory_content, tags=tags,
+                    pinned=memory_pinned, consent=memory_consent,
+                )
+                st.success("Memory saved.")
+                st.rerun()
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+        for item in memory_store.list_memories(tenant):
+            with st.container(border=True):
+                st.write(f"**{item.category.title()}** · {item.content}")
+                st.caption(f"Tags: {', '.join(item.tags) or 'none'} · Saved: {item.created_at}")
+                if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
+                    memory_store.delete_memory(tenant, item.memory_id)
+                    st.rerun()
+
+    with memory_tabs[1]:
+        st.subheader("Knowledge collection and retrieval")
+        with st.form("knowledge_add_form", clear_on_submit=True):
+            knowledge_title = st.text_input("Document title", max_chars=200)
+            knowledge_content = st.text_area("Knowledge content", max_chars=100000)
+            knowledge_tags = st.text_input("Knowledge tags (comma separated)")
+            knowledge_consent = st.checkbox("I explicitly agree to save this knowledge document")
+            knowledge_submit = st.form_submit_button("Add knowledge")
+        if knowledge_submit:
+            try:
+                tags = [tag.strip() for tag in knowledge_tags.split(",") if tag.strip()]
+                memory_store.add_knowledge(
+                    tenant, title=knowledge_title, content=knowledge_content,
+                    tags=tags, consent=knowledge_consent,
+                )
+                st.success("Knowledge document saved.")
+                st.rerun()
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+        knowledge_query = st.text_input("Search saved memories and knowledge")
+        if knowledge_query.strip():
+            for result in memory_store.search(tenant, knowledge_query):
+                st.write(f"**{result['kind']} · {result['title']}**")
+                st.write(result["content"])
+                st.caption(f"Score: {result['score']} · Source: {result['source']}")
+
+    with memory_tabs[2]:
+        st.subheader("Short-term conversation continuity")
+        with st.form("conversation_turn_form", clear_on_submit=True):
+            conversation_id = st.text_input("Conversation ID", max_chars=120)
+            conversation_role = st.selectbox("Role", ["user", "assistant"])
+            conversation_content = st.text_area("Turn content", max_chars=20000)
+            conversation_consent = st.checkbox("I explicitly agree to save this turn")
+            conversation_submit = st.form_submit_button("Save turn")
+        if conversation_submit:
+            try:
+                memory_store.append_turn(
+                    tenant, conversation_id=conversation_id, role=conversation_role,
+                    content=conversation_content, consent=conversation_consent,
+                )
+                st.success("Conversation turn saved.")
+                st.rerun()
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+        context_id = st.text_input("Load conversation ID", key="load_conversation_id")
+        if context_id.strip():
+            for turn in memory_store.conversation_context(tenant, context_id):
+                st.write(f"**{turn.role.title()}** · {turn.content}")
+            if st.button("Delete this conversation history", key="delete_conversation_history"):
+                memory_store.delete_conversation(tenant, context_id)
+                st.rerun()
+
+    with memory_tabs[3]:
+        st.subheader("Saved preferences")
+        with st.form("preference_form", clear_on_submit=True):
+            preference_key = st.text_input("Preference name", max_chars=80)
+            preference_value = st.text_area("Preference value", max_chars=4000)
+            preference_consent = st.checkbox("I explicitly agree to save this preference")
+            preference_submit = st.form_submit_button("Save preference")
+        if preference_submit:
+            try:
+                memory_store.save_preference(
+                    tenant, key=preference_key, value=preference_value,
+                    consent=preference_consent,
+                )
+                st.success("Preference saved.")
+                st.rerun()
+            except (ValueError, PermissionError) as exc:
+                st.error(str(exc))
+        for key, value in memory_store.get_preferences(tenant).items():
+            st.write(f"**{key}:** {value}")
+            if st.button("Delete preference", key=f"delete_preference_{key}"):
+                memory_store.delete_preference(tenant, key)
+                st.rerun()
+
+    with memory_tabs[4]:
+        st.subheader("Task checkpoint recovery")
+        project_options = visible_projects()
+        if project_options:
+            with st.form("checkpoint_form", clear_on_submit=True):
+                checkpoint_project = st.selectbox(
+                    "Project", options=[p.project_id for p in project_options],
+                    format_func=lambda value: next(p.name for p in project_options if p.project_id == value),
+                )
+                checkpoint_label = st.text_input("Checkpoint label", max_chars=160)
+                checkpoint_summary = st.text_area("Completed work / current state", max_chars=10000)
+                checkpoint_next = st.text_area("Next action", max_chars=2000)
+                checkpoint_status = st.selectbox("Status", ["active", "blocked", "completed", "cancelled"])
+                checkpoint_consent = st.checkbox("I explicitly agree to save this checkpoint")
+                checkpoint_submit = st.form_submit_button("Save checkpoint")
+            if checkpoint_submit:
+                try:
+                    memory_store.save_checkpoint(
+                        tenant, project_id=checkpoint_project, label=checkpoint_label,
+                        summary=checkpoint_summary, next_action=checkpoint_next,
+                        status=checkpoint_status, consent=checkpoint_consent,
+                    )
+                    st.success("Checkpoint saved.")
+                    st.rerun()
+                except (ValueError, PermissionError) as exc:
+                    st.error(str(exc))
+            selected_checkpoint_project = st.selectbox(
+                "Recover latest checkpoint for project",
+                options=[p.project_id for p in project_options],
+                format_func=lambda value: next(p.name for p in project_options if p.project_id == value),
+                key="recover_checkpoint_project",
+            )
+            recovered = memory_store.latest_checkpoint(tenant, selected_checkpoint_project)
+            if recovered:
+                st.write(f"**{recovered.label} · {recovered.status}**")
+                st.write(recovered.summary)
+                st.info("Next action: " + recovered.next_action)
+            else:
+                st.caption("No checkpoint exists for this project yet.")
+        else:
+            st.caption("Create a project before saving a project checkpoint.")
