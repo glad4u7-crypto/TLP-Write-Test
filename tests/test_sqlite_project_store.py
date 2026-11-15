@@ -298,7 +298,8 @@ def test_concurrent_process_project_creates_are_all_persisted(tmp_path):
             if process.is_alive():
                 process.terminate()
             process.join(timeout=5)
-        ready_queue.close()
+        receive_connection.close()
+        send_connection.close()
         result_queue.close()
 
     project_ids = [value for _, value in results]
@@ -308,7 +309,7 @@ def test_concurrent_process_project_creates_are_all_persisted(tmp_path):
     assert len(projects) == 6
     assert {project.project_id for project in projects} == set(project_ids)
 
-def _crash_with_uncommitted_project(database_path, ready_queue):
+def _crash_with_uncommitted_project(database_path, ready_connection):
     import os
     import sqlite3
 
@@ -328,7 +329,7 @@ def _crash_with_uncommitted_project(database_path, ready_queue):
             "2026-11-15T00:00:00+00:00",
         ),
     )
-    ready_queue.put(True)
+    ready_connection.send(True)
     # Simulate abrupt process termination without commit, rollback, or close.
     os._exit(0)
 
@@ -339,14 +340,15 @@ def test_sqlite_recovers_uncommitted_project_after_process_crash(tmp_path, tenan
     committed = store.create(tenants[0], name="Committed project", description="keep")
 
     context = multiprocessing.get_context("spawn")
-    ready_queue = context.Queue()
+    receive_connection, send_connection = context.Pipe(duplex=False)
     process = context.Process(
         target=_crash_with_uncommitted_project,
-        args=(str(path), ready_queue),
+        args=(str(path), send_connection),
     )
     process.start()
     try:
-        assert ready_queue.get(timeout=30) is True
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
         process.join(timeout=30)
         assert not process.is_alive()
         assert process.exitcode == 0
