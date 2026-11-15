@@ -109,3 +109,45 @@ def test_logout_clears_all_identity_bound_state_immediately():
     clear_session_identity(state)
 
     assert state == {}
+
+
+
+def test_logout_invalidates_pre_logout_approval_receipt():
+    from core.approvals import ApprovalAuthority
+    from core.execution import ExecutionGateway
+    from core.session_security import clear_session_identity
+
+    calls = []
+    state = {
+        "active_identity_subject": "https://issuer.example\\nalice",
+        "approval_session_scope": "session-before-logout",
+    }
+    old_authority = ApprovalAuthority()
+    payload = {"path": "must-not-run.txt"}
+    stale_receipt = old_authority.issue(
+        "write_file", payload, session_scope=state["approval_session_scope"]
+    )
+    state["approval_authority"] = old_authority
+    state["execution_gateway"] = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data) or "written"},
+        approval_authority=old_authority,
+        session_scope=state["approval_session_scope"],
+    )
+
+    clear_session_identity(state)
+    assert state == {}
+
+    # A post-logout session receives fresh capabilities and a fresh scope.
+    bind_session_identity(state, "https://issuer.example\\nbob")
+    new_authority = ApprovalAuthority()
+    new_gateway = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data) or "written"},
+        approval_authority=new_authority,
+        session_scope="session-after-logout",
+    )
+    result = new_gateway.execute(
+        "write_file", payload, approval_receipt=stale_receipt
+    )
+
+    assert result.executed is False
+    assert calls == []
