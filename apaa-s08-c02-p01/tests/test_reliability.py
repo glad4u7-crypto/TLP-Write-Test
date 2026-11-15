@@ -54,4 +54,19 @@ class ReliabilityTests(unittest.TestCase):
     def test_result_validation_accepts_small_json(self):
         validate_result_size({"ok":True},100)
 
+    def test_worker_crash_after_claim_can_be_recovered_by_existing_lease_recovery(self):
+        from apaa_execution import StateStore, ExecutionEngine, Task
+        dbpath=os.path.join(self.tmp.name,"crash-recovery.db")
+        store=StateStore(dbpath)
+        engine=ExecutionEngine(store,worker_id="crash-worker",lease_seconds=1)
+        engine.set_policy("safe.read","v1",True)
+        task=Task.create("safe.read",{},permission_granted=True,user_consented=True)
+        engine.submit(task)
+        claimed=store.claim_next("crashed-process",1)
+        self.assertEqual(claimed["status"],"running")
+        recovered=store.recover_expired(now=claimed["lease_expires_at"]+1)
+        self.assertEqual(recovered,1)
+        self.assertEqual(store.get(task.task_id)["status"],"queued")
+        store.close()
+
 if __name__=="__main__":unittest.main()
