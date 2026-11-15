@@ -52,12 +52,26 @@ The GitHub job and step records show every step completed successfully. The prec
 | Payment, purchase, checkout, trading or money movement | PROHIBITED | Explicitly outside project permission scope; must remain denied. |
 | Paid providers, API keys and billable services | PROHIBITED / DISABLED | Current build remains zero-cost; no provider activation or charge. |
 
-## BG review conclusion
+## BP filesystem-path review and bounded remediation
 
-- The two existing CI workflows pass on implementation head 509799b3901d9e25fd539a7ffae507323e0d586c.
-- No new offline-verifiable code defect was demonstrated in the process-global lock/cache review. No speculative runtime change was made.
-- The two existing workflows are sufficient for this scope; no third workflow was created.
-- The code-level automated S04 gates are PASS within their stated test boundaries.
+The audit and SQLite stores previously retained relative filesystem paths. A process working-directory change after store construction could redirect later operations to a different relative location. This is a reproducible correctness and security-boundary weakness even without a symlink race.
+
+Remediation applied:
+- `JsonlAuditLog` now anchors its path with `Path(path).absolute()` at construction.
+- `SQLiteSecurityStore` and `SQLiteProjectStore` now anchor their database paths with `Path(database_path).absolute()` at construction.
+- Added regression tests that change the process working directory after construction and assert all later writes remain at the original absolute path.
+- Existing symlink rejection, owner-only directory checks, regular-file checks, and file permissions remain in place.
+
+Boundary retained:
+- This does not eliminate a time-of-check/time-of-use race if a hostile process with the same OS account can rename/replace parent directories between validation and the later file open/SQLite connection. Standard `sqlite3` opens by pathname; robust descriptor-relative control and OS sandboxing require platform-specific design and are not claimed here.
+- Do not claim protection against a same-UID hostile process. Production deployment still needs a dedicated OS account, private non-writable parent directories, and process/container isolation.
+
+## BP review conclusion
+
+- Relative-path working-directory drift was reduced with construction-time absolute path anchoring.
+- Regression coverage was added for JSONL audit, SQLite security nonce storage, and SQLite project storage.
+- Exact-head CI for the remediation commit is being evaluated; no PASS is claimed until both existing workflows finish.
+- No third workflow was created. No merge or deployment was performed.
 - Full S04 security/release readiness remains BLOCKED by live OIDC/browser verification, repository administration, deployment controls, production sandbox/isolation, and operational audit/backup requirements.
 
 ## Required operating constraints
@@ -66,4 +80,4 @@ PR #5 remains open and Draft. Keep base branch unchanged. Do not merge, deploy, 
 
 ## Next checkpoint
 
-APAA-S04-C01-P08-P09-BP: review filesystem path handling and same-account TOCTOU boundaries across JSONL and SQLite stores. Confirm which risks can be reduced safely in code and which require OS-level isolation; do not claim same-user hostile-process protection.
+APAA-S04-C01-P08-P09-BQ: inspect SQLite path revalidation and symlink/rename race boundaries, including connection lifecycle and sidecar handling. Only implement portable mitigations with regression tests; retain explicit OS-isolation blocks.
