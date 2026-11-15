@@ -146,10 +146,21 @@ class SQLiteSecurityStore:
     @staticmethod
     def _verify_audit_connection(connection: sqlite3.Connection) -> str:
         rows = connection.execute(
-            """SELECT timestamp, action, result, reason_code,
+            """SELECT sequence, timestamp, action, result, reason_code,
                       principal_fingerprint, request_id, previous_hash, entry_hash
                FROM durable_audit_events ORDER BY sequence"""
         ).fetchall()
+        # AUTOINCREMENT retains the high-water mark after row deletion. Comparing
+        # it with the final row detects accidental tail truncation, including
+        # deletion of every row. This is a consistency check, not a tamper-proof
+        # external anchor: an attacker able to rewrite the database can alter it.
+        sequence_row = connection.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'durable_audit_events'"
+        ).fetchone()
+        recorded_sequence = int(sequence_row["seq"]) if sequence_row is not None else 0
+        expected_sequence = int(rows[-1]["sequence"]) if rows else 0
+        if recorded_sequence != expected_sequence:
+            raise ValueError("SQLite audit sequence indicates missing tail entries.")
         previous_hash = "0" * 64
         for row in rows:
             event_data = {
