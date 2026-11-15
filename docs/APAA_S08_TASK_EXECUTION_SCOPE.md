@@ -1,9 +1,9 @@
 # APAA S08 — Task Execution Engine
 
 **Roadmap identity:** S08 Task Execution Engine, defined in the APAA Master Roadmap.
-**Working branch:** `feature/approval-ui-e2e-p06`
+**Working branch:** `apaa/s08-c02-c03-reliability`
 **Base:** `feature/agent-v0.3-zero-cost-core`
-**Current checkpoint:** `APAA-S08-C01-P01` — Task Lifecycle.
+**Current checkpoint:** `APAA-S08-C03-P03` — implementation added; exact-head CI verification pending.
 
 ## Scope
 
@@ -37,3 +37,53 @@ Implemented in `core/task_lifecycle.py`:
 - Unit tests: `tests/test_task_lifecycle.py`.
 - Existing CI workflows must pass on the exact final commit before P01 is marked verified.
 - S08 production readiness is not implied by completion of individual development Parts.
+
+
+## C02-P02 — Conditional Execution
+
+Implemented in `core/execution_control.py`:
+- Typed condition model with an explicit operator allowlist (equality, numeric comparisons, membership, contains, exists, truthy).
+- Bounded mapping-path resolution (maximum depth 8); missing paths resolve false except explicit exists checks.
+- Numeric comparisons reject booleans and non-numeric values.
+- No eval/exec, dynamic imports, or executable task-description parsing.
+- The decision object selects a branch; it does not itself authorize or dispatch an action.
+
+## C02-P03 — Multi-step Execution
+
+Implemented in `MultiStepExecutor`:
+- Linear plans bounded to 25 steps by default, unique bounded step IDs, mapping-only payloads.
+- Serial callback execution; callback must route every step through the trusted ExecutionGateway.
+- Fail-stop on false result or exception; later steps are not attempted after a failure.
+- No parallel fan-out, hidden handler registration, or automatic retry.
+
+## C03-P01 — Timeout
+
+Implemented in `ExecutionDeadline`:
+- Monotonic-clock deadline with a 1–300 second configured range.
+- Cooperative checks before dispatch and at trusted adapter checkpoints.
+- Expiry before dispatch is distinguishable from expiry after dispatch.
+- Python cannot safely terminate an in-flight handler. A post-dispatch timeout is marked uncertain and must not be blindly retried.
+
+## C03-P02 — Retry and Recovery
+
+Implemented in `SafeRetryPolicy`:
+- Retry is opt-in, bounded to at most three attempts, with bounded backoff.
+- Only explicit `RetryablePreDispatchError` may be retried.
+- `DispatchOutcomeUnknown` is never retried automatically.
+- This avoids duplicate mutations when the remote/local side effect may already have happened.
+
+## C03-P03 — Completion Verification
+
+Implemented in `CompletionVerifier`:
+- Compares expected and observed state through a trusted read-only verifier callback.
+- Callback exceptions and non-boolean results fail closed.
+- A completion report records verified/unverified status; verification does not mutate or repair state.
+
+## C02/C03 verification and integration boundary
+
+- Unit tests: `tests/test_execution_control.py`.
+- C02-P01 sequential runner is separately implemented in `core/sequential_executor.py`; its exact-head CI passed on commit `b0389b736bbfdc05941ea597812d0064cc6c5843`.
+- C02-P02 through C03-P03 are implemented on `apaa/s08-c02-c03-reliability`; their final CI status must be confirmed on the exact final branch head before marking PASS.
+- These are Python controller-level primitives, not yet connected to the Android client, dashboard, or production runtime.
+- The trusted ExecutionGateway remains the only authorized action-dispatch boundary. The multi-step adapter must use it.
+- No payment, purchase, trading, money movement, paid API/provider, API key, Auto-Run, deployment, or merge is enabled by this work.
