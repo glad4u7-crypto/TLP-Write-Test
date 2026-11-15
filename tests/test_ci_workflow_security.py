@@ -17,7 +17,7 @@ WORKFLOWS = (
 def test_all_external_workflow_actions_are_pinned_to_full_commit_shas():
     for workflow in WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
-        references = re.findall(r"^\\s*uses:\\s*([^\\s#]+)", source, re.MULTILINE)
+        references = re.findall(r"^\s*uses:\s*([^\s#]+)", source, re.MULTILINE)
         assert references, f"No actions found in {workflow.name}"
         for reference in references:
             action, separator, revision = reference.rpartition("@")
@@ -30,7 +30,7 @@ def test_workflows_have_read_only_permissions_and_no_pull_request_target():
     for workflow in WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
         assert re.search(
-            r"^permissions:\\s*\\n\\s+contents:\\s+read\\s*$",
+            r"^permissions:\s*\n\s+contents:\s+read\s*$",
             source,
             re.MULTILINE,
         ), f"{workflow.name} must declare contents: read only"
@@ -41,9 +41,9 @@ def test_workflows_have_read_only_permissions_and_no_pull_request_target():
 def test_workflows_bound_runtime_and_cancel_superseded_runs():
     for workflow in WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
-        assert re.search(r"^concurrency:\\s*$", source, re.MULTILINE)
+        assert re.search(r"^concurrency:\s*$", source, re.MULTILINE)
         assert "cancel-in-progress: true" in source
-        assert re.search(r"^\\s+timeout-minutes:\\s+(15|20)\\s*$", source, re.MULTILINE)
+        assert re.search(r"^\s+timeout-minutes:\s+(15|20)\s*$", source, re.MULTILINE)
 
 
 def test_dependabot_checks_pip_and_github_actions_weekly_without_auto_merge():
