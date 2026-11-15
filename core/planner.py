@@ -73,14 +73,25 @@ class TaskPlan:
             raise ValueError("Unsupported task plan schema version.")
         if not isinstance(self.plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", self.plan_id) is None:
             raise ValueError("Task plan ID must use the stable plan-<16 hex> format.")
-        if not isinstance(self.task_description, str) or not self.task_description.strip():
-            raise ValueError("Task plan description must be non-empty text.")
+        if (
+            not isinstance(self.task_description, str)
+            or not self.task_description.strip()
+            or len(self.task_description) > MAX_TASK_LENGTH
+            or " ".join(self.task_description.split()) != self.task_description
+        ):
+            raise ValueError("Task plan description must be normalized non-empty text within the input limit.")
+        expected_id = "plan-" + hashlib.sha256(
+            self.task_description.encode("utf-8")
+        ).hexdigest()[:16]
+        if self.plan_id != expected_id:
+            raise ValueError("Task plan ID must match its normalized task description.")
         if not isinstance(self.status, PlanStatus):
             raise ValueError("Task plan status must be a known PlanStatus.")
         if not isinstance(self.steps, tuple) or any(not isinstance(step, PlanStep) for step in self.steps):
             raise ValueError("Task plan steps must be a tuple of PlanStep objects.")
-        if len({step.step_id for step in self.steps}) != len(self.steps):
-            raise ValueError("Task plan step IDs must be unique.")
+        expected_step_ids = tuple(f"step-{index:02d}" for index in range(1, len(self.steps) + 1))
+        if tuple(step.step_id for step in self.steps) != expected_step_ids:
+            raise ValueError("Task plan step IDs must be unique and sequential.")
         for field_name in ("clarification_questions", "assumptions", "safety_notes"):
             values = getattr(self, field_name)
             if not isinstance(values, tuple) or any(
