@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from typing import Any
@@ -48,7 +49,6 @@ class ApprovalAuthority:
     def _canonical_action(action: str) -> str:
         if not isinstance(action, str):
             return ""
-        import re
         return re.sub(r"[^a-z0-9]+", "_", action.strip().lower()).strip("_")
 
     def _message(
@@ -73,7 +73,7 @@ class ApprovalAuthority:
         decision = authorize_action(canonical, approved_action=canonical)
         if not decision.allowed:
             raise PermissionError("This action is not eligible for approval.")
-        if not isinstance(ttl_seconds, int) or not 1 <= ttl_seconds <= 300:
+        if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 300:
             raise ValueError("Approval expiry must be between 1 and 300 seconds.")
 
         digest = _payload_digest(payload)
@@ -100,7 +100,7 @@ class ApprovalAuthority:
             return False
         if not isinstance(payload, (Mapping, type(None))):
             return False
-        if int(time.time()) > receipt.expires_at:
+        if int(time.time()) >= receipt.expires_at:
             return False
         try:
             digest = _payload_digest(payload)
