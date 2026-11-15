@@ -87,15 +87,19 @@ def test_multistep_executor_runs_ordered_steps_and_skips_false_condition():
 
 def test_multistep_stops_after_first_failed_action():
     calls = []
+    authority = ApprovalAuthority()
     gateway = ExecutionGateway({
         "inspect_repository": lambda payload: calls.append(payload["n"]) or "ok"
-    })
+    }, approval_authority=authority)
     plan = TaskPlan("stop-on-failure", (
         TaskStep("first", "inspect_repository", {"n": 1}),
         TaskStep("bad", "write_file", {"path": "x"}),
         TaskStep("never", "inspect_repository", {"n": 3}),
     ))
-    result = MultiStepTaskExecutor(gateway).run(plan, condition_context={})
+    result = MultiStepTaskExecutor(gateway).run(
+        plan, condition_context={},
+        request_approval=lambda _plan, action, payload, _tenant: authority.issue(action, payload),
+    )
     assert result.status == "failed"
     assert [step.status for step in result.steps] == ["succeeded", "failed"]
     assert calls == [1]
