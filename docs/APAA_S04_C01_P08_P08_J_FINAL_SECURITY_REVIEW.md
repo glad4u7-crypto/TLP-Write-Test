@@ -199,3 +199,37 @@ All current literal Streamlit session-state keys are covered by identity cleanup
 ### Next serial checkpoint
 
 P08-P09-BM: continue the offline review of state-bearing callbacks and approval/session capability references outside \`app.py\`. Verify that no callback, controller or storage object caches an identity-bound capability beyond the Streamlit session cleanup lifecycle. Add a focused test only if a concrete stale-reference path is demonstrated.
+
+
+## P08-P09-BM — State-bearing callback and capability-reference lifecycle
+
+Review date: 2026-11-15  
+Reviewed code head: \`6075f38b825ada059cb477be552bb9736c13c1a5\`
+
+### Findings
+
+- \`build_project_gateway\` creates a per-session gateway whose registered project handler closes over the active registry and validated owner identity. The gateway also retains its approval authority, audit backend and session scope.
+- In authenticated mode, the persistent project registry retains the active \`TenantKey\` and SQLite store. These objects are stored through the Streamlit session registry/gateway references rather than in a separate global cache.
+- The approval authority, execution gateway, gateway owner marker, project registry and registry tenant marker are all in the central identity cleanup tuple. Logout and identity transition remove these references. The local callback functions are recreated during app reruns; no module-level cache or global singleton retaining a Principal, TenantKey, registry, approval authority or gateway was found in the reviewed path.
+- The logout callback clears session identity state before calling \`st.logout()\`. Re-authentication binds a new structured identity marker and creates fresh session-scoped capabilities.
+- One remaining inconsistent marker was found during this review: \`execution_gateway_owner\` still used the old delimiter-concatenated issuer/subject string even after the main session marker had been made collision-safe. Updated it to reuse the canonical \`session_identity\` value so both identity-bound markers use the same unambiguous representation.
+- No additional stale capability reference outside the session cleanup lifecycle was demonstrated. This review does not establish isolation against hostile Python executing in the same process.
+
+### Exact-head CI verification
+
+Reviewed code head: \`6075f38b825ada059cb477be552bb9736c13c1a5\`
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | \`43697006038\` | PASS | 385 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | \`43697006010\` | PASS | 385 tests passed; demo output exactly \`Hello TradeLab Pro\` |
+
+Both workflows passed on the exact reviewed code head.
+
+### Decision
+
+The reviewed session-scoped capability references are cleared by the identity lifecycle; the gateway owner marker now uses the same collision-safe identity key. Automated verification passed. Full S04 release readiness remains BLOCKED by live OIDC/browser, deployment and repository-administration requirements. PR #5 remains open and Draft. Do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BN: inspect tenant-bound persistent project and SQLite audit-store lifecycle for retained connections, caches or session-independent references that could survive logout or identity switching. Verify actual object ownership and cleanup behavior; do not add cleanup that would close a shared store still in use by another session.
