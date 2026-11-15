@@ -2,7 +2,7 @@
 
 The SHA-256 chain detects accidental edits, truncation, reordering, and corruption.
 It is not cryptographic protection against an attacker who can rewrite the file
-and recompute the chain. Production needs protected storage and access controls.
+and recompute hashes. Production needs protected storage and access controls.
 """
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -11,6 +11,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import stat
 import threading
 from typing import Any
 
@@ -55,13 +56,22 @@ class JsonlAuditLog:
         ).encode("utf-8")
         return hashlib.sha256(canonical).hexdigest()
 
+    def _open_existing_readonly(self) -> int:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(self.path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            raise AuditIntegrityError("Audit log target must be a regular file.")
+        return descriptor
+
     def verify(self) -> str:
         """Verify every line and return the last entry hash."""
-        if not self.path.exists():
+        if not self.path.exists() and not self.path.is_symlink():
             return self.GENESIS
         previous_hash = self.GENESIS
         try:
-            with self.path.open("r", encoding="utf-8") as stream:
+            descriptor = self._open_existing_readonly()
+            with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
                 for line_number, line in enumerate(stream, start=1):
                     record = json.loads(line)
                     if not isinstance(record, dict):
@@ -79,8 +89,10 @@ class JsonlAuditLog:
                     ):
                         raise AuditIntegrityError(f"Hash mismatch at line {line_number}.")
                     previous_hash = stored_hash
+        except AuditIntegrityError:
+            raise
         except (OSError, json.JSONDecodeError) as exc:
-            raise AuditIntegrityError("Audit log cannot be read or parsed.") from exc
+            raise AuditIntegrityError("Audit log cannot be read, opened safely, or parsed.") from exc
         return previous_hash
 
     def append(self, event: ExecutionAuditEvent) -> str:
@@ -96,12 +108,22 @@ class JsonlAuditLog:
                 "event": event_data,
                 "entry_hash": entry_hash,
             }
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            descriptor = os.open(
-                self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            flags = (
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND
+                | getattr(os, "O_NOFOLLOW", 0)
             )
-            with os.fdopen(descriptor, "a", encoding="utf-8") as stream:
-                stream.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
+            descriptor = os.open(self.path, flags, 0o600)
+            try:
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise AuditIntegrityError("Audit log target must be a regular file.")
+                os.fchmod(descriptor, 0o600)
+                with os.fdopen(descriptor, "a", encoding="utf-8") as stream:
+                    descriptor = -1
+                    stream.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
             return entry_hash
