@@ -83,7 +83,9 @@ class ExecutionGateway:
             return event, True
         try:
             self._audit_log.append(event)
-        except (OSError, ValueError, TypeError):
+        except Exception:
+            # Any backend failure must fail closed before a side effect.
+            # Keep the gateway independent of a specific audit backend type.
             return event, False
         return event, True
 
