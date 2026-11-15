@@ -8,6 +8,7 @@ APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
 def _app(tmp_path, monkeypatch):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     return AppTest.from_file(str(APP_PATH), default_timeout=15).run()
 
