@@ -1,7 +1,7 @@
 # APAA S05 — Approved Scope and Implementation Record: Task Intake and Deterministic Planning Contract
 
 **Checkpoint:** APAA-S05-C01-P07  
-**Status:** IMPLEMENTED — CODE CI PASS; LATEST DOC-ONLY HEAD CI PENDING  
+**Status:** IMPLEMENTED — EXACT-HEAD CI PASS; FINAL RECORD UPDATE UNDER VERIFICATION  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
 **Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
@@ -140,3 +140,13 @@ The user explicitly approved this scope on 2026-11-15. Implementation was confin
 - S04 operational blockers BY-01…BY-07 remain open; this S05 result does not establish production readiness.
 
 **S05 disposition:** implementation **PASS**; latest documentation-only head verification **PENDING**. Do not mark final documentation closure complete until both existing workflows pass on the current head.
+
+### Exact-head verification for reconciled S05 documentation
+
+The S05 scope and verification matrix were reconciled on commit `79f830ebe3c0bc6e29536c613c6aec279a9cf071`. Both existing workflows completed successfully on that exact head:
+
+- Agent Foundation CI #627 / run `43707377611`: **PASS**; dependency install, pip-audit, compileall, foundation tests and all post steps passed.
+- Python Demo CI #718 / run `43707377613`: **PASS**; dependency install, full pytest suite, demo smoke test and all post steps passed.
+- All individual job steps were re-fetched and confirmed completed/success.
+
+A final documentation-only record update follows these runs. Its own exact-head CI must be verified separately; no self-referential CI claim is made here.
