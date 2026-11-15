@@ -10,31 +10,21 @@ class SafetyDecision:
     reason: str
 
 
-# Read-only prefixes are safe only after financial/provider markers are checked.
-_READ_ONLY_ACTIONS = {"read", "inspect", "plan", "summarize"}
-_READ_ONLY_PREFIXES = ("read_", "inspect_", "plan_", "summarize_")
-
-# Only known mutation identifiers can ever be approved. Add entries only after
-# reviewing the action's implementation and side effects.
-_APPROVABLE_MUTATIONS = {
-    "create_project",
-    "update_project",
-    "delete_project",
-    "write_file",
-    "edit_file",
-    "delete_file",
-    "create_folder",
-    "rename_file",
-    "move_file",
-    "create_draft_email",
-    "send_email",
-    "send_message",
-    "publish_post",
-    "create_playlist",
-    "add_video_to_playlist",
+# Exact read-only identifiers only. Do not allow arbitrary read_* names.
+_READ_ONLY_ACTIONS = {
+    "read", "inspect", "plan", "summarize",
+    "read_invoice", "inspect_repository", "summarize_report",
 }
 
-# These action concepts are forbidden in this zero-cost, no-payment build.
+# Only reviewed mutations may be approved or added to Auto-Run.
+_APPROVABLE_MUTATIONS = {
+    "create_project", "update_project", "delete_project",
+    "write_file", "edit_file", "delete_file", "create_folder",
+    "rename_file", "move_file", "create_draft_email",
+    "send_email", "send_message", "publish_post",
+    "create_playlist", "add_video_to_playlist",
+}
+
 _BLOCKED_TOKENS = {
     "pay", "payment", "purchase", "buy", "checkout", "billing", "recharge",
     "charge", "donate", "subscription", "subscribe", "paid", "premium",
@@ -63,10 +53,6 @@ def _contains_blocked_marker(normalized: str) -> bool:
     )
 
 
-def _is_read_only(normalized: str) -> bool:
-    return normalized in _READ_ONLY_ACTIONS or normalized.startswith(_READ_ONLY_PREFIXES)
-
-
 def authorize_action(
     action: str,
     approved_action: str | None = None,
@@ -74,11 +60,11 @@ def authorize_action(
     auto_run: bool = False,
     auto_run_actions: Iterable[str] = (),
 ) -> SafetyDecision:
-    """Authorize read-only work or a registered mutation with exact approval.
+    """Authorize exact known actions; deny unknown and prohibited actions.
 
-    Default is Ask First: every mutation needs approval naming the exact action.
-    Auto-Run is opt-in and limited to exact, preconfigured action identifiers.
-    Unknown actions and payment/provider actions fail closed in every mode.
+    Default is Ask First. Auto-Run is opt-in and restricted to exact,
+    preconfigured mutation identifiers. Financial/provider actions are
+    blocked before either approval mechanism is considered.
     """
     normalized = _normalize(action)
     if not normalized:
@@ -87,7 +73,7 @@ def authorize_action(
     if _contains_blocked_marker(normalized):
         return SafetyDecision(False, "Payment, financial transactions, paid services, and external provider calls are disabled.")
 
-    if _is_read_only(normalized):
+    if normalized in _READ_ONLY_ACTIONS:
         return SafetyDecision(True, "Read-only action is allowed.")
 
     if normalized not in _APPROVABLE_MUTATIONS:
