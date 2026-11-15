@@ -343,3 +343,43 @@ PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `featur
 ### Next serial work
 
 Continue with the next offline-verifiable authenticated-runtime failure-path case, prioritizing stable signing-secret validation and durable project/security-store initialization failures. Keep changes focused, test each failure mode, and verify all four CI runs before advancing. The live two-identity OIDC/browser matrix remains pending a private test deployment and two controlled non-production identities.
+
+
+## P08-P09-AR — Authenticated runtime signing-secret and SQLite path fail-closed regressions
+
+Verification date: 2026-11-15  
+Reviewed PR head: `45c9d4c65a9f302d5144ed097139879b8037123f`
+
+### Work completed
+
+- Extended the existing `tests/test_app_smoke.py` AppTest coverage for authenticated runtime initialization failures; no new files and no runtime implementation changes were required.
+- Added a test proving an authenticated session with an approval signing secret shorter than the required 32 decoded bytes stops with a durable-security-configuration error.
+- Added a test proving a symlinked security-database parent path is rejected before the application exposes project/task actions; the external sentinel file remains unchanged.
+- Both failure tests explicitly permit the Logout control, which is rendered before durable-store initialization. They assert that Logout is the only button remaining after the fail-closed stop.
+- The first test assertion incorrectly expected zero buttons and failed because the safe Logout control is intentionally rendered before storage initialization. The failure was reviewed from the CI log and the assertions were corrected to require exactly the Logout button. The corrected code is the only version accepted below.
+
+### Current-head CI evidence
+
+All four required GitHub Actions runs completed successfully for the exact reviewed commit:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43690554699 | PASS |
+| Agent Foundation CI | push | 43690554702 | PASS |
+| Python Demo CI | pull_request | 43690558817 | PASS |
+| Agent Foundation CI | pull_request | 43690558826 | PASS |
+
+Verified steps:
+- Python Demo CI: dependency installation, full pytest suite, and `demo.py` smoke test.
+- Agent Foundation CI: dependency installation, `pip-audit`, module compilation, and foundation test suite.
+- The dependency audit reported no known vulnerabilities.
+
+### Scope and release status
+
+These tests verify the local AppTest behavior for a short signing secret and an unsafe SQLite security database path. They do not prove real deployment secret-manager configuration, live OIDC redirects, browser cookie/session controls, CSRF resistance, multi-identity isolation, or protection from same-account filesystem races. Project-database initialization failure remains a separate failure-path case for subsequent review.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Continue with the authenticated project-database initialization failure path and confirm that no project/task actions are exposed if the security store initializes but the project store cannot. Then reassess the authenticated runtime's partial-initialization and session-state behavior. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
