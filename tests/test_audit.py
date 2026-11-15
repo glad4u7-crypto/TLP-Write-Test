@@ -185,3 +185,18 @@ def test_jsonl_audit_rejects_parent_directory_symlink_replacement_after_init(tmp
     with pytest.raises(AuditIntegrityError, match="parent path.*symlinks"):
         log.append(create_audit_event("after.rename", False, "must reject"))
     assert len((moved_parent / "events.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_jsonl_audit_log_fails_closed_on_truncated_trailing_record(tmp_path):
+    path = tmp_path / "events.jsonl"
+    log = JsonlAuditLog(path)
+    log.append(create_audit_event("before.crash", False, "complete record"))
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write('{"event":{"action":"partial')
+        stream.flush()
+        os.fsync(stream.fileno())
+
+    with pytest.raises(AuditIntegrityError, match="cannot be read|parsed"):
+        log.verify()
+    with pytest.raises(AuditIntegrityError):
+        log.append(create_audit_event("after.crash", False, "must not append"))
