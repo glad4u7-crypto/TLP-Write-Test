@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import binascii
-import hashlib
 import ipaddress
 import json
 import re
@@ -56,6 +55,7 @@ class VerifiedFirewallEvidence:
     network_namespace_inode: int
     interface: str
     backend: str
+    default_egress_policy: str
     observed_at: int
     ruleset_digest: str
     allowed_proxy_addresses: tuple[str, ...]
@@ -171,6 +171,8 @@ def _verify_firewall(
             raise InspectorEvidenceError("Firewall rule has missing or unknown fields.")
         if rule["protocol"] != "tcp":
             raise InspectorEvidenceError("Only TCP egress to the proxy is permitted.")
+        if type(rule["destination_ip"]) is not str:
+            raise InspectorEvidenceError("Firewall destination IP must be text.")
         try:
             address = ipaddress.ip_address(rule["destination_ip"])
         except (ValueError, TypeError) as exc:
@@ -192,6 +194,7 @@ def _verify_firewall(
         network_namespace_inode=inode,
         interface=interface,
         backend="nftables",
+        default_egress_policy="drop",
         observed_at=timestamp,
         ruleset_digest=ruleset_digest,
         allowed_proxy_addresses=proxy_addresses,
