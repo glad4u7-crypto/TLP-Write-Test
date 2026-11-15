@@ -299,3 +299,37 @@ Final verification-matrix commit: de4dcb54f02679421c5e07407ffd13b9cbbb1c2c
 | Python Demo CI | [43715954510](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715954510) | [43715966694](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715966694) | PASS — 651 tests on each commit; demo smoke printed Hello TradeLab Pro; all steps succeeded |
 
 All four workflow jobs and every listed step were re-fetched and reported success. The P07 implementation and final verification-matrix commits were both tested by both existing workflows.
+
+## P08 implementation checkpoint — real Linux host inspector adapter
+
+**Checkpoint:** APAA-S07-C01-P08  
+**Implementation:** core/linux_host_inspector.py  
+**Tests:** tests/test_linux_host_inspector.py  
+**Detailed contract:** docs/APAA_S07_REAL_HOST_INSPECTOR_P08.md  
+**CI:** PENDING exact final commit verification
+
+| Area | P08 evidence | Status |
+|---|---|---|
+| Concrete host adapter | LinuxHostInspectorAdapter implements the P07 HostSnapshotSource read contract | IMPLEMENTED — UNIT TESTS ADDED |
+| Runtime identity/PID mapping | Supplied only by a separately trusted runtime integration; no container discovery | EXTERNAL TRUST REQUIREMENT |
+| Namespace identity | Read-only procfs namespace inode and interface observation; exactly one non-loopback interface required | IMPLEMENTED — SYNTHETIC PROCFS TESTS |
+| Effective nftables observation | Fixed nsenter + nft -j list ruleset argument vector in target netns | IMPLEMENTED — MOCKED SUBPROCESS TESTS |
+| Command safety | shell=False, fixed executable paths/arguments, no stdin, minimal environment, closed FDs, 5s timeout, 1 MiB output cap | IMPLEMENTED — TESTS ADDED |
+| Namespace TOCTOU | Namespace inode checked before and after nftables read | IMPLEMENTED — UNIT TEST ADDED |
+| Failure handling | Missing binaries, invalid PID, ambiguous interfaces, command failure, timeout and oversized output fail closed | IMPLEMENTED — UNIT TESTS ADDED |
+| Secret minimization | No command line, process environment, credentials, home directory, cookies or tokens read | CODE REVIEW REQUIRED |
+| Ed25519 signing | Reuses P07 collector and P06 envelope; key supplied by trusted caller | EXISTING P06/P07 PATH |
+| One-time challenge replay prevention | P06 verifier is stateless; durable issue/consume remains control-plane responsibility | NOT IMPLEMENTED IN P08 |
+| Key custody / rotation | Out-of-band protected signing key and trusted public-key registry | EXTERNAL RELEASE GATE |
+| Live host acceptance | Dedicated Linux host + real namespace + unprivileged account | NOT RUN |
+| Packet-level egress/DNS proof | Independent IPv4/IPv6, UDP/QUIC, DNS, routing and forwarding tests | NOT RUN |
+| Deployment/firewall/browser | No deployment, firewall mutation, worker start or browser activation | NOT PERFORMED |
+| Existing CI workflows | Both existing workflows must pass on the exact P08 verification-record commit | PENDING |
+
+### P08 interpretation and exit gate
+
+P08 adds a concrete Linux adapter, but it does not make the host trustworthy by itself. The runtime integration must authenticate the runtime/worker-to-PID mapping. The adapter executes only a fixed read-only nftables listing command without a shell or privilege escalation. Namespace inode checks reduce ordinary PID/namespace replacement races but are not a substitute for independent runtime lifecycle review. The resulting snapshot still passes through the P07 parser and P06 signature verifier.
+
+Unit tests use synthetic procfs and mocked process execution. They do not count as live host evidence. Durable one-time challenge consumption, out-of-band key custody, live host acceptance and packet-level enforcement remain release blockers.
+
+**P08 disposition:** CONCRETE READ-ONLY LINUX ADAPTER + DETERMINISTIC UNIT TESTS ADDED. CI AND INDEPENDENT HOST ACCEPTANCE PENDING. No new workflow; no deployment, firewall changes, worker start or browser activation. PR #5 remains Open + Draft + unmerged.
