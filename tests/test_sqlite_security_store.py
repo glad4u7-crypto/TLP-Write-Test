@@ -236,3 +236,24 @@ def test_security_sqlite_wal_sidecars_have_owner_only_permissions(tmp_path):
     finally:
         connection.rollback()
         connection.close()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX file permissions required")
+def test_security_sqlite_rollback_journal_has_owner_only_permissions(tmp_path):
+    import os
+
+    path = tmp_path / "rollback-journal.sqlite3"
+    store = SQLiteSecurityStore(path)
+    connection = store._connect()
+    try:
+        assert connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0].lower() == "delete"
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("CREATE TABLE rollback_journal_permission_probe (value TEXT)")
+
+        journal = path.with_name(path.name + "-journal")
+        assert journal.exists()
+        assert journal.stat().st_mode & 0o777 == 0o600
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        connection.rollback()
+        connection.close()
