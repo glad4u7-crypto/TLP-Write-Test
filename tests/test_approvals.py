@@ -130,6 +130,7 @@ def test_durable_nonce_store_requires_tenant_and_persists_replay_across_authorit
 
 
 def test_durable_nonce_mode_fails_closed_without_validated_tenant(tmp_path):
+    from core.storage import TenantKey
     from core.sqlite_security_store import SQLiteSecurityStore
 
     authority = ApprovalAuthority(
