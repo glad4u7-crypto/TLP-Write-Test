@@ -12,7 +12,7 @@ from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied
-from core.session_security import bind_session_identity
+from core.session_security import bind_session_identity, clear_session_identity
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 
@@ -49,7 +49,11 @@ if auth_required:
         st.error(f"Authentication could not be verified: {exc}")
         st.stop()
     st.sidebar.success(f"Signed in · {principal.subject}")
-    st.sidebar.button("Log out", on_click=st.logout)
+    def _logout_and_clear_session_state():
+        clear_session_identity(st.session_state)
+        st.logout()
+
+    st.sidebar.button("Log out", on_click=_logout_and_clear_session_state)
 else:
     principal = None
     st.warning(
