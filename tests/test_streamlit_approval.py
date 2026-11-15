@@ -92,6 +92,7 @@ def test_task_text_cannot_trigger_project_creation_or_issue_approval(
 
     # The task planner may prepare text, but it is not the trusted UI Confirm event.
     app.text_area[1].set_value("Create a project called Unauthorized")
+    app.run()
     _click(app, "Prepare free plan")
 
     assert registry.list_projects() == []
