@@ -265,6 +265,6 @@ def test_verification_is_offline_and_has_no_process_or_socket_side_effects(monke
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     spec = build_worker_launch_spec(profile())
     envelope, keys = signed_envelope(spec)
-    assert verify(envelope, keys).firewall.default_egress_policy if hasattr(
-        verify(envelope, keys).firewall, "default_egress_policy"
-    ) else verify(envelope, keys).firewall.backend == "nftables"
+    result = verify(envelope, keys)
+    assert result.firewall.default_egress_policy == "drop"
+    assert result.firewall.backend == "nftables"
