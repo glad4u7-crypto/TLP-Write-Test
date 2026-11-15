@@ -21,9 +21,8 @@ class ToolSpec:
                 raise ValueError(f"{field_name} must not be empty.")
         if self.enabled:
             raise ValueError("Tool execution cannot be enabled in this registry.")
-        if self.read_only and self.requires_approval:
-            # Conservative default is acceptable; approval may still be required.
-            return
+        if self.category != self.category.strip().lower():
+            raise ValueError("category must be a lowercase identifier.")
 
 
 class ToolRegistry:
