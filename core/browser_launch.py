@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from core.runtime_support import require_browser_runtime
+
 
 MIN_LAUNCH_TIMEOUT_MS = 1_000
 MAX_LAUNCH_TIMEOUT_MS = 60_000
@@ -102,6 +104,11 @@ class PlaywrightBrowserLauncher:
         self._playwright_factory = playwright_factory
 
     def launch(self) -> BrowserSession:
+        try:
+            require_browser_runtime()
+        except RuntimeError as exc:
+            raise BrowserLaunchError(str(exc)) from exc
+
         factory = self._playwright_factory
         if factory is None:
             try:
