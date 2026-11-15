@@ -20,7 +20,7 @@ class SQLiteProjectStore:
     """SQLite implementation of ProjectStore with strict tenant predicates."""
 
     def __init__(self, database_path: str | Path, *, timeout: float = 10.0) -> None:
-        self._database_path = str(database_path)
+        self._database_path = str(Path(database_path).absolute())
         self._timeout = timeout
         if self._database_path == ":memory:":
             raise ValueError("SQLiteProjectStore requires a filesystem-backed database path; :memory: is unsupported.")
