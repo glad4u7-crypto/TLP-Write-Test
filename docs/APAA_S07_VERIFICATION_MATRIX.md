@@ -21,6 +21,8 @@
 | Secret-safe audit | Canary credentials absent from logs; durable intent before mutation | DESIGN |
 | Failure handling | Fail closed on audit, policy, auth, worker or egress failure | DESIGN |
 | Prohibited action boundary | Payment/purchase/checkout/trading/money movement always denied | DESIGN |
+| Typed browser job/action/result contract | Schema strictness, unknown action rejection, approval digest binding, job expiry and replay tests | DESIGN |
+| Mobile approval UX | Exact origin/action preview, no preselected consent, cancellation and stale-state invalidation | DESIGN |
 | CI | Existing Agent Foundation CI and Python Demo CI on exact final documentation commit | PENDING |
 | Real deployment review | Independent review of browser binary, container, OS identity, egress firewall and incident handling | NOT STARTED |
 | Android compatibility | Browser-based mobile UI and real-device usability test; no native control claim | NOT STARTED |
@@ -36,3 +38,11 @@
 - Separate user authorization for a narrowly scoped implementation checkpoint.
 
 **Important:** S07-C01-P01 does not pass browser security tests because no browser runtime exists yet.
+
+
+## Additional design deliverables
+
+- `APAA_S07_BROWSER_ACTION_CONTRACT.md`: job envelope, closed action types, locator rules, approval digest and worker result contract.
+- `APAA_S07_MOBILE_APPROVAL_UX.md`: mobile-first review card, one-action approval, cancellation, accessibility and Android boundary.
+
+These are specifications only. No schema validator, UI screen or browser worker is implemented.
