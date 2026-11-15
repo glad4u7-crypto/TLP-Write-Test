@@ -1,13 +1,13 @@
 # APAA S08 — Task Execution Verification Matrix
 
 **Current subject:** Task Execution Engine
-**Current checkpoint:** APAA-S08-C01-P03
+**Current checkpoint:** APAA-S08-C02-P01
 
 | Checkpoint | Scope | Implementation | Tests | Status |
 |---|---|---|---|---|
 | S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | PASS — 709 tests; exact-head CI PASS |
 | S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | PASS — exact code snapshot CI PASS |
-| S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | IMPLEMENTED — exact-head CI pending |
+| S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | PASS — exact code snapshot CI PASS |
 | S08-C02-P01 | Sequential execution | Not started | Pending | PENDING |
 | S08-C02-P02 | Conditional execution | Not started | Pending | PENDING |
 | S08-C02-P03 | Multi-step execution | Not started | Pending | PENDING |
@@ -80,3 +80,15 @@ P02 is verified at repository CI level. Queue remains an in-memory ordering prim
 - Reopen/recovery, tenant isolation, consent, stale-write conflict, transaction rollback, concurrent writers and invalid content covered in `tests/test_task_state_store.py`.
 - Adapter is not yet wired into lifecycle/controller or Android UI. It does not execute tasks or authorize actions.
 - Code-bearing latest branch commit: `62ac59a968704dc99a3e05518739a4d345135c7e`; exact-head CI results must be checked before P03 can be marked PASS.
+
+
+## P03 exact-head verification
+
+**Code-bearing snapshot:** `62ac59a968704dc99a3e05518739a4d345135c7e`
+
+| Existing workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [43727490665](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43727490665) | PASS — dependency audit, compile and foundation test suite passed |
+| Python Demo CI | [43727490670](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43727490670) | PASS — full test suite and demo smoke passed |
+
+P03 is verified for the SQLite persistence adapter and its unit-test contract. It is not yet integrated into the runtime lifecycle/controller, Streamlit application, or native Android client. Those integration and platform checks remain open; P03 PASS does not imply production readiness.
