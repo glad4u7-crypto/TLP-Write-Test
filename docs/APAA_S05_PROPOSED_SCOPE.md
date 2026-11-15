@@ -1,10 +1,10 @@
-# APAA S05 — Proposed Scope: Task Intake and Deterministic Planning Contract
+# APAA S05 — Approved Scope and Implementation Record: Task Intake and Deterministic Planning Contract
 
 **Checkpoint:** APAA-S05-C01-P01  
-**Status:** PROPOSAL ONLY — NOT APPROVED FOR IMPLEMENTATION  
+**Status:** USER APPROVED — IMPLEMENTATION IN PROGRESS  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
-**Baseline:** PR #5, head c0f488f303971881f42bda504c22b898e09e954a
+**Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
 
 ## 1. Why this proposal exists
 
@@ -108,7 +108,7 @@ This document is a proposal, not authorization to implement S05. The next decisi
 
 Until scope approval, do not change runtime code or enable any new capability.
 
-## 9. Carried-forward non-negotiable safety constraints
+## 9. Implementation record\n\n### Implemented in this work batch (pending exact-head CI)\n- Added `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus` and `StepCategory` typed contract objects.\n- Added deterministic task intake validation: text-only input, empty/control-character rejection, 4,000-character bound and whitespace normalization.\n- Added deterministic plan IDs and stable four-step planning output.\n- Added clarification responses for a small, explicit set of deictic/underspecified requests.\n- Added conservative blocked-plan handling for detected prohibited financial/trading/purchase/provider intent.\n- Added mutation-proposal labelling; a plan cannot issue an approval receipt or dispatch an action.\n- Preserved the legacy `create_plan` four-string API for compatibility.\n- Added focused contract tests for determinism, serialization, input validation, clarification, blocked intents and mutation labelling.\n\n### Verification status\n- Code and tests committed to the feature branch.\n- Agent Foundation CI and Python Demo CI must both complete successfully on the exact final head; until then, implementation is not marked PASS.\n\n## 10. Carried-forward non-negotiable safety constraints
 
 - Zero-cost/offline default; no paid provider, API key or billable service.
 - Auto-Run OFF; approval must remain explicit and action-specific.
