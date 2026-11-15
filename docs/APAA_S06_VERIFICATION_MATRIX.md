@@ -1,7 +1,7 @@
 # APAA S06 — Structured Task Workspace Verification Matrix
 
 **Checkpoint:** APAA-S06-C01-P03  
-**Status:** COMPLETE — FINAL DOCUMENTATION-HEAD CI PASS  
+**Status:** IMPLEMENTATION PASS; FINAL RECORD-ONLY COMMIT CI PENDING  
 **Branch:** `feature/approval-ui-e2e-p06`  
 **PR:** #5 (Draft, unmerged)  
 **Scope approval:** User instructed to begin S06 on 2026-11-15
@@ -59,6 +59,6 @@ The reconciled S06 scope and matrix were tested on exact PR head `c17da8588c7dec
 - Both workflow jobs and all individual steps were re-fetched and confirmed completed/success.
 - PR #5 remained Open + Draft and unmerged on the approved base branch.
 
-These exact-head runs include the S06 scope and matrix documentation updates. S06 is **COMPLETE** within its read-only planning UI scope. No third CI workflow was added.
+These exact-head runs include the first S06 scope/matrix documentation reconciliation. A final record-only commit follows; its own exact-head CI must pass before S06 is labelled fully closed. No third CI workflow was added.
 
-**Next checkpoint:** `APAA-S07-C01-P01` — propose a browser-automation capability architecture and threat/permission model only. No browser/device action handler or execution capability is authorized by this proposal.
+**Next checkpoint after final CI closure:** `APAA-S07-C01-P01` — propose a browser-automation capability architecture and threat/permission model only. No browser/device action handler or execution capability is authorized by this proposal.
