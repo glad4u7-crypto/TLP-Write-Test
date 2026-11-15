@@ -104,3 +104,48 @@ def test_multiple_log_instances_serialize_concurrent_appends(tmp_path):
     assert len(records) == 64
     assert len(set(hashes)) == 64
     assert verifier.verify() == records[-1]["entry_hash"]
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory permissions required")
+def test_jsonl_audit_log_rejects_shared_parent_directory(tmp_path):
+    shared_dir = tmp_path / "shared-audit"
+    shared_dir.mkdir(mode=0o700)
+    shared_dir.chmod(0o755)
+    log = JsonlAuditLog(shared_dir / "events.jsonl")
+
+    with pytest.raises(AuditIntegrityError, match="owner-only"):
+        log.append(create_audit_event("write_file", False, "denied"))
+
+    assert not (shared_dir / "events.jsonl").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+def test_jsonl_audit_log_rejects_symlinked_parent_directory(tmp_path):
+    target_dir = tmp_path / "actual-audit"
+    target_dir.mkdir(mode=0o700)
+    link_dir = tmp_path / "linked-audit"
+    try:
+        link_dir.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    log = JsonlAuditLog(link_dir / "events.jsonl")
+    with pytest.raises(AuditIntegrityError, match="parent path.*symlinks"):
+        log.append(create_audit_event("write_file", False, "denied"))
+
+    assert not (target_dir / "events.jsonl").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks unavailable")
+def test_jsonl_audit_log_verify_rejects_symlinked_parent_directory(tmp_path):
+    target_dir = tmp_path / "actual-audit-verify"
+    target_dir.mkdir(mode=0o700)
+    link_dir = tmp_path / "linked-audit-verify"
+    try:
+        link_dir.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    log = JsonlAuditLog(link_dir / "events.jsonl")
+    with pytest.raises(AuditIntegrityError, match="parent path.*symlinks"):
+        log.verify()
+
