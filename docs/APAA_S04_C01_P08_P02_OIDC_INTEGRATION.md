@@ -2,6 +2,8 @@
 
 Status: **OIDC login integration added; provider configuration and live login test pending**
 
+Dependency baseline: `streamlit[auth]>=1.45,<2.0` (includes Authlib support required by Streamlit OIDC).
+
 ## What was added
 
 - Optional native Streamlit OIDC login using `st.login()`, `st.user`, and `st.logout()`.
