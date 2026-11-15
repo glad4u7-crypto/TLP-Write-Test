@@ -1,13 +1,13 @@
 # APAA S08 — Task Execution Verification Matrix
 
 **Current subject:** Task Execution Engine
-**Current checkpoint:** APAA-S08-C01-P02
+**Current checkpoint:** APAA-S08-C01-P03
 
 | Checkpoint | Scope | Implementation | Tests | Status |
 |---|---|---|---|---|
 | S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | PASS — 709 tests; exact-head CI PASS |
-| S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | IMPLEMENTED — exact-head CI pending |
-| S08-C01-P03 | Task state | Not started; durable state follows S07 storage and tenant controls | Pending | PENDING |
+| S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | PASS — exact code snapshot CI PASS |
+| S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | IMPLEMENTED — exact-head CI pending |
 | S08-C02-P01 | Sequential execution | Not started | Pending | PENDING |
 | S08-C02-P02 | Conditional execution | Not started | Pending | PENDING |
 | S08-C02-P03 | Multi-step execution | Not started | Pending | PENDING |
@@ -56,3 +56,27 @@ P01 is verified at repository/CI level. The lifecycle is in-memory only and is n
 - Tests cover ordering, priority ties, duplicate IDs, overflow, removal/peek, empty queue, invalid inputs, concurrency, immutable snapshots and ID-reuse regression.
 - Code/test commits: `7663b3b359c77022cfc01f2436890f76fec6ed04`, `8d03ce9489e28fe0f2aba5bf539e035e4bfc68be`, `8b158f1c76a08e100ee6409f478626738ef8ec84`, `7b5a0ac0a89be2b0210ff1ff7097fbfb8b19a3dd`.
 - Exact-head Agent Foundation CI and Python Demo CI have not yet reported for `7b5a0ac0a89be2b0210ff1ff7097fbfb8b19a3dd`; P02 must remain unverified until both pass.
+
+
+## P02 exact-head verification
+
+**Code-bearing snapshot:** `7b5a0ac0a89be2b0210ff1ff7097fbfb8b19a3dd`
+
+| Existing workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [43724798843](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43724798843) | PASS |
+| Python Demo CI | [43724798836](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43724798836) | PASS |
+
+P02 is verified at repository CI level. Queue remains an in-memory ordering primitive and performs no task execution.
+
+## P03 implementation review (verification pending)
+
+- Added `core/task_state_store.py`, a separate SQLite persistence adapter reusing S07's validated `TenantKey` contract.
+- Stores task snapshots and lifecycle events under the composite issuer+subject+task identity.
+- Explicit `consent=True` required for create/update; reads remain tenant-scoped.
+- Snapshot update and event append are atomic. Compare-and-swap version check rejects stale writers.
+- Event source status must match persisted state. Duplicate initial records and inconsistent event/snapshot versions are rejected.
+- Private DB file (0600), owner-only parent directory (0700), symlink rejection, bounded reads, credential-like content rejection.
+- Reopen/recovery, tenant isolation, consent, stale-write conflict, transaction rollback, concurrent writers and invalid content covered in `tests/test_task_state_store.py`.
+- Adapter is not yet wired into lifecycle/controller or Android UI. It does not execute tasks or authorize actions.
+- Code-bearing latest branch commit: `62ac59a968704dc99a3e05518739a4d345135c7e`; exact-head CI results must be checked before P03 can be marked PASS.
