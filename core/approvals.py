@@ -25,6 +25,7 @@ def _payload_digest(payload: Mapping[str, Any] | None) -> str:
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
+            allow_nan=False,
         )
     except (TypeError, ValueError) as exc:
         raise ValueError("Approval payload must contain JSON-compatible values.") from exc
