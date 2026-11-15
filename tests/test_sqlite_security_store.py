@@ -505,3 +505,72 @@ def test_sqlite_recovers_uncommitted_nonce_after_process_crash(tmp_path):
         ).fetchall()
     assert nonces == [("committed-nonce",)]
 
+def _crash_with_uncommitted_audit_event(database_path, ready_connection):
+    import os
+    import sqlite3
+
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """INSERT INTO durable_audit_events
+           (timestamp, action, result, reason_code, principal_fingerprint,
+            request_id, previous_hash, entry_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "2026-11-15T00:00:00+00:00",
+            "uncommitted.crash.event",
+            "denied",
+            "simulated_crash",
+            "crash-fingerprint",
+            "crash-request",
+            "0" * 64,
+            "f" * 64,
+        ),
+    )
+    ready_connection.send(True)
+    # Simulate abrupt process termination without commit, rollback, or close.
+    os._exit(0)
+
+
+def test_sqlite_recovers_uncommitted_audit_event_after_process_crash(tmp_path):
+    path = tmp_path / "audit-crash-recovery.sqlite3"
+    store = SQLiteSecurityStore(path)
+    committed_hash = store.append_audit_event(
+        DurableAuditEvent("committed.before.crash", "ok", "ok", "fp", "req-1")
+    )
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_crash_with_uncommitted_audit_event,
+        args=(str(path), send_connection),
+    )
+    process.start()
+    try:
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_connection.close()
+        send_connection.close()
+
+    recovered = SQLiteSecurityStore(path)
+    assert recovered.verify_audit_chain()
+    assert recovered.last_audit_hash() == committed_hash
+    recovered.append_audit_event(
+        DurableAuditEvent("committed.after.recovery", "ok", "ok", "fp", "req-2")
+    )
+    assert recovered.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("committed.before.crash",),
+        ("committed.after.recovery",),
+    ]
