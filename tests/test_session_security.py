@@ -21,7 +21,6 @@ def test_identity_switch_clears_pending_approval_and_user_specific_state():
         "draft_task": "Alice private task",
         "project_registry": object(),
     }
-    registry = state["project_registry"]
 
     assert bind_session_identity(state, "bob") is True
 
@@ -34,10 +33,10 @@ def test_identity_switch_clears_pending_approval_and_user_specific_state():
         "execution_gateway_owner",
         "free_plan",
         "draft_task",
+        "project_registry",
+        "project_registry_tenant",
     ):
         assert key not in state
-    # The registry remains session-scoped; every user-facing read is still owner-filtered.
-    assert state["project_registry"] is registry
 
 
 def test_same_identity_does_not_clear_pending_work():
