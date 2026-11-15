@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 
+# In-process capability: prevents accidental mutation outside trusted controllers.
+# This is not a security boundary against arbitrary Python code in this process.
+_PROJECT_MUTATION_CAPABILITY = object()
+
+
 @dataclass(frozen=True)
 class Project:
     name: str
@@ -32,7 +37,17 @@ class ProjectRegistry:
         for project in projects or []:
             self._projects[project.project_id] = project
 
-    def create(self, name: str, description: str = "") -> Project:
+    def create(
+        self,
+        name: str,
+        description: str = "",
+        *,
+        _capability: object | None = None,
+    ) -> Project:
+        if _capability is not _PROJECT_MUTATION_CAPABILITY:
+            raise PermissionError("Project creation must go through the approval gateway.")
+        if not isinstance(name, str) or not isinstance(description, str):
+            raise ValueError("Project name and description must be text.")
         project = Project(name=name.strip(), description=description.strip())
         self._projects[project.project_id] = project
         return project
@@ -43,5 +58,12 @@ class ProjectRegistry:
     def get(self, project_id: str) -> Project | None:
         return self._projects.get(project_id)
 
-    def delete(self, project_id: str) -> bool:
+    def delete(
+        self,
+        project_id: str,
+        *,
+        _capability: object | None = None,
+    ) -> bool:
+        if _capability is not _PROJECT_MUTATION_CAPABILITY:
+            raise PermissionError("Project deletion must go through the approval gateway.")
         return self._projects.pop(project_id, None) is not None
