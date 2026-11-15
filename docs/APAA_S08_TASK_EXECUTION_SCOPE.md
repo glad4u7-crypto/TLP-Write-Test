@@ -95,3 +95,15 @@ Implemented in `CompletionVerifier`:
 - Agent Foundation CI (`43732335321`) and Python Demo CI (`43732335307`) both completed successfully.
 - C02-P02, C02-P03, C03-P01, C03-P02 and C03-P03 pass repository CI. This does not imply production readiness or Android/dashboard integration.
 - Next checkpoint: C04-P01 — pre-execution validation.
+
+
+## C04-P01 — Pre-execution Validation
+
+Implemented in `core/pre_execution_validation.py`:
+- Canonical action identifier validation against the existing exact `authorize_action` allowlist. Unknown and prohibited actions fail closed.
+- JSON-compatible mapping payload validation with finite-number enforcement and configurable byte, nesting-depth, string and key bounds.
+- Plan validation with bounded step count, unique step IDs and aggregate payload-byte limit.
+- Read-only actions are marked as not requiring approval; known mutations are marked as requiring approval. This flag is descriptive only and never grants authority.
+- No handler dispatch, receipt issuance, network access, or side effect occurs in this validator. `ExecutionGateway` remains the final permission and dispatch boundary.
+- Unit tests: `tests/test_pre_execution_validation.py`.
+- Exact-head CI is pending.
