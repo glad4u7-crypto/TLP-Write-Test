@@ -225,7 +225,7 @@ Both runs executed on the exact P05 code + matrix snapshot above. Their jobs and
 **Implementation:** `core/browser_inspector.py`  
 **Tests:** `tests/test_browser_inspector.py`  
 **Detailed contract:** `docs/APAA_S07_TRUSTED_INSPECTOR_FIREWALL_P06.md`  
-**Dependency:** `cryptography>=44,<48` for Ed25519 verification
+**Dependency:** `cryptography>=50,<51` for Ed25519 verification
 
 | Area | P06 evidence | Status |
 |---|---|---|
@@ -247,4 +247,13 @@ Both runs executed on the exact P05 code + matrix snapshot above. Their jobs and
 
 P06 verifies that a trusted Ed25519 key signed a fresh, challenge-bound report whose normalized runtime and firewall fields satisfy the P05 launch contract and exact proxy-only firewall policy. It does not collect those facts itself. A valid signature is not proof that the collector is uncompromised or that the firewall is effective; the signer must be isolated from the worker and must read actual effective host state. One-time challenge generation/consumption, key provisioning/rotation and packet-level leak tests remain external requirements.
 
-**P06 disposition:** SIGNED EVIDENCE VERIFIER + OFFLINE FIREWALL POLICY VALIDATOR IMPLEMENTED; exact-commit CI verification pending. No new workflow. No host collector, firewall mutation, browser runtime, worker process or browser handler. PR #5 remains Open + Draft + unmerged.
+**P06 code-bearing snapshot:** `049629a3d9f55c4adc84d42947dd233e0b49a5a5`
+
+| Existing workflow | Run | Result | Exact evidence |
+|---|---:|---|---|
+| Agent Foundation CI | [43715421652](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715421652) | PASS | 639 passed in 12.79s; pip-audit reported no known vulnerabilities; compileall and all job steps succeeded |
+| Python Demo CI | [43715421711](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715421711) | PASS | 639 passed in 16.76s; demo smoke printed `Hello TradeLab Pro`; all job steps succeeded |
+
+Both existing workflows passed on the exact P06 code-bearing snapshot. The initial P06 CI run exposed one test-call omission and seven dependency advisories against cryptography 47.0.0. The test invocation was corrected and the dependency floor raised to cryptography 50.0.0; the final code-bearing runs above passed and pip-audit reported no known vulnerabilities.
+
+**P06 disposition:** SIGNED EVIDENCE VERIFIER + OFFLINE FIREWALL POLICY VALIDATOR IMPLEMENTED; exact code-bearing CI verified. The final documentation-record commit must also be checked by both workflows. No new workflow. No host collector, firewall mutation, browser runtime, worker process or browser handler. PR #5 remains Open + Draft + unmerged.
