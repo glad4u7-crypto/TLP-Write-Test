@@ -69,7 +69,7 @@ def test_intake_rejects_non_text(value):
 
 def test_intake_rejects_empty_and_control_characters():
     assert validate_task_intake("  ").accepted is False
-    assert validate_task_intake("hello\\x00world").accepted is False
+    assert validate_task_intake("hello\x00world").accepted is False
 
 
 def test_intake_enforces_maximum_length():
