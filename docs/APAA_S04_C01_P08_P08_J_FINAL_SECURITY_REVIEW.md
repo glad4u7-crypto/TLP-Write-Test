@@ -130,3 +130,34 @@ PR #5 remains open and Draft. No merge, deployment, provider activation, or real
 ## Next serial work after P08-P08-W
 
 Continue the offline-verifiable review in small increments. Reassess SQLite path and connection lifecycle assumptions without weakening the existing permission checks. Live P08-P06 OIDC/browser verification remains blocked until a configured test deployment and two controlled identities are available.
+
+
+## P08-P08-Y — SQLite path and connection-lifecycle review
+
+Verification date: 2026-11-15
+Reviewed branch head before this documentation update: `0c5e15f9e9e9c5f75d8bafefd88da3fa3292e5b0`
+
+Reviewed the existing implementations and regression tests in:
+
+- `core/sqlite_storage.py` (legacy tenant-scoped project store)
+- `core/sqlite_project_store.py` (persistent tenant-scoped project store)
+- `core/sqlite_security_store.py` (approval nonce and durable audit store)
+- Their three existing SQLite test modules.
+
+### Findings
+
+1. All three stores apply the same essential initialization-time filesystem policy for file-backed databases: inspect lexical parent components for symlinks, require a private POSIX parent directory, pre-create a missing database with owner-only mode where supported, reject a symlink/non-regular target, and apply mode `0600`.
+2. The existing P08-P08-V/W regression tests cover WAL/SHM sidecars and rollback journals in the tested POSIX environment. This is useful regression evidence, not a universal guarantee across filesystems or operating systems.
+3. Each store's `_connect()` opens the configured path directly and does not repeat the filesystem checks. The checks therefore protect initialization and detect an unsafe path at that time; they are not a per-connection defense against a later path replacement.
+4. A process running under the same OS account, or an attacker able to modify the private parent directory, may be able to race or replace filesystem objects after validation. The current path-based SQLite API does not establish race-free protection against that threat. Do not describe these stores as safe against hostile same-user code or arbitrary same-account compromise.
+5. No safe, portable runtime change was justified by this review alone. Introducing descriptor-based SQLite opening or connection-time path checks without a well-defined supported-platform contract could create false confidence and platform regressions. No runtime code or tests were changed in P08-P08-Y.
+
+### Decision and next action
+
+Retain the existing owner-only directory/file controls and explicitly preserve the same-user/TOCTOU limitation in the threat model. Before attempting stronger hardening, define supported operating systems, filesystem assumptions, and whether hostile same-account processes are in scope; then design and test a platform-specific approach rather than adding a superficial re-check.
+
+The live OIDC/browser matrix remains blocked pending a configured test deployment and two controlled identities. PR #5 remains open and Draft. No merge, deployment, paid-provider activation, or real-world handler enablement is authorized. Production remains **NOT APPROVED**.
+
+## Next serial work after P08-P08-Y
+
+Continue with the next offline-verifiable review item, prioritizing concrete authorization and failure-path tests over speculative filesystem changes. Keep the existing repository files and architecture stable; do not add new files unless a demonstrated requirement needs one.
