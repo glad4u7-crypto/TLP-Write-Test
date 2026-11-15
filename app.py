@@ -2,7 +2,9 @@ import streamlit as st
 
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
-from core.project_actions import confirm_and_create_project
+from core.approvals import ApprovalAuthority
+from core.audit import JsonlAuditLog
+from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
@@ -15,6 +17,18 @@ if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
 registry = st.session_state["project_registry"]
+
+# Keep the approval authority and gateway server-side in this Streamlit session.
+# The planner/task text never receives either object.
+if "approval_authority" not in st.session_state:
+    st.session_state["approval_authority"] = ApprovalAuthority()
+if "execution_gateway" not in st.session_state:
+    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
+    st.session_state["execution_gateway"] = build_project_gateway(
+        registry,
+        st.session_state["approval_authority"],
+        audit_log=audit_log,
+    )
 
 st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
@@ -81,10 +95,18 @@ if pending_project:
         st.session_state.pop("pending_project", None)
         st.rerun()
     if confirm_project:
-        result = confirm_and_create_project(
-            registry,
-            pending_project["name"],
-            pending_project["description"],
+        # Only this explicit UI event can issue the short-lived receipt.
+        payload = {
+            "name": pending_project["name"],
+            "description": pending_project["description"],
+        }
+        receipt = st.session_state["approval_authority"].issue(
+            "create_project", payload
+        )
+        result = st.session_state["execution_gateway"].execute(
+            "create_project",
+            payload,
+            approval_receipt=receipt,
         )
         if result.executed:
             project = result.output
