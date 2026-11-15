@@ -1,7 +1,7 @@
 # APAA S05 — Approved Scope and Implementation Record: Task Intake and Deterministic Planning Contract
 
 **Checkpoint:** APAA-S05-C01-P06  
-**Status:** IMPLEMENTED — EXACT-HEAD CI PASS; INDEPENDENT REVIEW COMPLETE  
+**Status:** IMPLEMENTED — IMPLEMENTATION CI PASS; FINAL DOCUMENTATION CI PENDING  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
 **Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
@@ -98,17 +98,29 @@ S05 may be marked implementation-complete only when all of the following are evi
 - The project remains zero-cost and offline by default.
 - No third CI workflow should be created for duplicate test coverage.
 
-## 8. Approval gate and next sequence
+## 8. Approval and execution gate
 
-This document is a proposal, not authorization to implement S05. The next decision is to approve, amend or reject this scope. Once approved, the work sequence should be:
-- S05-C01-P02: finalize plan schema and threat boundary.
-- S05-C01-P03: implement intake validation and deterministic typed planner.
-- S05-C01-P04: add positive, negative and regression tests.
-- S05-C01-P05: inspect security implications, update docs, run both existing CIs on the exact final head, and record evidence.
+The user explicitly approved this scope on 2026-11-15. Implementation was confined to the existing feature branch. Scope approval authorizes the planning contract only; it does not authorize execution handlers, auto-run, paid services, or financial actions.
 
-Until scope approval, do not change runtime code or enable any new capability.
+## 9. Implementation and verification record
 
-## 9. Implementation record\n\n### Implemented and verified in this work batch\n- Added `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus` and `StepCategory` typed contract objects.\n- Added deterministic task intake validation: text-only input, empty/control-character rejection, 4,000-character bound and whitespace normalization.\n- Added deterministic plan IDs and stable four-step planning output.\n- Added clarification responses for a small, explicit set of deictic/underspecified requests.\n- Added conservative blocked-plan handling for detected prohibited financial/trading/purchase/provider intent.\n- Added mutation-proposal labelling; a plan cannot issue an approval receipt or dispatch an action.\n- Preserved the legacy `create_plan` four-string API for compatibility.\n- Added focused contract tests for determinism, serialization, input validation, clarification, blocked intents and mutation labelling.\n\n### Verification status\n- Code and tests committed to the feature branch.\n- Agent Foundation CI #622 / run `43706514203`: completed / success; dependency install, pip-audit, compileall, foundation tests and post steps all succeeded.\n- Python Demo CI #713 / run `43706514142`: completed / success; dependency install, full test suite, demo smoke test and post steps all succeeded.\n- Both workflows were verified against exact pre-documentation implementation head `4c23c28620793bd0d7009fad6f9f1477bf822611`; final documentation-only head must be re-run through both existing workflows before closure.\n\n## 10. Carried-forward non-negotiable safety constraints
+### Implemented
+- Added `IntakeResult`, `PlanStep`, `TaskPlan`, `PlanStatus` and `StepCategory` typed contract objects.
+- Added deterministic intake validation: text-only input, empty/control-character rejection, raw and normalized 4,000-character bounds, and whitespace normalization.
+- Added deterministic plan IDs, schema version 1.0, sequential stable step IDs and schema invariants.
+- Added READY / NEEDS_CLARIFICATION / BLOCKED outcomes and selected ambiguity clarification.
+- Added conservative lexical blocking for detected prohibited financial/trading/purchase/provider intent.
+- Proposed mutations require a separate human-approval flag; the planner cannot issue an approval receipt or dispatch an action.
+- Preserved the legacy `create_plan` four-string API.
+- Added 14 focused planner contract tests and documented the planning trust boundary.
+
+### Implementation-head CI evidence
+- Agent Foundation CI #622 / run `43706514203`: completed / success on implementation head `4c23c28620793bd0d7009fad6f9f1477bf822611`.
+- Python Demo CI #713 / run `43706514142`: completed / success on the same implementation head.
+- Dependency install, pip-audit, compileall, full tests, demo smoke test and all post steps succeeded.
+- Both workflows must also pass on the final documentation head before S05 documentation closure is marked complete.
+
+## 10. Carried-forward non-negotiable safety constraints
 
 - Zero-cost/offline default; no paid provider, API key or billable service.
 - Auto-Run OFF; approval must remain explicit and action-specific.
