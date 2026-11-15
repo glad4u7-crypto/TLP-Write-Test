@@ -143,12 +143,12 @@ def validate_task_intake(description: object) -> IntakeResult:
     """Validate bounds and surface obvious missing references without guessing."""
     if not isinstance(description, str):
         return IntakeResult(False, "", ("Task description must be text.",))
-    if not description.strip():
-        return IntakeResult(False, "", ("Task description must not be empty.",))
     if len(description) > MAX_TASK_LENGTH:
         return IntakeResult(
             False, "", (f"Task description exceeds the {MAX_TASK_LENGTH}-character limit.",)
         )
+    if not description.strip():
+        return IntakeResult(False, "", ("Task description must not be empty.",))
 
     # Permit ordinary whitespace controls, reject other control characters.
     if any(
