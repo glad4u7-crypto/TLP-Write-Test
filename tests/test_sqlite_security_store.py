@@ -105,6 +105,6 @@ def test_execution_audit_adapter_persists_only_principal_fingerprint(tmp_path):
             "SELECT principal_fingerprint FROM durable_audit_events"
         ).fetchone()
     assert row[0] == __import__("hashlib").sha256(
-        b"https://issuer.example\\nalice"
+        b"https://issuer.example\nalice"
     ).hexdigest()
     assert "alice" not in row[0]
