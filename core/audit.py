@@ -65,6 +65,30 @@ class JsonlAuditLog:
         ).encode("utf-8")
         return hashlib.sha256(canonical).hexdigest()
 
+    def _secure_parent_directory(self, *, create: bool = False) -> bool:
+        """Reject symlinked path components and require a private log directory."""
+        absolute_parents = self.path.absolute().parents
+        for parent in absolute_parents:
+            try:
+                metadata = parent.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(metadata.st_mode):
+                raise AuditIntegrityError("Audit log parent path must not contain symlinks.")
+
+        if create:
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+        try:
+            metadata = self.path.parent.lstat()
+        except FileNotFoundError:
+            return False
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise AuditIntegrityError("Audit log parent must be a real directory.")
+        if os.name == "posix" and metadata.st_mode & 0o077:
+            raise AuditIntegrityError("Audit log parent directory must be owner-only.")
+        return True
+
     def _open_existing_readonly(self) -> int:
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(self.path, flags)
@@ -75,6 +99,8 @@ class JsonlAuditLog:
 
     def verify(self) -> str:
         """Verify every line and return the last entry hash."""
+        if not self._secure_parent_directory():
+            return self.GENESIS
         if not self.path.exists() and not self.path.is_symlink():
             return self.GENESIS
         previous_hash = self.GENESIS
@@ -117,7 +143,7 @@ class JsonlAuditLog:
                 "event": event_data,
                 "entry_hash": entry_hash,
             }
-            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self._secure_parent_directory(create=True)
             flags = (
                 os.O_WRONLY | os.O_CREAT | os.O_APPEND
                 | getattr(os, "O_NOFOLLOW", 0)
