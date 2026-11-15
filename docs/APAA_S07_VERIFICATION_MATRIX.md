@@ -78,3 +78,30 @@ Both workflow runs were re-fetched after completion. Each job and every listed s
 | Browser runtime | NOT AUTHORIZED / NOT INSTALLED |
 
 **P02 disposition:** DESIGN PACKAGE + EXISTING CI BASELINE VERIFIED. No browser runtime, browser dependency, worker, handler or live website operation was introduced. Implementation remains a separate approval gate. PR #5 remains Open + Draft + unmerged.
+
+
+## P03 implementation checkpoint — offline browser security policy
+
+**P03 scope:** `core/browser_security.py` + `tests/test_browser_security.py`  
+**Documentation:** `docs/APAA_S07_BROWSER_SECURITY_POLICY_P03.md`
+
+| Area | P03 evidence | Status |
+|---|---|---|
+| HTTPS URL parsing and canonicalization | Deterministic URL/IDNA/authority/port validation tests | IMPLEMENTED — CI PENDING |
+| Exact-origin allowlist | Scheme/host/effective-port exact match; wildcard/suffix/subdomain bypass rejection tests | IMPLEMENTED — CI PENDING |
+| Local/private/reserved IP rejection | IPv4/IPv6 loopback, private, link-local, metadata and special-use fixtures | IMPLEMENTED — CI PENDING |
+| DNS/SSRF answer policy | Injected resolver; empty, malformed, mixed and non-global answer rejection; resolver failure closed | IMPLEMENTED — OFFLINE ONLY |
+| Redirect validation | Relative redirects supported; cross-origin, unsafe protocol and private destination rejected | IMPLEMENTED — CI PENDING |
+| Typed job envelope | Closed schema, immutable result, ID/action/expiry/origin/resource-limit validation | IMPLEMENTED — CI PENDING |
+| Prohibited browser actions | Click/fill/type/submit/eval/download/upload/clipboard/shell/payment/trading/unknown rejected | IMPLEMENTED — CI PENDING |
+| No implicit network activity | Test patches socket.getaddrinfo to fail; validation succeeds without calling it | IMPLEMENTED — CI PENDING |
+| Connection-time egress / DNS rebinding | Requires isolated worker + fail-closed proxy/firewall + connection pinning | NOT IMPLEMENTED |
+| Browser runtime / handler registration | No browser dependency, worker, handler or ExecutionGateway registration | NOT IMPLEMENTED |
+| Android device validation | No real-device browser UX or native device control | NOT STARTED |
+| Existing CI workflows | Both existing workflows must pass on the exact final P03 record commit | PENDING |
+
+### P03 interpretation and exit gate
+
+P03 adds offline policy primitives and deterministic tests only. It does not establish an enforceable network boundary, prove SSRF protection at connection time, or authorize browser execution. DNS resolution is injected in tests and is never performed implicitly. Deployment must later enforce DNS/address validation at connection time and block direct worker egress.
+
+**P03 disposition:** IMPLEMENTATION ADDED; final verification remains pending until the full pytest suite and both existing CI workflows complete successfully on the exact final commit. PR #5 remains Open + Draft + unmerged.
