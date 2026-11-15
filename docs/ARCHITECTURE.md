@@ -98,3 +98,16 @@ The following require separate external or operational evidence; passing offline
 - Keep Auto-Run disabled.
 - Do not register real-world action handlers as part of this S04 checkpoint.
 - PR #5 remains Open + Draft. Do not merge, deploy or change its base branch.
+
+
+## Browser automation proposal (S07 — design only)
+
+- S07 documents a future browser automation architecture, threat model, permission matrix and verification plan in the `docs/APAA_S07_*` files.
+- This is a design proposal only. No browser binary, automation library, driver, browser session, network integration, handler or ExecutionGateway registration is present or authorized by this checkpoint.
+- Any future browser worker must be isolated from the Streamlit/UI process, run under an unprivileged identity with ephemeral context, no default browser profile or host secrets, no broad filesystem access and no direct unrestricted network egress.
+- All navigation and requests must use exact-origin allowlists, canonical URL validation, redirect and DNS/IP revalidation, and fail-closed SSRF protections.
+- Planner output and all website content remain untrusted. Only trusted UI/controller code may request action-specific approval. Any approval must bind exact origin, action, target, payload, identity, session and job, expire quickly and be single-use.
+- Initial candidate capability is read-only Tier R. Mutations require a separately approved implementation scope and fresh action-specific approval. Downloads, uploads, clipboard, credential access, persistent browser profiles, CDP, arbitrary JavaScript/eval, shell, ADB and native device control are excluded.
+- Payment, purchase, checkout, trading, investment orders, money movement and financial transactions remain prohibited regardless of approval. Auto-Run remains OFF; paid providers remain disabled.
+- S07 threat and verification matrices are design requirements only; no browser security test is claimed as passed. Independent host, container and network evidence is required before operational use.
+- A separate explicit user approval and reviewed scope are required before implementing or enabling any browser capability.
