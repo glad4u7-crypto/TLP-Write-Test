@@ -1,23 +1,12 @@
-# Verification — APAA-S08-C02-P05
+# Verification — APAA-S08-C02-P06
 
-## Runtime integration
-- Task factory and the queue-submission trust boundary apply P04 action/payload validation; direct Task construction is regression-tested.
-- Tasks persist a policy version; schema migration preserves existing task rows with v1 default.
-- ExecutionEngine now owns/injects PolicyRegistry and ConsentRegistry.
-- Policy is deny-by-default and must match both action and policy version.
-- Explicit consent is persisted as a task-scoped grant with 15-minute default TTL.
-- Consent revocation and policy disablement are checked at execution time.
-- Handler is not invoked if permission, policy, consent, or handler registration is missing.
+## Implemented primitives
+- Atomic SQLite claim helper with `BEGIN IMMEDIATE`, conditional queued-to-running update, lease owner and attempt increment.
+- Cooperative execution budget: deadline, cancellation and maximum step count.
+- JSON-safe bounded result validator.
 
-## Added regression cases
-- Missing policy blocks execution.
-- Policy revoked after submission blocks execution.
-- Consent revoked after submission blocks execution.
-- Expired consent blocks execution.
-- Invalid action and unsafe payload rejected before queueing.
-- Prior queue, retry, lease, dead-letter, audit, P04 validation, policy, consent, and backup tests remain in the suite.
+## New test matrix
+11 reliability tests cover two-worker concurrent claim race, empty queue, invalid lease, crash after claim and lease recovery, cooperative step budget, cancellation, expired deadline, invalid/non-finite output and output size bound.
 
-## Security limits
-- Consent is represented by the caller's explicit `user_consented=True` input; a real application UI must ensure this flag can only follow actual user approval.
-- Authorization is rechecked immediately before handler invocation, but this in-process design does not provide an atomic lock across the authorization check and arbitrary external side effect.
-- No production deployment, external adapter, payments, purchases, network or device control is included.
+## Not yet integrated
+These primitives currently live in a separate module and have not replaced the existing ExecutionEngine claim/dispatch methods. Therefore P06 is a tested reliability component, not a claim of end-to-end runtime integration or production readiness.
