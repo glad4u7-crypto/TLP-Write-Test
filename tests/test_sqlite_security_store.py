@@ -613,3 +613,66 @@ def test_security_store_fails_closed_on_non_sqlite_database_without_replacing_it
         SQLiteSecurityStore(path)
 
     assert path.read_bytes() == original
+
+
+def test_nonce_replay_scope_includes_both_issuer_and_subject(security_store):
+    issuer_one_alice = TenantKey("https://issuer-one.example", "alice")
+    issuer_two_alice = TenantKey("https://issuer-two.example", "alice")
+    issuer_one_bob = TenantKey("https://issuer-one.example", "bob")
+
+    assert security_store.consume_approval_nonce(
+        issuer_one_alice, "shared-nonce", 500, now=100
+    )
+    # Same subject under another trusted issuer is a distinct tenant.
+    assert security_store.consume_approval_nonce(
+        issuer_two_alice, "shared-nonce", 500, now=100
+    )
+    # Same issuer with another subject is also a distinct tenant.
+    assert security_store.consume_approval_nonce(
+        issuer_one_bob, "shared-nonce", 500, now=100
+    )
+    # Replays are denied only inside the exact composite tenant boundary.
+    assert not security_store.consume_approval_nonce(
+        issuer_one_alice, "shared-nonce", 500, now=100
+    )
+
+
+def test_execution_audit_fingerprint_distinguishes_same_subject_across_issuers(
+    tmp_path,
+):
+    from types import SimpleNamespace
+    import hashlib
+    import sqlite3
+
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    path = tmp_path / "issuer-fingerprint.sqlite3"
+    store = SQLiteSecurityStore(path)
+    action = SimpleNamespace(
+        action="project.read", executed=False, reason="denied"
+    )
+    first = SQLiteExecutionAuditLog(
+        store, TenantKey("https://issuer-one.example", "alice")
+    )
+    second = SQLiteExecutionAuditLog(
+        store, TenantKey("https://issuer-two.example", "alice")
+    )
+
+    first.append(action)
+    second.append(action)
+
+    with sqlite3.connect(path) as connection:
+        fingerprints = [
+            row[0]
+            for row in connection.execute(
+                "SELECT principal_fingerprint FROM durable_audit_events ORDER BY sequence"
+            ).fetchall()
+        ]
+
+    assert fingerprints == [
+        hashlib.sha256(b"https://issuer-one.example\\nalice").hexdigest(),
+        hashlib.sha256(b"https://issuer-two.example\\nalice").hexdigest(),
+    ]
+    assert fingerprints[0] != fingerprints[1]
+    assert "alice" not in repr(fingerprints)
+    assert store.verify_audit_chain()
