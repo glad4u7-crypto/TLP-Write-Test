@@ -54,7 +54,7 @@ A privileged attacker who can rewrite the file can recompute the SHA-256 chain. 
 
 If intent persistence succeeds, the handler executes, and completion persistence fails, the side effect may already have happened. The gateway reports manual review, but cannot roll back an arbitrary external effect.
 
-**Required before irreversible actions:** idempotency keys, durable transactional outbox or equivalent reconciliation, and action-specific compensation/recovery.
+**Required before irreversible actions:** idempotency keys, durable transactional outbox or equivalent reconciliation, and action-specific compensation/recovery. The gateway now treats any ordinary exception raised by the audit backend as a persistence failure and blocks the handler when the failure occurs before dispatch; this does not solve post-side-effect reconciliation.
 
 ### P2 — No multi-process or live-browser E2E verification
 
