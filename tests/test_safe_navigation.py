@@ -28,8 +28,9 @@ class FakeRoute:
 
 
 class FakePage:
-    def __init__(self, *, redirect_urls=(), goto_error=None):
+    def __init__(self, *, redirect_urls=(), goto_error=None, route_owner=None):
         self.handlers = {}
+        self.route_owner = route_owner
         self.redirect_urls = redirect_urls
         self.goto_error = goto_error
         self.routes_seen = []
@@ -46,7 +47,8 @@ class FakePage:
 
     def goto(self, url, **kwargs):
         self.goto_options = (url, kwargs)
-        handler = self.handlers["**/*"]
+        owner = self.route_owner if self.route_owner is not None else self
+        handler = owner.handlers["**/*"]
         for target in (url, *self.redirect_urls):
             route = FakeRoute(target)
             self.routes_seen.append(route)
@@ -152,3 +154,35 @@ def test_concurrent_navigation_is_rejected():
         controller.navigate("https://example.com/")
 
     assert page.handlers == {}
+
+class FakeContext(FakePage):
+    """Fake BrowserContext route surface."""
+
+
+def test_context_level_route_is_used_when_context_is_supplied():
+    context = FakeContext()
+    page = FakePage(route_owner=context)
+    controller = SafeNavigationController(page, make_policy(), context=context)
+
+    assert controller.context_wide is True
+    assert controller.navigate("https://example.com/") == "response"
+    assert context.routes_seen[0].continued is True
+    assert page.routes_seen == []
+    assert context.handlers == {}
+    assert context.unrouted == ["**/*"]
+
+
+def test_context_level_route_blocks_disallowed_redirect_or_subresource():
+    context = FakeContext(redirect_urls=("https://evil.test/tracker.js",))
+    page = FakePage(route_owner=context)
+    controller = SafeNavigationController(page, make_policy(), context=context)
+
+    with pytest.raises(SafeNavigationError, match="blocked"):
+        controller.navigate("https://example.com/")
+    assert context.routes_seen[-1].aborted is True
+    assert context.handlers == {}
+
+
+def test_context_argument_must_expose_route():
+    with pytest.raises(TypeError, match="context"):
+        SafeNavigationController(FakePage(), make_policy(), context=object())
