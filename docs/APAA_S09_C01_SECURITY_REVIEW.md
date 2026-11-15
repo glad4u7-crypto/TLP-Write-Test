@@ -3,7 +3,7 @@
 **Review type:** Static design/code review only  
 **Review status:** BLOCKED — not approved for live browsing  
 **Reviewed branch:** `feature/apaa-s09-c01-p01-browser-launch`  
-**Reviewed scope:** P01 browser launch, P02 URL policy, P03 redirect-chain validation, P04 page-route integration, P05 egress authorization contract, P06 context-route integration and service-worker blocking
+**Reviewed scope:** P01 browser launch, P02 URL policy, P03 redirect-chain validation, P04 page-route integration, P05 egress authorization contract, P06 context-route integration and service-worker blocking, P07 Android runtime gate, P08 cross-module integration tests authored
 
 ## Positive controls observed
 
@@ -33,8 +33,8 @@
 ### SEC-03 — No exact-head CI evidence
 
 **Severity:** Medium  
-**Evidence:** Workflow lookup for the P06 scope-document commit returned no workflow runs. No exact-head passing test result was available during this review.  
-**Required remediation:** Run the repository's required test workflows on the final branch head and retain their run IDs and passing job results.
+**Evidence:** Workflow lookup for the latest P08 documentation commit returned no workflow runs. P08 adds cross-module regression tests, but no exact-head passing test result is available.  
+**Required remediation:** Execute the full test suite on the exact final branch head, fix failures, and retain run IDs and passing job results.
 
 ### SEC-04 — Android/Termux runtime is not qualified
 
@@ -44,6 +44,6 @@
 
 ## Decision
 
-**Do not enable live browsing or untrusted-site access.** P01–P07 are implementation artifacts with unit tests authored, but no exact-head passing CI evidence or operational transport-level egress boundary exists. The browser control chapter is not security-approved and must not be described as production-ready.
+**Do not enable live browsing or untrusted-site access.** P01–P08 are implementation artifacts with unit and integration tests authored, but no exact-head passing CI evidence or operational transport-level egress boundary exists. The browser control chapter is not security-approved and must not be described as production-ready.
 
 No firewall, proxy, device permission, deployment, live website, authenticated browser profile, Auto-Run, payment/purchase, paid API or PR merge was changed or used by this review.
