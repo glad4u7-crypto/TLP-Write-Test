@@ -80,7 +80,9 @@ def _compare(actual: Any, operator: str, expected: Any) -> bool:
     if operator not in _ALLOWED_OPERATORS:
         raise ConditionError("Unsupported condition operator.")
     if operator == "exists":
-        return (actual is not _MISSING) is bool(expected)
+        if type(expected) is not bool:
+            raise ConditionError("exists expects a boolean value.")
+        return (actual is not _MISSING) is expected
     if actual is _MISSING:
         return False
     if operator == "eq":
@@ -123,6 +125,7 @@ def evaluate_condition(condition: Condition, context: Mapping[str, Any]) -> Cond
         if leaf:
             if node.path is None or node.operator is None:
                 raise ConditionError("Condition leaf requires path and operator.")
+            _validate_json(node.value)
             result = _compare(_lookup(context, node.path), node.operator, node.value)
         else:
             if node.all_of and node.any_of:
@@ -135,8 +138,9 @@ def evaluate_condition(condition: Condition, context: Mapping[str, Any]) -> Cond
         return not result if node.negate else result
 
     try:
-        if not isinstance(context, Mapping):
-            raise ConditionError("Condition context must be a mapping.")
+        if type(context) is not dict:
+            raise ConditionError("Condition context must be a plain dictionary.")
+        _validate_json(context)
         matched = visit(condition, 0)
         return ConditionResult(matched, True, "condition_matched" if matched else "condition_not_matched")
     except Exception as exc:
