@@ -7,8 +7,11 @@
 - Every dispatch is checked by `authorize_action` before a handler is called.
 - Unknown, financial, payment, paid-provider, shell, and arbitrary code-execution
   action identifiers are rejected by the current action registry.
-- Mutations require either an exact Auto-Run allowlist entry or a one-time
-  approval receipt bound to the action and canonical payload digest.
+- Mutations require either an exact Auto-Run allowlist entry configured when the
+  trusted gateway is constructed, or a one-time approval receipt bound to the
+  action and canonical payload digest.
+- Task execution requests cannot provide or modify the Auto-Run allowlist; it is
+  fixed in trusted application configuration and empty by default.
 - Approval receipts are HMAC-signed, expire after a short interval, and cannot
   be replayed after successful consumption.
 - The gateway itself contains no shell, browser, network, device, or provider
