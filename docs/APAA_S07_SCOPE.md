@@ -16,8 +16,10 @@ Design a safe, free-by-default browser automation capability for future APAA dev
 2. `docs/APAA_S07_BROWSER_THREAT_MODEL.md` — threat catalogue, STRIDE analysis, mitigations and residual risks.
 3. `docs/APAA_S07_PERMISSION_MATRIX.md` — default-deny capability permissions and prohibited actions.
 4. `docs/APAA_S07_VERIFICATION_MATRIX.md` — future test and operational evidence requirements.
-5. Update `docs/ARCHITECTURE.md` with a clear proposal-only boundary.
-6. Reconcile S06 scope and matrix status with the final exact-head CI already verified at `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`.
+5. `docs/APAA_S07_BROWSER_ACTION_CONTRACT.md` — typed job/action/result contract proposal and approval binding.
+6. `docs/APAA_S07_MOBILE_APPROVAL_UX.md` — Android-friendly review, one-action approval, cancellation and accessibility flow.
+7. Update `docs/ARCHITECTURE.md` with a clear proposal-only boundary.
+8. Reconcile S06 scope and matrix status with the final exact-head CI already verified at `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`.
 
 ## 3. Scope
 
@@ -48,6 +50,8 @@ Design a safe, free-by-default browser automation capability for future APAA dev
 - Prompt injection and web content cannot grant authority or override policy.
 - Prohibited financial and purchase actions remain denied regardless of approval.
 - Verification matrix labels all browser controls DESIGN, not PASS.
+- Proposed typed browser job contract rejects unknown actions and binds approval to exact job, origin, action, target, payload and session.
+- Mobile review UX makes origin and exact effect visible; no blanket approval or inferred consent.
 - Existing CI workflows pass on the exact final documentation commit.
 - PR remains Draft and unmerged.
 
