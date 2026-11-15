@@ -39,11 +39,11 @@
 ### SEC-04 — Android/Termux runtime is not qualified
 
 **Severity:** Medium  
-**Evidence:** Existing scope documentation correctly states that desktop Playwright Chromium support does not establish Android/Termux compatibility. No device test evidence was available.  
-**Required remediation:** Keep Android runtime support unclaimed until a controlled, non-production device compatibility test is designed and approved.
+**Evidence:** P07 adds conservative Android/Termux detection and blocks the Playwright launch path on detected Android runtimes. No physical-device test evidence exists; non-Android hosts also require local Playwright/browser validation.  
+**Required remediation:** Keep Android browser automation disabled until a controlled, non-production device compatibility test and independent security review are completed. Python-only functionality may be evaluated separately.
 
 ## Decision
 
-**Do not enable live browsing or untrusted-site access.** P01–P06 are implementation artifacts with unit tests authored, but no exact-head passing CI evidence or operational transport-level egress boundary exists. The browser control chapter is not security-approved and must not be described as production-ready.
+**Do not enable live browsing or untrusted-site access.** P01–P07 are implementation artifacts with unit tests authored, but no exact-head passing CI evidence or operational transport-level egress boundary exists. The browser control chapter is not security-approved and must not be described as production-ready.
 
 No firewall, proxy, device permission, deployment, live website, authenticated browser profile, Auto-Run, payment/purchase, paid API or PR merge was changed or used by this review.
