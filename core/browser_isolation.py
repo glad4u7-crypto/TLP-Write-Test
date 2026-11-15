@@ -86,9 +86,10 @@ def validate_worker_profile(raw: object) -> WorkerIsolationProfile:
     if not isinstance(writable, list) or any(type(x) is not str for x in writable):
         raise IsolationPolicyError("Writable mounts must be a list of paths.")
     if any(
-        not p.startswith("/tmp/")
-        or len(p.split("/")) < 4
-        or any(part in (".", "..") for part in p.split("/"))
+        (parts := p.split("/"))[0] != ""
+        or len(parts) < 3
+        or parts[1] != "tmp"
+        or any(part in ("", ".", "..") for part in parts[2:])
         for p in writable
     ) or len(set(writable)) != len(writable):
         raise IsolationPolicyError("Only unique, job-ephemeral child paths below /tmp are permitted.")
