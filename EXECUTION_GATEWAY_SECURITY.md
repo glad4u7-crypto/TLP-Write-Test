@@ -43,6 +43,8 @@ application process; it does not replace application-layer access control.
 - The Streamlit Project Manager now uses a two-step review/confirm flow and routes project creation through a trusted UI controller, one-time receipt, and `ExecutionGateway`.
 - This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
 - Audit events are in-memory only and are lost when the process ends; no persistent, tamper-evident audit log or production capability-isolation layer exists.
+- `ProjectRegistry.create` and `delete` require an internal in-process capability; ordinary direct calls are rejected and the trusted project controller passes the capability only through the approval-gated handler.
+- This capability prevents accidental bypasses but is not isolation against arbitrary Python code executing inside the same process.
 - No production sandbox or path-confinement layer exists for file operations.
 
 ## Release gate
