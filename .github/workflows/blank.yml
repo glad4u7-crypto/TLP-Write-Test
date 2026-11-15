@@ -2,7 +2,7 @@ name: Python Demo CI
 
 on:
   push:
-    branches: ["main", "feature/**"]
+    branches: ["main"]
   pull_request:
     branches: ["main", "feature/agent-v0.3-zero-cost-core"]
   workflow_dispatch:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: apaa-demo-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  cancel-in-progress: true
+  group: apaa-demo-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   test-demo:
