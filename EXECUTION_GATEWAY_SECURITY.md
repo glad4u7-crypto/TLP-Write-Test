@@ -34,7 +34,8 @@ application process; it does not replace application-layer access control.
 ## Not yet implemented / not enabled
 
 - No real file, email, browser, shell, network, or device handlers are wired.
-- The Streamlit UI does not call the gateway or issue approval receipts.
+- The Streamlit Project Manager now uses a two-step review/confirm flow and routes project creation through a trusted UI controller, one-time receipt, and `ExecutionGateway`.
+- This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
 - No persistent audit log or production capability-isolation layer exists.
 - No production sandbox or path-confinement layer exists for file operations.
 
