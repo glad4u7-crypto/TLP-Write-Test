@@ -23,3 +23,7 @@
 - Focused tests cover deadline expiry, timeout bounds, retry limits, pre-dispatch-only retries, uncertain dispatch, observer failures, canonical comparison and manual-review outcomes.
 - Full repository tests, compile validation, dependency audit and demo smoke test run in the isolated S08 workflow.
 - This is a Python controller-level reliability primitive. It does not implement native Android scheduling, real browser/device adapters, process-kill guarantees or production deployment.
+
+## Exact-head verification
+
+The S08 completion integration snapshot `d4e965e6ca78f799a9572d5d6a5bc9d7bae4261b` passed workflow [43734617007](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43734617007): dependency audit clear, compileall passed, full repository suite **804 passed in 17.70 seconds**, and demo smoke test passed. This verifies the code on that exact snapshot, not Android or production deployment.
