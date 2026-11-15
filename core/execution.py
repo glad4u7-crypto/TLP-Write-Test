@@ -48,10 +48,14 @@ class ExecutionGateway:
         approval_authority: ApprovalAuthority | None = None,
         auto_run_actions: Iterable[str] = (),
         audit_log: JsonlAuditLog | None = None,
+        session_scope: str = "",
     ) -> None:
         self._handlers: dict[str, ActionHandler] = {}
         self._approval_authority = approval_authority
         self._audit_log = audit_log
+        if not isinstance(session_scope, str) or len(session_scope) > 256:
+            raise ValueError("Execution session scope must be text of at most 256 characters.")
+        self._session_scope = session_scope
         self._auto_run_actions = frozenset(
             _canonical_action(item) for item in auto_run_actions
             if _canonical_action(item)
@@ -115,6 +119,7 @@ class ExecutionGateway:
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
         tenant: TenantKey | None = None,
+        session_scope: str = "",
     ) -> ExecutionResult:
         """Run one handler only after policy + approval + durable intent audit."""
         if payload is not None and not isinstance(payload, Mapping):
@@ -134,7 +139,10 @@ class ExecutionGateway:
                 decision = auto_decision
 
         if not authorized and self._approval_authority is not None:
-            if self._approval_authority.consume(approval_receipt, action, payload, tenant=tenant):
+            if self._approval_authority.consume(
+                approval_receipt, action, payload, tenant=tenant,
+                session_scope=session_scope or self._session_scope,
+            ):
                 exact_action = _canonical_action(action)
                 decision = authorize_action(action, approved_action=exact_action)
                 authorized = decision.allowed
