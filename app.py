@@ -97,6 +97,11 @@ if principal is not None:
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
     except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
+        # A failed durable-store startup must not leave capabilities or
+        # tenant-bound objects from an earlier successful run in this session.
+        # Clear all identity-bound state so a later retry starts from a clean
+        # authenticated context rather than reusing stale authority/gateway.
+        clear_session_identity(st.session_state)
         st.error(f"Durable security storage is not configured safely: {exc}")
         st.stop()
     if "approval_authority" not in st.session_state:
