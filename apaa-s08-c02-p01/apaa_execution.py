@@ -1,6 +1,6 @@
 """APAA S08-C02-P03: durable queue, dead-letter handling and tamper-evident audit."""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import hashlib, json, sqlite3, threading, time, uuid
 from typing import Any, Callable
@@ -208,9 +208,16 @@ class ExecutionEngine:
         if action in self._handlers:raise ValueError(f"handler already registered: {action}")
         self._handlers[action]=handler
     def submit(self,task:Task)->str:
-        # The caller's explicit consent flag creates a short-lived persisted grant.
+        if not isinstance(task,Task):raise TypeError("submit requires a Task instance")
+        # Revalidate at the trust boundary; direct dataclass construction cannot bypass validation.
+        payload=validate_task_input(task.action,task.payload)
+        if task.max_attempts<1 or task.max_attempts>10:raise ValueError("max_attempts must be 1..10")
+        if not isinstance(task.policy_version,str) or not task.policy_version or len(task.policy_version)>64:
+            raise ValueError("invalid policy_version")
+        task=replace(task,payload=payload)
         tid=self.store.add(task)
-        if task.user_consented:
+        # Do not refresh consent when an idempotency duplicate maps to an existing task.
+        if task.user_consented and tid==task.task_id:
             self.consent_registry.grant(tid,task.action,expires_at=time.time()+self.consent_ttl_seconds)
         return tid
     def cancel(self,task_id:str,reason:str="cancelled by user")->bool:return self.store.cancel(task_id,reason)
