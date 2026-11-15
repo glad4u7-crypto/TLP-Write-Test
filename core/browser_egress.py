@@ -8,6 +8,7 @@ the worker from reaching any destination except that proxy.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 from collections.abc import Sequence
 
 from core.browser_security import (
@@ -59,7 +60,7 @@ def validate_proxy_connect(
         port=443,
         origin=checked.origin,
         validated_addresses=tuple(sorted(set(
-            __import__("ipaddress").ip_address(item).compressed.lower()
+            ipaddress.ip_address(item).compressed.lower()
             for item in resolved_addresses
         ))),
         tls_server_name=checked.hostname,
