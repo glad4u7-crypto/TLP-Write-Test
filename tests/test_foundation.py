@@ -20,8 +20,8 @@ def test_planner_returns_ordered_safe_steps():
     assert "Run appropriate checks and report evidence." in plan
 
 
-@pytest.mark.parametrize("action", ["read", "inspect", "plan", "summarize"])
-def test_read_only_actions_are_allowed(action):
+@pytest.mark.parametrize("action", ["read", "inspect", "plan", "summarize", "read_invoice"])
+def test_registered_read_only_actions_are_allowed(action):
     assert authorize_action(action).allowed is True
 
 
@@ -42,27 +42,20 @@ def test_approval_for_different_action_is_rejected():
     assert "does not match" in decision.reason
 
 
-@pytest.mark.parametrize(
-    "action",
-    [
-        "payment",
-        "make_purchase",
-        "checkout",
-        "billing_update",
-        "auto_recharge",
-        "paid_api_call",
-        "premium_provider_call",
-        "external_api_request",
-    ],
-)
-def test_payment_and_paid_or_external_services_are_always_blocked(action):
+@pytest.mark.parametrize("action", [
+    "payment", "make_purchase", "checkout", "billing_update",
+    "auto_recharge", "paid_api_call", "premium_provider_call",
+    "external_api_request", "transfer_money", "place_order",
+    "fund_account", "withdraw_funds", "buy_item", "trade_stock",
+    "subscription_upgrade", "refund_payment", "gemini_generate",
+])
+def test_payment_financial_and_external_services_are_always_blocked(action):
     decision = authorize_action(action, approved_action=action)
     assert decision.allowed is False
     assert "disabled" in decision.reason
 
 
 def test_generic_boolean_approval_is_not_accepted():
-    # Prevents an old broad approval flag from authorizing arbitrary actions.
     assert authorize_action("write_file", approved_action=True).allowed is False
 
 
@@ -70,42 +63,29 @@ def test_generic_boolean_approval_is_not_accepted():
 def test_invalid_action_is_rejected(action):
     assert authorize_action(action).allowed is False
 
-@pytest.mark.parametrize(
-    "action",
-    [
-        "unpaid_report",
-        "external_apiary",
-    ],
-)
-def test_blocked_markers_do_not_match_unrelated_substrings(action):
-    # Avoid false positives from matching arbitrary substrings.
-    decision = authorize_action(action, approved_action=action)
-    assert decision.allowed is True
+
+@pytest.mark.parametrize("action", [
+    "run_shell", "execute_code", "open_browser", "unknown_action",
+    "unpaid_report", "external_apiary", "read_secret",
+])
+def test_unknown_actions_fail_closed(action):
+    assert authorize_action(action, approved_action=action).allowed is False
 
 
-@pytest.mark.parametrize(
-    "action",
-    [
-        "provider-call",
-        "provider_call_extra",
-        "external api request",
-        "make-payment",
-        "purchase_now",
-        "pay_invoice",
-        "buy_item",
-        "subscription_upgrade",
-        "donate_money",
-        "openai_request",
-        "gemini_generate",
-        "api_call",
-        "provider_request",
-    ],
-)
+@pytest.mark.parametrize("action", [
+    "provider-call", "provider_call_extra", "external api request",
+    "make-payment", "purchase_now", "pay_invoice", "buy_item",
+    "subscription_upgrade", "donate_money", "openai_request",
+    "gemini_generate", "api_call", "provider_request",
+])
 def test_blocked_markers_are_normalized_and_always_rejected(action):
-    decision = authorize_action(action, approved_action=action)
-    assert decision.allowed is False
+    assert authorize_action(action, approved_action=action).allowed is False
 
 
-def test_reading_an_invoice_is_not_itself_a_payment_action():
-    decision = authorize_action("read_invoice", approved_action="read_invoice")
-    assert decision.allowed is True
+def test_auto_run_is_restricted_to_exact_preapproved_actions():
+    assert authorize_action(
+        "write_file", auto_run=True, auto_run_actions={"write_file"}
+    ).allowed is True
+    assert authorize_action(
+        "delete_file", auto_run=True, auto_run_actions={"write_file"}
+    ).allowed is False
