@@ -403,3 +403,73 @@ Reviewed code head: `74930fbcc505d87c42263db8712118e1635a86e2`
 Decision: latest exact-head code-level CI PASS; full S04 remains BLOCKED. PR #5 remains Open + Draft, and Production remains NOT APPROVED.
 
 Next checkpoint: P08-P09-BV — inspect authenticated SQLite audit transaction and recovery semantics, and add targeted tests only for demonstrated gaps.
+
+
+## P08-P09-BW — SQLite audit backup/restore, tamper fail-closed and remaining operational gates
+
+Review date: 2026-11-15
+Test change: `tests/test_sqlite_security_store.py` commit `b2ef2fa1b4456b763c4e4bf7c5b448f4148011e9`
+
+### Work package 1 — SQLite backup and restore verification
+
+Added an automated test using SQLite's online backup API:
+- Writes two committed audit events to the source database.
+- Uses `Connection.backup()` to create a consistent backup and verifies `PRAGMA integrity_check = ok`.
+- Restores that backup into a fresh database and repeats the integrity check.
+- Opens the restored database through `SQLiteSecurityStore`, verifies the audit hash chain and confirms its last hash matches the source.
+- Appends a new event after restore and verifies the extended chain and exact event order.
+
+This proves the tested local SQLite backup/restore path preserves a valid audit chain. It does not prove scheduled backups, encrypted/off-site storage, retention, disaster recovery objectives, or protection from an attacker who can rewrite both database and backup.
+
+### Work package 2 — tamper fail-closed and append atomicity
+
+Added a test that modifies an existing audit event directly, attempts to append a new event, and asserts:
+- append raises a verification error;
+- no additional event is inserted;
+- chain verification remains failed.
+
+The implementation already verifies the complete chain inside the same `BEGIN IMMEDIATE` write transaction before appending. This regression test now asserts that tampering cannot be silently extended into a new apparently valid chain.
+
+### Work package 3 — independent anchor and live/deployment verification runbook
+
+The application currently has no independent external audit anchor. A hash chain stored only in the same SQLite database is not an independent trust source. Do not describe it as tamper-proof.
+
+Before production consideration, an operator-controlled independent anchor must:
+1. Receive the monotonically increasing audit sequence and latest chain hash from a separately administered trust boundary.
+2. Store immutable or append-only checkpoints with authenticated transport and restricted write identities.
+3. Reject sequence rollback, duplicate conflicting checkpoints and unexpected hash discontinuity.
+4. Support periodic verification against a restored database and alert on mismatch or missed checkpoint.
+5. Keep credentials outside this repository and outside application task-controlled configuration.
+6. Be tested with database rollback, backup rollback, anchor outage and credential-revocation scenarios.
+
+No external service, credentials, paid provider or network integration is enabled by this change.
+
+#### Live OIDC and browser acceptance procedure
+
+Run only in a private, non-production test deployment:
+- Configure an OIDC test client and protected signing secret using the deployment's secret manager; never commit secrets.
+- Create two controlled test identities and separate browser profiles.
+- Verify unauthenticated access is denied; login binds the correct issuer/subject; logout clears identity-bound state; switching identities does not retain drafts, approvals, project data or capabilities.
+- Exercise invalid issuer, subject, audience, expiry, nonce/state, callback error and redirect mismatch cases.
+- Verify secure cookie attributes, CSRF defenses, exact redirect allowlist, TLS termination and reverse-proxy header trust.
+- Capture sanitized evidence (test IDs, timestamps, outcomes); do not store tokens, cookies, secrets or personal data in artifacts.
+- Stop on any cross-user visibility, retained session capability or unexpected redirect.
+
+#### Host isolation and production deployment acceptance procedure
+
+- Run under a dedicated unprivileged OS identity with a private owner-only data directory and non-writable parent.
+- Ensure only one explicitly supported audit writer topology; do not share local SQLite/JSONL files across hosts or network filesystems without a separately tested design.
+- Keep application, secrets and audit storage permissions separate; disable shell/device/network/browser handlers by default.
+- Use an OS/container boundary with resource limits and deny-by-default filesystem, network and process capabilities before considering hostile-code execution.
+- Verify backups are encrypted, access-controlled, independently retained and periodically restore-tested.
+- Configure monitoring for audit verification failures, backup age, storage exhaustion, auth failures and policy denials.
+- Verify repository branch protection and required status checks with repository-admin access; this integration cannot establish administrative enforcement.
+- Keep production approval blocked until each item has named owner, evidence and independent review.
+
+### Disposition
+
+The new local backup/restore and tamper-append regression tests are committed; their CI result is pending until GitHub Actions completes on the resulting head. Independent anchoring, live OIDC/browser testing, repository administration and host isolation are operational/deployment tasks and cannot honestly be marked complete from this repository-only session.
+
+PR #5 remains Open + Draft. No merge, deployment, Auto-Run, paid provider, payment, purchase, checkout, trading, money movement or real-world execution handler is enabled. Production remains NOT APPROVED.
+
+Next checkpoint: P08-P09-BX — verify exact-head CI for the new backup/restore and tamper tests, fix any failures, then update the consolidated matrix with exact evidence.
