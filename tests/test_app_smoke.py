@@ -18,6 +18,27 @@ def test_streamlit_app_renders_in_safe_local_prototype_mode():
     assert any("External API: Disabled" in item.value for item in app.markdown)
 
 
+def test_streamlit_app_stops_when_auth_is_required_but_oidc_is_unconfigured(
+    tmp_path, monkeypatch
+):
+    streamlit_dir = tmp_path / ".streamlit"
+    streamlit_dir.mkdir()
+    (streamlit_dir / "secrets.toml").write_text(
+        "[apaa]\nrequire_auth = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+
+    assert not app.exception
+    assert any(
+        "Authentication is required" in item.value
+        for item in app.error
+    )
+    assert not app.button
+
+
 def test_project_creation_requires_review_then_explicit_confirmation():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
