@@ -119,7 +119,7 @@ class ProjectRegistry:
         project = self._projects.get(project_id)
         if project is None:
             return False
-        require_project_owner(principal, project.owner_subject)
+        require_project_owner(principal, project.owner_subject, project.owner_issuer)
         del self._projects[project_id]
         return True
 
