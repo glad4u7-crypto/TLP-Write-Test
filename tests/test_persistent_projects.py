@@ -1,3 +1,4 @@
+import sqlite3
 import pytest
 
 from core.identity import (
@@ -157,6 +158,7 @@ def test_approval_gateway_creates_project_persistently_for_authenticated_tenant(
         result.output.project_id
     ]
 
+
 def test_persistent_gateway_uses_sqlite_audit_for_intent_and_completion(tmp_path):
     from core.approvals import ApprovalAuthority
     from core.project_actions import build_project_gateway
@@ -188,7 +190,7 @@ def test_persistent_gateway_uses_sqlite_audit_for_intent_and_completion(tmp_path
     assert result.executed is True
     assert audit_log.verify() != audit_log.GENESIS
     assert len(registry.list_projects_for_owner(ALICE)) == 1
-    with __import__("sqlite3").connect(tmp_path / "security.sqlite3") as connection:
+    with sqlite3.connect(tmp_path / "security.sqlite3") as connection:
         rows = connection.execute(
             "SELECT action, result, reason_code FROM durable_audit_events ORDER BY sequence"
         ).fetchall()
