@@ -267,6 +267,13 @@ def test_gateway_fails_closed_when_intent_audit_cannot_be_written(tmp_path, monk
     assert "not executed" in result.reason
     assert calls == []
 
+    # The receipt was consumed before intent persistence failed. It cannot be
+    # replayed after storage recovery; a fresh explicit approval is required.
+    monkeypatch.undo()
+    retry = gateway.execute("write_file", payload, approval_receipt=receipt)
+    assert retry.executed is False
+    assert calls == []
+
 
 def test_gateway_reports_completion_audit_failure_after_side_effect(tmp_path, monkeypatch):
     from core.audit import JsonlAuditLog
@@ -298,6 +305,12 @@ def test_gateway_reports_completion_audit_failure_after_side_effect(tmp_path, mo
     assert "completion audit persistence failed" in result.reason
     assert calls == [payload]
     assert len((tmp_path / "gateway.jsonl").read_text().splitlines()) == 1
+
+    # A completion-audit failure is an uncertain recorded outcome, not a
+    # license to retry the side effect with the same one-time receipt.
+    retry = gateway.execute("write_file", payload, approval_receipt=receipt)
+    assert retry.executed is False
+    assert calls == [payload]
 
 
 def test_gateway_fails_closed_on_unexpected_intent_audit_backend_error(tmp_path, monkeypatch):
