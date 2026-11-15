@@ -18,6 +18,7 @@ def test_identity_switch_clears_pending_approval_and_user_specific_state():
         "execution_gateway": object(),
         "execution_gateway_owner": "alice",
         "approval_session_scope": "alice-approval-scope",
+        "approval_authority_config_id": "alice-config-fingerprint",
         "free_plan": "Alice plan",
         "draft_task": "Alice private task",
         "project_registry": object(),
@@ -33,6 +34,7 @@ def test_identity_switch_clears_pending_approval_and_user_specific_state():
         "execution_gateway",
         "execution_gateway_owner",
         "approval_session_scope",
+        "approval_authority_config_id",
         "free_plan",
         "draft_task",
         "project_registry",
@@ -60,6 +62,9 @@ def test_missing_identity_marker_clears_orphaned_identity_state():
         "pending_project": {"name": "Orphaned draft"},
         "approval_authority": object(),
         "execution_gateway": object(),
+        "approval_session_scope": "orphaned-scope",
+        "approval_authority_config_id": "orphaned-config-fingerprint",
+        "execution_gateway_owner": "old-user",
         "project_registry": object(),
     }
 
@@ -71,6 +76,9 @@ def test_missing_identity_marker_clears_orphaned_identity_state():
             "pending_project",
             "approval_authority",
             "execution_gateway",
+            "approval_session_scope",
+            "approval_authority_config_id",
+            "execution_gateway_owner",
             "project_registry",
         )
     )
@@ -98,6 +106,7 @@ def test_logout_clears_all_identity_bound_state_immediately():
         "active_identity_subject": "https://issuer.example\\nalice",
         "pending_project": {"name": "private draft"},
         "approval_session_scope": "old-session-secret",
+        "approval_authority_config_id": "old-config-fingerprint",
         "approval_authority": object(),
         "execution_gateway": object(),
         "execution_gateway_owner": "alice",
