@@ -53,3 +53,9 @@ The `[auth]` OIDC section must also be configured according to Streamlit's suppo
 - Project data itself remains in the session-local in-memory registry; the SQLite ProjectStore adapter is not yet wired into CRUD.
 - The local SQLite audit hash chain detects changes but is not tamper-proof against a writer who can rewrite and recompute the database. Protect the database file and host.
 - Local unauthenticated prototype mode deliberately retains in-memory approvals + JSONL audit; it must not be exposed publicly.
+
+
+## Latest verification
+- Run #293 on commit `630c8eda5647c4df9be27798cccc9bd37147593e`: **SUCCESS** — pytest suite and `demo.py` passed.
+- Foundation CI Run #234 on the same commit: **SUCCESS** — module compilation and foundation tests passed.
+- Earlier failures were corrected and the latest head is green; continue with full app/runtime integration testing before release.
