@@ -307,3 +307,60 @@ def test_concurrent_process_project_creates_are_all_persisted(tmp_path):
     projects = SQLiteProjectStore(path).list_for_tenant(tenant)
     assert len(projects) == 6
     assert {project.project_id for project in projects} == set(project_ids)
+
+def _crash_with_uncommitted_project(database_path, ready_queue):
+    import os
+    import sqlite3
+
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """INSERT INTO projects
+           (project_id, tenant_issuer, tenant_subject, name, description, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "crash-uncommitted-project",
+            "https://issuer-crash.example",
+            "crash-owner",
+            "Uncommitted project",
+            "must disappear after recovery",
+            "2026-11-15T00:00:00+00:00",
+            "2026-11-15T00:00:00+00:00",
+        ),
+    )
+    ready_queue.put(True)
+    # Simulate abrupt process termination without commit, rollback, or close.
+    os._exit(0)
+
+
+def test_sqlite_recovers_uncommitted_project_after_process_crash(tmp_path, tenants):
+    path = tmp_path / "project-crash-recovery.sqlite3"
+    store = SQLiteProjectStore(path)
+    committed = store.create(tenants[0], name="Committed project", description="keep")
+
+    context = multiprocessing.get_context("spawn")
+    ready_queue = context.Queue()
+    process = context.Process(
+        target=_crash_with_uncommitted_project,
+        args=(str(path), ready_queue),
+    )
+    process.start()
+    try:
+        assert ready_queue.get(timeout=30) is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+
+    recovered = SQLiteProjectStore(path)
+    assert recovered.get_for_tenant(tenants[0], committed.project_id) == committed
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM projects WHERE project_id = ?",
+            ("crash-uncommitted-project",),
+        ).fetchone()[0] == 0
+
