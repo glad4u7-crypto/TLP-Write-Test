@@ -257,3 +257,33 @@ P06 verifies that a trusted Ed25519 key signed a fresh, challenge-bound report w
 Both existing workflows passed on the exact P06 code-bearing snapshot. The initial P06 CI run exposed one test-call omission and seven dependency advisories against cryptography 47.0.0. The test invocation was corrected and the dependency floor raised to cryptography 50.0.0; the final code-bearing runs above passed and pip-audit reported no known vulnerabilities.
 
 **P06 disposition:** SIGNED EVIDENCE VERIFIER + OFFLINE FIREWALL POLICY VALIDATOR IMPLEMENTED; exact code-bearing CI verified. The final documentation-record commit must also be checked by both workflows. No new workflow. No host collector, firewall mutation, browser runtime, worker process or browser handler. PR #5 remains Open + Draft + unmerged.
+
+
+## P07 implementation checkpoint — read-only host snapshot collection + nftables parser
+
+**Checkpoint:** APAA-S07-C01-P07  
+**Implementation:** core/browser_nftables.py  
+**Tests:** tests/test_browser_nftables.py  
+**Detailed contract:** docs/APAA_S07_HOST_COLLECTOR_NFTABLES_P07.md  
+**CI:** PENDING exact-commit verification
+
+| Area | P07 evidence | Status |
+|---|---|---|
+| Host source interface | Injected HostSnapshotSource with runtime, namespace and nftables read methods; no default implementation | INTERFACE IMPLEMENTED |
+| Runtime evidence | P05 pre-start attestation revalidated before signing | IMPLEMENTED — OFFLINE TESTED |
+| Namespace identity | Runtime/worker binding, positive inode and bounded interface name | IMPLEMENTED — OFFLINE TESTED |
+| nftables JSON parser | Narrow inet/filter/output subset; default DROP; exact TCP + IPv4 proxy destination + port | IMPLEMENTED — OFFLINE TESTED |
+| Unknown rules / jumps / verdict maps | Unsupported output expressions rejected | IMPLEMENTED — OFFLINE TESTED |
+| Ruleset integrity | SHA-256 over canonical JSON snapshot | IMPLEMENTED — OFFLINE TESTED |
+| Evidence assembly | Normalizes P06 firewall schema, signs Ed25519 envelope and self-verifies via P06 | IMPLEMENTED — OFFLINE TESTED |
+| Concrete host adapter / daemon | No runtime, kernel or nftables reader implementation supplied | NOT IMPLEMENTED |
+| Kernel-state authenticity | Source must independently inspect effective state; protocol cannot attest source integrity | EXTERNAL TRUST REQUIREMENT |
+| Packet-level / host forwarding proof | No packet capture, routing inspection, host forwarding chain or live egress test | NOT IMPLEMENTED |
+| Browser runtime / worker | No worker, browser process or ExecutionGateway handler | NOT IMPLEMENTED |
+| Existing CI workflows | Both existing workflows must pass on final P07 matrix commit | PENDING |
+
+### P07 interpretation and exit gate
+
+P07 provides an injected collection protocol and a deliberately narrow nftables JSON parser, not a deployed host inspector. The parser rejects unknown output-chain syntax and accepts only an exact proxy allowlist under default DROP. It is not a general nftables interpreter and does not prove that the snapshot is the effective kernel ruleset or that no alternate route exists. A separately reviewed adapter must collect actual state, bind it to the worker namespace, protect the signing key, and support one-time challenge consumption. Host forwarding and packet-level DNS/egress proofs remain separate operational gates.
+
+**P07 disposition:** SOURCE PROTOCOL + STRICT NFTABLES JSON PARSER + SIGNED EVIDENCE ASSEMBLER IMPLEMENTED; exact CI pending. No host daemon, shell command, firewall mutation, live network operation, worker process or browser handler. No new workflow. PR #5 remains Open + Draft + unmerged.
