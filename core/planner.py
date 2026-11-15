@@ -68,21 +68,21 @@ class TaskPlan:
 # These are conservative intent markers, not a replacement for action authorization.
 # A blocked plan is only a refusal to plan the detected intent; it does not execute anything.
 _BLOCKED_INTENT = re.compile(
-    r"\\b(?:pay|payment|purchase|buy|checkout|trade|trading|invest|investment|"
-    r"withdraw|deposit|recharge|transfer\\s+money|send\\s+money|move\\s+money|"
-    r"place\\s+order|execute\\s+order|paid\\s+(?:api|provider|service)|"
-    r"external\\s+(?:api|provider)|api\\s+call)\\b",
+    r"\b(?:pay|payment|purchase|buy|checkout|trade|trading|invest|investment|"
+    r"withdraw|deposit|recharge|transfer\s+money|send\s+money|move\s+money|"
+    r"place\s+order|execute\s+order|paid\s+(?:api|provider|service)|"
+    r"external\s+(?:api|provider)|api\s+call)\b",
     re.IGNORECASE,
 )
 _MUTATION_INTENT = re.compile(
-    r"\\b(?:create|update|edit|delete|remove|write|save|send|publish|rename|move|"
-    r"add|upload|download|share|submit)\\b",
+    r"\b(?:create|update|edit|delete|remove|write|save|send|publish|rename|move|"
+    r"add|upload|download|share|submit)\b",
     re.IGNORECASE,
 )
 _AMBIGUOUS_TASKS = (
-    (re.compile(r"^\\s*(?:do|fix|handle|complete|finish)\\s+(?:it|that|this)\\s*[.!?]*\\s*$", re.I),
+    (re.compile(r"^\s*(?:do|fix|handle|complete|finish)\s+(?:it|that|this)\s*[.!?]*\s*$", re.I),
      "What specific item or outcome should I work on?"),
-    (re.compile(r"^\\s*(?:make|change|improve)\\s+(?:it|that|this)\\s*[.!?]*\\s*$", re.I),
+    (re.compile(r"^\s*(?:make|change|improve)\s+(?:it|that|this)\s*[.!?]*\s*$", re.I),
      "What should be changed, and what should the desired result look like?"),
 )
 
@@ -96,7 +96,7 @@ def validate_task_intake(description: object) -> IntakeResult:
 
     # Permit ordinary whitespace controls, reject other control characters.
     if any(
-        unicodedata.category(char) == "Cc" and char not in "\\n\\r\\t"
+        unicodedata.category(char) == "Cc" and char not in "\n\r\t"
         for char in description
     ):
         return IntakeResult(False, "", ("Task contains unsupported control characters.",))
