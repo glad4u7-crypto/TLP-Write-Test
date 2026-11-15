@@ -1,18 +1,17 @@
 """Fail-closed destination authorization contract for a future egress gateway.
 
-This module prepares a validated, immutable destination record. It does NOT
+This module prepares a validated immutable destination record. It does NOT
 open sockets or claim to eliminate DNS rebinding. A production gateway must
-connect only to one of the returned pinned IP addresses while retaining the
-original hostname for TLS SNI/certificate verification, and must enforce the
-same policy for every redirect and subresource.
+connect only to a returned pinned IP while retaining the original hostname
+for TLS SNI/certificate verification, and enforce policy for every request.
 """
 from __future__ import annotations
 
 import ipaddress
 from dataclasses import dataclass
-from typing import Iterable
+from urllib.parse import urlsplit
 
-from core.browser_navigation import NavigationPolicy, NavigationPolicyError
+from core.browser_navigation import NavigationPolicy, NavigationPolicyError, _normalise_host
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,7 @@ class EgressAuthorizationError(RuntimeError):
 
 
 class EgressDestinationAuthorizer:
-    """Resolve once and issue a destination record for a pinned connector."""
+    """Resolve exactly once and issue a destination record for a pinned dialer."""
 
     def __init__(self, policy: NavigationPolicy) -> None:
         if not isinstance(policy, NavigationPolicy):
@@ -36,35 +35,67 @@ class EgressDestinationAuthorizer:
         self._policy = policy
 
     def authorize(self, url: str) -> EgressTarget:
-        """Return validated host/port and exact public IPs for a trusted dialer.
-
-        The injected NavigationPolicy resolver is called during validation.
-        This authorizer does not connect, retry DNS, or permit the dialer to
-        resolve the hostname independently.
-        """
+        """Validate URL and resolve once; never perform a network connection."""
         try:
-            self._policy.validate_url(url)
-            from urllib.parse import urlsplit
-
+            if not isinstance(url, str) or not url or len(url) > 4096:
+                raise EgressAuthorizationError("Invalid destination URL.")
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in url) or chr(92) in url:
+                raise EgressAuthorizationError("Invalid destination URL.")
             parts = urlsplit(url)
-            hostname = parts.hostname
-            if hostname is None:
+            scheme = parts.scheme.lower()
+            if scheme not in self._policy.allowed_schemes:
+                raise EgressAuthorizationError("Destination scheme is not allowed.")
+            if not parts.netloc or not parts.hostname:
                 raise EgressAuthorizationError("Destination hostname is missing.")
-            port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
-            addresses = tuple(dict.fromkeys(self._policy.resolver(hostname)))
-            if not addresses:
-                raise EgressAuthorizationError("Destination has no pinned addresses.")
-            normalised: list[str] = []
+            if parts.username is not None or parts.password is not None or "@" in parts.netloc:
+                raise EgressAuthorizationError("URL credentials are not allowed.")
+            port = parts.port or (443 if scheme == "https" else 80)
+            host = _normalise_host(parts.hostname)
+            if not 1 <= port <= 65535:
+                raise EgressAuthorizationError("Destination port is invalid.")
+
+            try:
+                literal = ipaddress.ip_address(host)
+            except ValueError:
+                literal = None
+
+            if literal is not None:
+                if not literal.is_global or host not in self._policy.allowed_hosts:
+                    raise EgressAuthorizationError("IP destination is not authorized.")
+                addresses = (literal.compressed,)
+            else:
+                if host == "localhost" or host.endswith(".localhost"):
+                    raise EgressAuthorizationError("Localhost is blocked.")
+                allowed = any(
+                    host == item or (
+                        self._policy.allow_subdomains and host.endswith("." + item)
+                    )
+                    for item in self._policy.allowed_hosts
+                )
+                if not allowed:
+                    raise EgressAuthorizationError("Hostname is not on the allowlist.")
+                try:
+                    addresses = tuple(dict.fromkeys(self._policy.resolver(host)))
+                except Exception as exc:
+                    raise EgressAuthorizationError("Destination resolution failed.") from exc
+                if not addresses:
+                    raise EgressAuthorizationError("Destination has no address records.")
+
+            pins: list[str] = []
             for value in addresses:
-                address = ipaddress.ip_address(value.split("%", 1)[0])
+                try:
+                    address = ipaddress.ip_address(value.split("%", 1)[0])
+                except ValueError as exc:
+                    raise EgressAuthorizationError("Resolver returned an invalid IP.") from exc
                 if not address.is_global:
                     raise EgressAuthorizationError("Non-public destination address blocked.")
-                normalised.append(address.compressed)
+                pins.append(address.compressed)
+
             return EgressTarget(
-                hostname=hostname.encode("idna").decode("ascii").lower(),
+                hostname=host,
                 port=port,
-                scheme=parts.scheme.lower(),
-                pinned_addresses=tuple(normalised),
+                scheme=scheme,
+                pinned_addresses=tuple(pins),
             )
         except EgressAuthorizationError:
             raise
