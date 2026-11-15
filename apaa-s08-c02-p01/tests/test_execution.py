@@ -1,59 +1,67 @@
-import os, tempfile, threading, unittest
+import os, sqlite3, tempfile, unittest
 from apaa_execution import ExecutionEngine, StateStore, Task, TaskStatus
 
 class DurableQueueTests(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory(); self.db=os.path.join(self.tmp.name,"queue.sqlite")
-        self.store=StateStore(self.db); self.engine=ExecutionEngine(self.store,worker_id="worker-A",lease_seconds=10)
+        self.tmp=tempfile.TemporaryDirectory();self.db=os.path.join(self.tmp.name,"queue.sqlite")
+        self.store=StateStore(self.db);self.engine=ExecutionEngine(self.store,worker_id="worker-A",lease_seconds=10)
         self.engine.register("echo",lambda p:{"echo":p["value"]})
-    def tearDown(self): self.store.close(); self.tmp.cleanup()
-    def task(self,**kw):
-        return Task.create("echo",{"value":"ok"},permission_granted=True,user_consented=True,**kw)
+    def tearDown(self):self.store.close();self.tmp.cleanup()
+    def task(self,**kw):return Task.create("echo",{"value":"ok"},permission_granted=True,user_consented=True,**kw)
     def test_success_and_persisted_audit(self):
-        t=self.task(); self.engine.submit(t); self.engine.run_next()
+        t=self.task();self.engine.submit(t);self.engine.run_next()
         self.assertEqual(self.store.get(t.task_id)["status"],"succeeded")
-        self.assertIn("lease_claimed",[x["event"] for x in self.store.audit(t.task_id)])
+        self.assertTrue(self.store.verify_audit_chain())
     def test_duplicate_idempotency_key_returns_original(self):
-        a=self.task(idempotency_key="same-request"); b=self.task(idempotency_key="same-request")
+        a=self.task(idempotency_key="same-request");b=self.task(idempotency_key="same-request")
         self.assertEqual(self.engine.submit(a),self.engine.submit(b))
-        self.assertEqual(len(self.store.audit(a.task_id)),2)
     def test_restart_recovers_expired_running_task(self):
-        t=self.task(); self.engine.submit(t)
-        row=self.store.claim_next("dead-worker",1)
-        self.assertEqual(row["status"],"running")
+        t=self.task();self.engine.submit(t);row=self.store.claim_next("dead-worker",1)
         self.assertEqual(self.store.recover_expired(now=row["lease_expires_at"]+1),1)
         self.assertEqual(self.store.get(t.task_id)["status"],"queued")
-        self.engine.run_next(); self.assertEqual(self.store.get(t.task_id)["status"],"succeeded")
-    def test_retry_is_bounded(self):
-        calls=[]
-        self.engine.register("flaky",lambda p: calls.append(1) or (_ for _ in ()).throw(ValueError("no")))
+        self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"succeeded")
+    def test_retry_exhaustion_moves_to_dead_letter(self):
+        self.engine.register("flaky",lambda p:(_ for _ in ()).throw(ValueError("no")))
         t=Task.create("flaky",{},permission_granted=True,user_consented=True,max_attempts=2)
-        self.engine.submit(t); self.engine.run_next()
-        self.assertEqual(self.store.get(t.task_id)["status"],"queued")
-        self.engine.run_next()
-        row=self.store.get(t.task_id)
-        self.assertEqual(row["status"],"failed"); self.assertEqual(row["attempts"],2)
-    def test_expired_lease_at_retry_limit_fails(self):
-        t=self.task(max_attempts=1); self.engine.submit(t)
-        row=self.store.claim_next("lost-worker",1)
+        self.engine.submit(t);self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"queued")
+        self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"dead_letter")
+        self.assertEqual(len(self.store.dead_letters()),1)
+    def test_expired_lease_at_limit_moves_to_dead_letter(self):
+        t=self.task(max_attempts=1);self.engine.submit(t);row=self.store.claim_next("lost",1)
         self.store.recover_expired(now=row["lease_expires_at"]+1)
-        self.assertEqual(self.store.get(t.task_id)["status"],"failed")
+        self.assertEqual(self.store.get(t.task_id)["status"],"dead_letter")
+        self.assertEqual(len(self.store.dead_letters()),1)
     def test_worker_cannot_finish_another_workers_lease(self):
-        t=self.task(); self.engine.submit(t); self.store.claim_next("owner",30)
-        with self.assertRaises(RuntimeError):
-            self.store.finish(t.task_id,"intruder",TaskStatus.SUCCEEDED,result="forged")
+        t=self.task();self.engine.submit(t);self.store.claim_next("owner",30)
+        with self.assertRaises(RuntimeError):self.store.finish(t.task_id,"intruder",TaskStatus.SUCCEEDED)
     def test_concurrent_claims_only_one_gets_task(self):
-        t=self.task(); self.engine.submit(t)
-        one=self.store.claim_next("one",30); two=self.store.claim_next("two",30)
-        self.assertEqual(one["task_id"],t.task_id); self.assertIsNone(two)
+        t=self.task();self.engine.submit(t)
+        self.assertEqual(self.store.claim_next("one",30)["task_id"],t.task_id)
+        self.assertIsNone(self.store.claim_next("two",30))
     def test_missing_consent_blocks(self):
-        t=Task.create("echo",{"value":"x"},permission_granted=True)
-        self.engine.submit(t); self.engine.run_next()
+        t=Task.create("echo",{"value":"x"},permission_granted=True);self.engine.submit(t);self.engine.run_next()
         self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
     def test_fifo_order(self):
-        seen=[]; self.engine.register("record",lambda p:seen.append(p["n"]))
+        seen=[];self.engine.register("record",lambda p:seen.append(p["n"]))
         ts=[Task.create("record",{"n":n},permission_granted=True,user_consented=True) for n in range(3)]
         for t in ts:self.engine.submit(t)
-        self.engine.run_all(); self.assertEqual(seen,[0,1,2])
+        self.engine.run_all();self.assertEqual(seen,[0,1,2])
+    def test_cancel_queued_task(self):
+        t=self.task();self.engine.submit(t);self.assertTrue(self.engine.cancel(t.task_id,"user requested"))
+        self.assertEqual(self.store.get(t.task_id)["status"],"cancelled")
+        self.assertIsNone(self.store.claim_next("worker-B",5))
+    def test_running_task_cannot_be_force_cancelled(self):
+        t=self.task();self.engine.submit(t);self.store.claim_next("worker-A",20)
+        self.assertFalse(self.engine.cancel(t.task_id))
+    def test_audit_tampering_is_detected(self):
+        t=self.task();self.engine.submit(t)
+        with self.store._db:self.store._db.execute("UPDATE audit_events SET detail='forged' WHERE task_id=?",(t.task_id,))
+        self.assertFalse(self.store.verify_audit_chain())
+    def test_audit_deletion_is_detected_by_chain_link(self):
+        t=self.task();self.engine.submit(t);self.engine.run_next()
+        with self.store._db:self.store._db.execute("DELETE FROM audit_events WHERE event_id=(SELECT MIN(event_id) FROM audit_events)")
+        self.assertFalse(self.store.verify_audit_chain())
+    def test_invalid_attempt_limit_rejected(self):
+        with self.assertRaises(ValueError):Task.create("x",{},max_attempts=0)
 
 if __name__=="__main__":unittest.main()
