@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
@@ -14,9 +15,14 @@ st.caption("Version 0.4.0 · Zero-cost core + Project Manager")
 
 # OIDC is optional for local single-user development, but deployments should
 # set [apaa].require_auth = true in secrets.toml. Never accept identity from UI input.
-apaa_settings = st.secrets.get("apaa", {})
+try:
+    apaa_settings = st.secrets.get("apaa", {})
+    auth_configured = "auth" in st.secrets
+except StreamlitSecretNotFoundError:
+    # AppTest and local development may intentionally run without secrets.toml.
+    apaa_settings = {}
+    auth_configured = False
 auth_required = bool(apaa_settings.get("require_auth", False))
-auth_configured = "auth" in st.secrets
 
 if auth_required:
     if not auth_configured:
