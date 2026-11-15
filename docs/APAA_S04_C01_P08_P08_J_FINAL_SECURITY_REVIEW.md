@@ -558,3 +558,19 @@ No merge, deployment, payment, purchase, trading, paid-provider activation, or r
 ### Next serial checkpoint
 
 Continue the remaining S04 security/reliability review in order. Keep the live OIDC/browser matrix recorded as an external blocker; do not advance to S05 until the remaining S04 requirements and release gates have been resolved or explicitly documented as blocked.
+
+
+## P08-P09-AY — OIDC timestamp overflow hardening
+
+Review date: 2026-11-15  
+Implementation commits: `19fd665b4acf1a781f7a7a10e3e388c098a0e8fe`, `d5b650a888d6a851b35a66b51875341615e238bd`
+
+- Hardened OIDC numeric timestamp validation against extremely large Python integers that raise `OverflowError` during `math.isfinite` conversion.
+- Added regression coverage for oversized `exp`, `iat`, and explicit validation-time values.
+- Retained strict rejection of booleans, non-numeric values, NaN/infinity, expired identities, and timestamps outside the configured clock-skew window.
+- Added explicit clock-skew boundary tests in the preceding checkpoint: expiration exactly at the lower boundary is rejected; issued-at exactly at the upper boundary is accepted.
+- Automated CI for the implementation head must be checked before treating this checkpoint as verified. No local test execution is claimed in this record.
+
+### Next serial checkpoint
+
+Continue S04 security review with malformed/hostile OIDC claim-value coverage and session/auth boundary regression tests. Do not advance to S05 until remaining S04 gates are completed or explicitly documented as externally blocked.
