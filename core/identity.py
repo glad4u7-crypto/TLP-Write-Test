@@ -49,11 +49,14 @@ def require_authenticated(principal: Principal | None) -> Principal:
 def require_project_owner(
     principal: Principal | None,
     owner_subject: str | None,
+    owner_issuer: str | None = None,
 ) -> Principal:
     """Require an authenticated principal to own a project."""
     verified = require_authenticated(principal)
+    if owner_issuer is not None and verified.issuer != owner_issuer:
+        raise AuthorizationDenied("The authenticated issuer does not own this project.")
     if (
-        not isinstance(owner_subject, str)
+        not isinstance(owner_subject, str
         or not owner_subject.strip()
         or verified.subject != owner_subject
     ):
