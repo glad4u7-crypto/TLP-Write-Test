@@ -87,3 +87,38 @@ def test_plan_serialization_has_no_runtime_timestamp():
     result = create_structured_plan(Task(description="Inspect repository")).to_dict()
     assert "created_at" not in result
     assert "timestamp" not in result
+
+def test_plan_serialization_is_json_compatible():
+    plan = create_structured_plan(Task(description="Inspect repository"))
+    encoded = json.dumps(plan.to_dict(), sort_keys=True)
+    assert '"status": "ready"' in encoded
+    assert '"category": "read_only"' in encoded
+
+
+def test_plan_schema_rejects_ready_state_without_steps():
+    with pytest.raises(ValueError, match="Ready plans require steps"):
+        TaskPlan(
+            schema_version="1.0",
+            plan_id="plan-0123456789abcdef",
+            task_description="Inspect repository",
+            status=PlanStatus.READY,
+            steps=(),
+        )
+
+
+def test_plan_step_rejects_mutation_without_human_approval():
+    with pytest.raises(ValueError, match="Only proposed mutation"):
+        PlanStep(
+            step_id="step-01",
+            title="Write file",
+            purpose="Propose a file update",
+            category=StepCategory.PROPOSED_MUTATION,
+            expected_output="Draft",
+            requires_human_approval=False,
+        )
+
+
+def test_intake_checks_raw_input_length_before_whitespace_normalization():
+    result = validate_task_intake(" " * 4001)
+    assert result.accepted is False
+    assert "4000" in result.errors[0]
