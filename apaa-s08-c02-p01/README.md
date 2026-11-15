@@ -5,7 +5,7 @@ P01–P03: guarded in-process execution, durable SQLite queue, leases/retries, i
 P04: strict action/payload validation, versioned policy registry, scoped expiring/revocable consent ledger, signed SQLite backup/restore.
 
 P05 integrates P04 controls into the actual execution path:
-- Task creation validates normalized action identifiers and JSON-safe bounded payloads.
+- Task creation AND queue submission validate normalized action identifiers and JSON-safe bounded payloads; direct dataclass construction cannot bypass the submission trust boundary.
 - Every task records a policy version (default v1).
 - Execution requires an explicitly enabled matching action+policy version; missing policy denies.
 - Explicit caller consent creates a persisted, task-scoped grant with a default 15-minute expiry.
