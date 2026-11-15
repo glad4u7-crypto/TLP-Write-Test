@@ -257,3 +257,65 @@ def test_security_sqlite_rollback_journal_has_owner_only_permissions(tmp_path):
     finally:
         connection.rollback()
         connection.close()
+
+
+def test_nonce_expiry_cleanup_rolls_back_when_insert_fails(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "nonce-rollback.sqlite3"
+    store = SQLiteSecurityStore(path)
+    tenant = TenantKey("https://issuer.example", "alice")
+    assert store.consume_approval_nonce(tenant, "expired-row", 150, now=100)
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TRIGGER reject_nonce_insert
+               BEFORE INSERT ON consumed_approval_nonces
+               BEGIN SELECT RAISE(ABORT, 'forced nonce insert failure'); END"""
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced nonce insert failure"):
+        store.consume_approval_nonce(tenant, "new-row", 500, now=200)
+
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT nonce FROM consumed_approval_nonces ORDER BY nonce"
+        ).fetchall()
+    # The expiry cleanup and failed insert share one transaction: rollback
+    # must restore the row deleted during cleanup.
+    assert rows == [("expired-row",)]
+
+
+def test_audit_append_rolls_back_when_sqlite_insert_fails(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "audit-rollback.sqlite3"
+    store = SQLiteSecurityStore(path)
+    first_hash = store.append_audit_event(
+        DurableAuditEvent("first", "ok", "ok", "fp", "req-1")
+    )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TRIGGER reject_audit_insert
+               BEFORE INSERT ON durable_audit_events
+               BEGIN SELECT RAISE(ABORT, 'forced audit insert failure'); END"""
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced audit insert failure"):
+        store.append_audit_event(
+            DurableAuditEvent("second", "ok", "ok", "fp", "req-2")
+        )
+
+    assert store.verify_audit_chain()
+    assert store.last_audit_hash() == first_hash
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0] == 1
+
+
+def test_security_store_rejects_unvalidated_tenant_before_database_access(tmp_path):
+    store = SQLiteSecurityStore(tmp_path / "invalid-tenant.sqlite3")
+    with pytest.raises(TypeError, match="validated TenantKey"):
+        store.consume_approval_nonce(("issuer", "alice"), "nonce", 500, now=100)
