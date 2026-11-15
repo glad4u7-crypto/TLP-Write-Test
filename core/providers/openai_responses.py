@@ -22,6 +22,12 @@ class OpenAIResponsesProvider:
     def generate(self, prompt: str, instructions: str = "") -> str:
         if not prompt.strip():
             raise ValueError("Prompt must not be empty.")
+        external_enabled = os.getenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "").strip().lower() == "true"
+        cost_approved = os.getenv("AGENT_PAID_PROVIDER_COST_APPROVED", "").strip().lower() == "true"
+        if not (external_enabled and cost_approved):
+            raise ProviderError(
+                "External provider is disabled. Explicit provider opt-in and paid-cost approval are both required."
+            )
         if not self.api_key:
             raise ProviderError("OPENAI_API_KEY is not configured. Add it to the runtime environment.")
 
