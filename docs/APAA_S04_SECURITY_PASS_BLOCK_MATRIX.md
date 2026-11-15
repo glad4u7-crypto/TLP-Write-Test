@@ -1,10 +1,10 @@
 # APAA S04 — Security Pass / Block Matrix
 
-Checkpoint: APAA-S04-C01-P08-P09-BG  
+Checkpoint: APAA-S04-C01-P08-P09-BP  
 Verification date: 2026-11-15  
 Repository: glad4u7-crypto/TLP-Write-Test  
 Pull request: #5 (must remain Draft)  
-Implementation head reviewed: 509799b3901d9e25fd539a7ffae507323e0d586c  
+Implementation head reviewed: 730a7565b7ec8e32f68d2f7929b1dde50bd16922  
 Head branch: feature/approval-ui-e2e-p06  
 Base branch: feature/agent-v0.3-zero-cost-core
 
@@ -14,8 +14,8 @@ The implementation head above completed both existing required workflows success
 
 | Workflow | Run ID | Result | Verified steps |
 |---|---:|---|---|
-| Agent Foundation CI | 43697232345 | PASS | pinned checkout/setup actions, dependency installation, pip-audit, compileall, full pytest suite |
-| Python Demo CI | 43697232231 | PASS | pinned checkout/setup actions, dependency installation, full pytest suite, demo output check |
+| Agent Foundation CI | 43697663733 | PASS | pinned checkout/setup actions, dependency installation, pip-audit, compileall, 390 tests passed |
+| Python Demo CI | 43697663665 | PASS | pinned checkout/setup actions, dependency installation, 390 tests passed, demo output check |
 
 The GitHub job and step records show every step completed successfully. The preceding exact head ce1973ec2bc1c3f2fed6e23f89b90f1d14ed51e7 also passed both workflows (43697117613 and 43697117662). The documented suite size at that point was 385 tests. Dependency audit is point-in-time evidence, not a guarantee against future advisories.
 
@@ -68,9 +68,11 @@ Boundary retained:
 
 ## BP review conclusion
 
-- Relative-path working-directory drift was reduced with construction-time absolute path anchoring.
+- Relative-path working-directory drift was reduced with construction-time absolute path anchoring in JSONL and both SQLite stores.
+- Both durable SQLite stores reject :memory: before normalization; in-memory mode is incompatible with the per-operation connection lifecycle.
+- CI concurrency groups include the event name so push and pull_request runs do not cancel one another.
 - Regression coverage was added for JSONL audit, SQLite security nonce storage, and SQLite project storage.
-- Exact-head CI for the remediation commit is being evaluated; no PASS is claimed until both existing workflows finish.
+- Exact-head PR CI passed: Agent Foundation CI 43697663733 and Python Demo CI 43697663665; both ran 390 tests. The dependency audit, compile and demo smoke test also passed.
 - No third workflow was created. No merge or deployment was performed.
 - Full S04 security/release readiness remains BLOCKED by live OIDC/browser verification, repository administration, deployment controls, production sandbox/isolation, and operational audit/backup requirements.
 
