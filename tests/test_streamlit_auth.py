@@ -59,3 +59,17 @@ def test_oidc_adapter_allows_small_clock_skew():
         clock_skew_seconds=60,
     )
     assert principal.subject == "subject-123"
+
+
+@pytest.mark.parametrize("now", [float("nan"), float("inf"), True, "1500"])
+def test_oidc_adapter_rejects_invalid_validation_time(now):
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(valid_claims(), now=now)
+
+
+@pytest.mark.parametrize("clock_skew", [-1, True, 1.5, float("nan")])
+def test_oidc_adapter_rejects_invalid_clock_skew(clock_skew):
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(
+            valid_claims(), now=1_500, clock_skew_seconds=clock_skew
+        )
