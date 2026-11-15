@@ -13,6 +13,8 @@ import hashlib
 import hmac
 import json
 import os
+import re
+import secrets
 from pathlib import Path
 import sqlite3
 import stat
@@ -112,6 +114,18 @@ class SQLiteSecurityStore:
             )""",
             """CREATE INDEX IF NOT EXISTS idx_approval_nonce_expiry
                 ON consumed_approval_nonces (expires_at)""",
+            """CREATE TABLE IF NOT EXISTS inspector_challenges (
+                challenge_hash TEXT PRIMARY KEY,
+                issuer TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                runtime_id TEXT NOT NULL,
+                worker_id TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                issued_at INTEGER NOT NULL,
+                consumed_at INTEGER
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_inspector_challenge_expiry
+                ON inspector_challenges (expires_at)""",
             """CREATE TABLE IF NOT EXISTS durable_audit_events (
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -166,6 +180,89 @@ class SQLiteSecurityStore:
                     return False
                 connection.commit()
                 return True
+            except Exception:
+                connection.rollback()
+                raise
+
+    _INSPECTOR_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$")
+
+    def issue_inspector_challenge(
+        self,
+        tenant: TenantKey,
+        *,
+        runtime_id: str,
+        worker_id: str,
+        ttl_seconds: int = 60,
+        now: int | None = None,
+    ) -> tuple[str, int]:
+        """Persist a fresh 256-bit challenge bound to principal, runtime and worker."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if (type(runtime_id) is not str or not self._INSPECTOR_ID.fullmatch(runtime_id)
+                or type(worker_id) is not str or not self._INSPECTOR_ID.fullmatch(worker_id)):
+            raise ValueError("Runtime and worker identifiers must be valid trusted identifiers.")
+        if type(ttl_seconds) is not int or not 10 <= ttl_seconds <= 300:
+            raise ValueError("Inspector challenge TTL must be between 10 and 300 seconds.")
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            raise ValueError("Challenge issuance time is invalid.")
+        challenge = secrets.token_hex(32)
+        challenge_hash = hashlib.sha256(bytes.fromhex(challenge)).hexdigest()
+        expires_at = current + ttl_seconds
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute(
+                    "DELETE FROM inspector_challenges WHERE expires_at <= ?",
+                    (current,),
+                )
+                connection.execute(
+                    """INSERT INTO inspector_challenges
+                       (challenge_hash, issuer, subject, runtime_id, worker_id,
+                        expires_at, issued_at, consumed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, NULL)""",
+                    (challenge_hash, tenant.issuer, tenant.subject, runtime_id,
+                     worker_id, expires_at, current),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return challenge, expires_at
+
+    def consume_inspector_challenge(
+        self,
+        tenant: TenantKey,
+        challenge: str,
+        *,
+        runtime_id: str,
+        worker_id: str,
+        now: int | None = None,
+    ) -> bool:
+        """Atomically consume a previously issued challenge exactly once after signature verification."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if (type(challenge) is not str or not re.fullmatch(r"[0-9a-f]{64}", challenge)
+                or type(runtime_id) is not str or not self._INSPECTOR_ID.fullmatch(runtime_id)
+                or type(worker_id) is not str or not self._INSPECTOR_ID.fullmatch(worker_id)):
+            return False
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
+        challenge_hash = hashlib.sha256(bytes.fromhex(challenge)).hexdigest()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    """UPDATE inspector_challenges SET consumed_at = ?
+                       WHERE challenge_hash = ? AND issuer = ? AND subject = ?
+                         AND runtime_id = ? AND worker_id = ?
+                         AND expires_at > ? AND consumed_at IS NULL""",
+                    (current, challenge_hash, tenant.issuer, tenant.subject,
+                     runtime_id, worker_id, current),
+                )
+                connection.commit()
+                return cursor.rowcount == 1
             except Exception:
                 connection.rollback()
                 raise
