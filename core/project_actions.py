@@ -17,6 +17,7 @@ def build_project_gateway(
     *,
     audit_log: JsonlAuditLog | None = None,
     principal: Principal | None = None,
+    session_scope: str = "",
 ) -> ExecutionGateway:
     if not isinstance(approval_authority, ApprovalAuthority):
         raise TypeError("A trusted ApprovalAuthority instance is required.")
@@ -42,4 +43,5 @@ def build_project_gateway(
         {"create_project": create_project},
         approval_authority=approval_authority,
         audit_log=audit_log,
+        session_scope=session_scope,
     )
