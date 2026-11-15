@@ -347,3 +347,13 @@ Unit tests use synthetic procfs and mocked process execution. They do not count 
 Both workflow jobs and all listed steps were re-fetched after completion and reported success. The two existing workflows ran on the exact P08 verification-matrix commit above. This verifies repository tests and offline adapter behavior; it is not live host acceptance or packet-level firewall evidence.
 
 **Correction record:** An intermediate P08 implementation commit failed one new test because the test called nftables inspection before capturing namespace identity. The adapter's fail-closed ordering was retained; the test was corrected to capture and pin the namespace first. The subsequent code-bearing commits and exact matrix commit passed both existing workflows. No CI workflow was added or modified.
+
+
+### Final P08 documentation commit verification
+
+The final documentation-only P08 record commit `fe38d77e2250d76cd77658bf782907aef6969148` was independently checked after completion:
+
+- [Agent Foundation CI — run 43716747245](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716747245): completed, conclusion SUCCESS.
+- [Python Demo CI — run 43716745798](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716745798): completed, conclusion SUCCESS.
+
+Both workflows ran against the exact final documentation commit. This closes the P08 repository CI verification checkpoint. It does not close the separately listed live-host, key-custody, durable challenge-consumption or packet-level acceptance gates.
