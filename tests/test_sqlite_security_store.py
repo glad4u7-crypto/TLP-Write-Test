@@ -76,3 +76,35 @@ def test_audit_chain_detects_modified_row(security_store, tmp_path):
     with sqlite3.connect(path) as connection:
         connection.execute("UPDATE durable_audit_events SET action = 'tampered'")
     assert not store.verify_audit_chain()
+
+
+def test_execution_audit_adapter_satisfies_gateway_append_verify_contract(tmp_path):
+    from types import SimpleNamespace
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    store = SQLiteSecurityStore(tmp_path / "adapter.sqlite3")
+    tenant = TenantKey("https://issuer.example", "alice")
+    audit = SQLiteExecutionAuditLog(store, tenant)
+    assert audit.verify() == audit.GENESIS
+    audit.append(SimpleNamespace(action="project.create", executed=False, reason="denied"))
+    assert audit.verify() != audit.GENESIS
+    assert store.verify_audit_chain()
+
+
+def test_execution_audit_adapter_persists_only_principal_fingerprint(tmp_path):
+    from types import SimpleNamespace
+    import sqlite3
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    path = tmp_path / "adapter.sqlite3"
+    store = SQLiteSecurityStore(path)
+    audit = SQLiteExecutionAuditLog(store, TenantKey("https://issuer.example", "alice"))
+    audit.append(SimpleNamespace(action="project.create", executed=False, reason="denied"))
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT principal_fingerprint FROM durable_audit_events"
+        ).fetchone()
+    assert row[0] == __import__("hashlib").sha256(
+        b"https://issuer.example\\nalice"
+    ).hexdigest()
+    assert "alice" not in row[0]
