@@ -42,9 +42,15 @@ class ExecutionGateway:
         handlers: Mapping[str, ActionHandler] | None = None,
         *,
         approval_authority: ApprovalAuthority | None = None,
+        auto_run_actions: Iterable[str] = (),
     ) -> None:
         self._handlers: dict[str, ActionHandler] = {}
         self._approval_authority = approval_authority
+        # This allowlist is trusted application configuration, not task input.
+        self._auto_run_actions = frozenset(
+            _canonical_action(item) for item in auto_run_actions
+            if _canonical_action(item)
+        )
         self._audit_events: list[ExecutionAuditEvent] = []
         for action, handler in (handlers or {}).items():
             canonical = _canonical_action(action)
@@ -79,7 +85,6 @@ class ExecutionGateway:
         *,
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
-        auto_run_actions: Iterable[str] = (),
     ) -> ExecutionResult:
         """Run one handler only after read-only, Auto-Run, or receipt authorization."""
         if payload is not None and not isinstance(payload, Mapping):
@@ -92,7 +97,7 @@ class ExecutionGateway:
             auto_decision = authorize_action(
                 action,
                 auto_run=True,
-                auto_run_actions=auto_run_actions,
+                auto_run_actions=self._auto_run_actions,
             )
             authorized = auto_decision.allowed
             if not authorized:
