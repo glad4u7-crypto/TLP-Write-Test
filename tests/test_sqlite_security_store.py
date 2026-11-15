@@ -697,3 +697,18 @@ def test_security_database_path_is_anchored_when_working_directory_changes(tmp_p
 
     assert expected_path.is_file()
     assert not (elsewhere / "relative-security" / "security.sqlite3").exists()
+
+
+def test_security_store_rejects_database_symlink_replacement_after_initialization(tmp_path):
+    path = tmp_path / "security.sqlite3"
+    store = SQLiteSecurityStore(path)
+    target = tmp_path / "original-security.sqlite3"
+    path.rename(target)
+    try:
+        path.symlink_to(target)
+    except OSError:
+        target.rename(path)
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        store._connect()
