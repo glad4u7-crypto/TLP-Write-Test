@@ -7,7 +7,7 @@ from typing import Any
 from core.approvals import ApprovalReceipt
 from core.execution import ExecutionGateway, ExecutionResult
 from core.safety import authorize_action
-from core.task_conditions import Condition, evaluate_condition
+from core.storage import TenantKey\nfrom core.task_conditions import Condition, evaluate_condition
 
 MAX_PLAN_STEPS = 25
 MAX_STEP_ID_LENGTH = 64
@@ -44,7 +44,7 @@ class PlanResult:
     reason: str
 
 
-ApprovalProvider = Callable[[str, str, Mapping[str, Any]], ApprovalReceipt | None]
+ApprovalProvider = Callable[[str, str, Mapping[str, Any], TenantKey | None], ApprovalReceipt | None]
 
 
 class TaskPlanError(ValueError):
@@ -130,7 +130,7 @@ class MultiStepTaskExecutor:
                     results.append(StepResult(step.step_id, "blocked", "Approval is required but no trusted approval provider is available."))
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval required; plan stopped.")
                 try:
-                    receipt = request_approval(plan.plan_id, step.action, payload)
+                    receipt = request_approval(plan.plan_id, step.action, payload, tenant)
                 except Exception:
                     results.append(StepResult(step.step_id, "blocked", "Trusted approval provider failed."))
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval provider failed; plan stopped.")
@@ -139,7 +139,7 @@ class MultiStepTaskExecutor:
                     return PlanResult(plan.plan_id, "blocked", tuple(results), "Approval unavailable; plan stopped.")
 
             execution = self._gateway.execute(
-                step.action, payload, approval_receipt=receipt,
+                step.action, payload, approval_receipt=receipt, tenant=tenant,
             )
             if not execution.executed:
                 results.append(StepResult(step.step_id, "failed", execution.reason, execution))
