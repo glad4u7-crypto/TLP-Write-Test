@@ -38,7 +38,9 @@ completed = [
     ("Deterministic offline task planner", "Implemented · no external model API"),
     ("Read-only ZIP Repository Inspector", "Implemented · bounded, non-executing inspection"),
     ("Provider-neutral interface", "Implemented · external providers remain disabled"),
-    ("Basic safety policy foundation", "Implemented · not a complete approval workflow"),
+    ("Tool Registry", "Implemented · metadata-only; execution disabled"),
+    ("Approval queue UI", "Implemented · session-scoped; decisions do not execute actions"),
+    ("Basic safety policy foundation", "Implemented · policy helper only"),
 ]
 for name, detail in completed:
     st.markdown(f"- **{name}** — {detail}")
@@ -61,11 +63,11 @@ st.divider()
 st.subheader("Remaining dashboard work")
 todo = [
     ("Persistent project storage", "Not started", "Projects currently disappear outside the active Streamlit session."),
-    ("Tool Registry", "Not started", "No general tool catalog or controlled dispatch layer yet."),
+    ("Tool execution and controlled dispatch", "Not started", "Registry is metadata-only; no handlers or executor are connected."),
     ("Execution queue", "Not started", "Tasks are planned, not dispatched to an execution worker."),
     ("Persistent memory", "Not started", "No durable agent memory store yet."),
     ("Audit log", "Not started", "No end-to-end durable action audit trail yet."),
-    ("Approval UI", "Not started", "The policy foundation exists; a complete user-facing approval workflow does not."),
+    ("Durable approval/audit storage", "Not started", "Approval queue is session-scoped; no persistent audit trail or execution bridge."),
     ("Android usability qualification", "Not verified", "Must be tested on a real Android device/browser before claiming support."),
     ("Deployment", "Not verified", "A working public app URL has not been confirmed."),
 ]
@@ -93,10 +95,10 @@ st.caption(
 st.divider()
 st.subheader("Next planned dashboard milestone")
 st.markdown(
-    "**Tool Registry + explicit approval workflow design.** "
-    "Before execution is enabled, define tool permissions, approval boundaries, "
-    "audit events, denial behavior, and offline tests. No real-site action or "
-    "automatic execution is enabled by this status page."
+    "**Persistent audit log + typed execution contract design.** "
+    "The metadata registry and non-executing approval UI are now implemented; "
+    "their CI verification is pending. No real-site action or automatic execution "
+    "is enabled by this status page."
 )
 st.caption(
     "Permission default remains Ask first. Auto-Run stays disabled. "
