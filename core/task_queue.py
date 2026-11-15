@@ -89,14 +89,21 @@ class TaskQueue:
             self._discard_stale_head()
             if not self._heap:
                 raise TaskQueueEmptyError("Task queue is empty.")
-            return self._entries[self._heap[0][2]]
+            _, sequence, task_id = self._heap[0]
+            entry = self._entries[task_id]
+            if entry.sequence != sequence:
+                raise RuntimeError("Queue heap index is inconsistent.")
+            return entry
 
     def dequeue(self) -> QueueEntry:
         with self._lock:
             self._discard_stale_head()
             if not self._heap:
                 raise TaskQueueEmptyError("Task queue is empty.")
-            _, _, task_id = heapq.heappop(self._heap)
+            _, sequence, task_id = heapq.heappop(self._heap)
+            entry = self._entries[task_id]
+            if entry.sequence != sequence:
+                raise RuntimeError("Queue heap index is inconsistent.")
             return self._entries.pop(task_id)
 
     def remove(self, task_id: str) -> QueueEntry:
@@ -116,5 +123,9 @@ class TaskQueue:
             ))
 
     def _discard_stale_head(self) -> None:
-        while self._heap and self._heap[0][2] not in self._entries:
+        while self._heap:
+            _, sequence, task_id = self._heap[0]
+            current = self._entries.get(task_id)
+            if current is not None and current.sequence == sequence:
+                break
             heapq.heappop(self._heap)
