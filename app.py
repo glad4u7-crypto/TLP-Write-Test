@@ -229,7 +229,6 @@ if pending_project:
             payload,
             approval_receipt=receipt,
             tenant=tenant,
-            session_scope=st.session_state["approval_session_scope"],
         )
         if result.executed:
             project = result.output
