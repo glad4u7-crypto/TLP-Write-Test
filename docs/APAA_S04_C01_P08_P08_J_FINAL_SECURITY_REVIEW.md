@@ -363,3 +363,27 @@ Relative-path working-directory drift and the :memory: durability misconfigurati
 
 P08-P09-BQ: inspect SQLite path revalidation, parent-directory rename/symlink races and sidecar handling in detail. Implement only portable mitigations that can be proven with regression tests; retain explicit OS-isolation blockers.
 
+
+
+## P08-P09-BR — CI cancellation and SQLite path-replacement follow-up
+
+Review date: 2026-11-15
+Verified code head: 3f85425e5adff0411e4e1a7534ff3a979e60a6a0
+
+- CI duplication/cancellation root cause: branch push and pull_request events duplicated feature-branch checks, while branch-scoped concurrency with cancel-in-progress enabled superseded in-flight runs.
+- Remediation: feature-branch push triggers removed from the two PR-focused workflows; main push validation retained; concurrency groups now include workflow/event/SHA and set cancel-in-progress false.
+- The CI policy test initially failed because it still asserted the old cancel-in-progress=true behavior. The assertion was corrected to enforce the new non-cancelling policy.
+- Exact-head PR run 43698205731 (Agent Foundation CI) PASS.
+- Exact-head PR run 43698205658 (Python Demo CI) PASS.
+- Both workflows completed dependency audit/compile/tests and demo execution as applicable.
+- A new parameterized test verifies both SQLite stores reject a parent directory that is renamed and replaced with a symlink after store initialization.
+
+### Boundary and status
+
+The test covers a deterministic path replacement before a subsequent connection. It does not prove protection against a same-UID attacker racing the path check and pathname-based sqlite3 open. The residual TOCTOU limitation remains explicit and requires OS-level isolation.
+
+PR #5 remains Open and Draft. No merge/deploy, Auto-Run, paid provider, payment/purchase/checkout/trading/money-movement capability, or real-world action handler is enabled. Production remains NOT APPROVED.
+
+### Next checkpoint
+
+P08-P09-BS: inspect JSONL audit path handling and SQLite journal/WAL sidecar lifecycle, permissions, cleanup and tamper-detection limits.
