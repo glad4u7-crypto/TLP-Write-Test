@@ -172,7 +172,8 @@ def test_rejects_wrong_or_replayed_challenge():
     with pytest.raises(InspectorEvidenceError):
         verify_signed_inspector_evidence(
             spec, envelope, trusted_public_keys=keys,
-            expected_challenge="e" * 64, now=1000,
+            expected_challenge="e" * 64,
+            expected_proxy_addresses=["172.20.0.2"], now=1000,
         )
 
 
