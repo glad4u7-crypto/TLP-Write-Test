@@ -65,6 +65,29 @@ def parse_connect_request(raw: bytes, *, allowed_ports: frozenset[int] = DEFAULT
         raise ProxyRequestError("CONNECT authority must include a hostname and port.")
     if port not in allowed_ports:
         raise ProxyRequestError("CONNECT destination port is not allowed.")
+
+    # Accept no headers or one exact Host header. Reject ambiguous/unused
+    # headers (including duplicate Host, framing, auth and proxy overrides).
+    headers = lines[1:]
+    if len(headers) > 1:
+        raise ProxyRequestError("Only one CONNECT Host header is supported.")
+    if headers:
+        if ":" not in headers[0]:
+            raise ProxyRequestError("CONNECT header is malformed.")
+        name, value = headers[0].split(":", 1)
+        if name.strip().lower() != "host" or not value.strip():
+            raise ProxyRequestError("Only a matching Host header is supported.")
+        try:
+            host_header = urlsplit("//" + value.strip())
+            header_host, header_port = host_header.hostname, host_header.port
+        except ValueError as exc:
+            raise ProxyRequestError("CONNECT Host header is malformed.") from exc
+        if (host_header.username is not None or host_header.password is not None
+                or host_header.path or host_header.query or host_header.fragment
+                or header_host is None
+                or header_host.lower() != hostname.lower()
+                or header_port != port):
+            raise ProxyRequestError("CONNECT Host header must match the request authority.")
     return ConnectRequest(hostname=hostname, port=port)
 
 
