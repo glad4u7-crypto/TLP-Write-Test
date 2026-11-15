@@ -33,7 +33,7 @@ def test_canonicalizes_idn_to_ascii():
     "https://localhost", "https://127.0.0.1", "https://10.0.0.1",
     "https://169.254.169.254/latest/meta-data", "https://192.168.1.1",
     "https://[::1]", "https://[fc00::1]", "https://[fe80::1]",
-    "https://example.com:99999", "https://example.com:bad",
+    "https://example.com:99999", "https://example.com:bad", "https://example.com:0", "https://example.com:",
     "https://singlelabel", "https://exa mple.com", " https://example.com",
     "https://example.com ", "https://example.com\\path",
 ])
@@ -62,7 +62,7 @@ def test_non_default_port_is_part_of_exact_origin():
 
 
 def test_allowlist_rejects_path_query_and_fragment_entries():
-    for origin in ("https://example.com/path", "https://example.com/?q=1"):
+    for origin in ("https://example.com/path", "https://example.com/?q=1", "https://example.com/#fragment"):
         with pytest.raises(BrowserPolicyError):
             validate_destination("https://example.com/", [origin])
 
