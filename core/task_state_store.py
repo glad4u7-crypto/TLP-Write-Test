@@ -236,7 +236,7 @@ class SQLiteTaskStateStore:
                 cur = db.execute(
                     """UPDATE task_states SET description=?, status=?, requires_approval=?,
                        version=?, updated_at=? WHERE issuer=? AND subject=? AND task_id=?
-                       AND version=?""
+                       AND version=?""",
                     (snapshot.task.description, snapshot.task.status.value,
                      int(snapshot.requires_approval), snapshot.version, snapshot.updated_at,
                      issuer, subject, snapshot.task.task_id, expected_version),
