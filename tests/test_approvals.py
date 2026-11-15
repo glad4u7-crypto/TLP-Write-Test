@@ -172,3 +172,40 @@ def test_durable_approval_receipt_cannot_be_transferred_to_another_issuer(tmp_pa
     receipt = authority.issue("create_project", payload, tenant=owner)
     assert authority.consume(receipt, "create_project", payload, tenant=other) is False
     assert authority.consume(receipt, "create_project", payload, tenant=owner) is True
+
+
+def test_receipt_is_bound_to_the_originating_session_scope():
+    authority = ApprovalAuthority(
+        signing_secret=b"session-scope-test-secret-at-least-32-bytes"
+    )
+    payload = {"name": "session-bound"}
+    receipt = authority.issue(
+        "write_file", payload, session_scope="session-one"
+    )
+    assert authority.consume(
+        receipt, "write_file", payload, session_scope="session-one"
+    ) is True
+
+
+def test_receipt_from_another_session_is_rejected_even_for_same_tenant(tmp_path):
+    from core.storage import TenantKey
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    secret = b"durable-session-scope-test-secret-32-bytes"
+    tenant = TenantKey("https://issuer.example", "alice")
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(tmp_path / "security.sqlite3"),
+        signing_secret=secret,
+    )
+    payload = {"name": "private"}
+    receipt = authority.issue(
+        "create_project", payload, tenant=tenant, session_scope="browser-session-A"
+    )
+    assert authority.consume(
+        receipt, "create_project", payload, tenant=tenant,
+        session_scope="browser-session-B",
+    ) is False
+    assert authority.consume(
+        receipt, "create_project", payload, tenant=tenant,
+        session_scope="browser-session-A",
+    ) is True
