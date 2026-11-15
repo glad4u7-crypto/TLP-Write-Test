@@ -43,8 +43,10 @@ class ApprovalReceipt:
 class ApprovalAuthority:
     """Issues short-lived, one-time receipts after a trusted UI confirmation."""
 
-    def __init__(self, *, nonce_store: Any | None = None) -> None:
-        self._secret = secrets.token_bytes(32)
+    def __init__(self, *, nonce_store: Any | None = None, signing_secret: bytes | None = None) -> None:
+        if signing_secret is not None and (not isinstance(signing_secret, bytes) or len(signing_secret) < 32):
+            raise ValueError("Signing secret must contain at least 32 bytes.")
+        self._secret = signing_secret if signing_secret is not None else secrets.token_bytes(32)
         self._consumed_nonces: set[str] = set()
         self._nonce_store = nonce_store
         self._consume_lock = threading.Lock()
