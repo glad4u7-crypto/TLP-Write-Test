@@ -670,8 +670,8 @@ def test_execution_audit_fingerprint_distinguishes_same_subject_across_issuers(
         ]
 
     assert fingerprints == [
-        hashlib.sha256(b"https://issuer-one.example\\nalice").hexdigest(),
-        hashlib.sha256(b"https://issuer-two.example\\nalice").hexdigest(),
+        hashlib.sha256(f"https://issuer-one.example\n{'alice'}".encode("utf-8")).hexdigest(),
+        hashlib.sha256(f"https://issuer-two.example\n{'alice'}".encode("utf-8")).hexdigest(),
     ]
     assert fingerprints[0] != fingerprints[1]
     assert "alice" not in repr(fingerprints)
