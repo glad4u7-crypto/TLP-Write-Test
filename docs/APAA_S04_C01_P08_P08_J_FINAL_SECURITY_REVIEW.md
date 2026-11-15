@@ -523,3 +523,38 @@ The PR remains open and Draft. These automated tests do not replace live OIDC/br
 ### Next serial work
 
 Continue the offline-verifiable S04 identity/session security review from the latest code, then proceed through the remaining S04 checkpoints in order. Keep the live OIDC/browser matrix explicitly blocked until a private test deployment and two controlled non-production identities are available. Do not advance to S05 until S04's required implementation and verification work is complete or its external blockers are clearly recorded.
+
+
+## P08-P09-AW — Authenticated session and approval-scope lifecycle review
+
+Review date: 2026-11-15  
+Reviewed PR head: `318d74999cabf832e7a64dd9f8f984888aec20ef`
+
+### Branch and CI verification
+
+- PR #5 is **OPEN / DRAFT / NOT MERGED**.
+- Head branch: `feature/approval-ui-e2e-p06`.
+- Base branch: `feature/agent-v0.3-zero-cost-core`; no base-branch write was made.
+- Python Demo CI #548 / run `43693217816`: **PASS**.
+- Agent Foundation CI #458 / run `43693217827`: **PASS**.
+- Both workflow runs completed successfully for the exact reviewed head SHA above.
+
+### Offline session-security review
+
+Reviewed `core/session_security.py`, `core/approvals.py`, `core/streamlit_auth.py`, `app.py`, `tests/test_session_security.py`, and the authenticated AppTest coverage in `tests/test_app_smoke.py`.
+
+- Identity changes and orphaned/partially restored identity state clear the identity-bound registry, pending project, selected project, approval authority, execution gateway, gateway owner, approval scope/config fingerprint, and task-specific state.
+- Logout clears the identity-bound state before Streamlit logout. The existing regression verifies that a pre-logout receipt cannot execute through a newly created post-logout gateway.
+- Signing-secret rotation and durable nonce-store path changes create a fresh approval authority, gateway, and session scope; receipts from the prior configuration are rejected.
+- Invalid OIDC claims and durable-store initialization failures clear stale capabilities and stop before protected workspace controls are rendered.
+- The inspected implementation already has focused regression coverage for these lifecycle paths. No additional runtime or test change was justified in this review pass.
+
+### Remaining release blockers
+
+This offline review does not prove live OIDC redirects, browser-cookie/session behavior, CSRF resistance, real logout invalidation, or cross-browser identity isolation. The two-identity live browser matrix remains **BLOCKED** until a private non-production OIDC deployment and two controlled test identities are available. Production remains **NOT APPROVED**.
+
+No merge, deployment, payment, purchase, trading, paid-provider activation, or real-world handler enablement is authorized. Auto-Run remains disabled.
+
+### Next serial checkpoint
+
+Continue the remaining S04 security/reliability review in order. Keep the live OIDC/browser matrix recorded as an external blocker; do not advance to S05 until the remaining S04 requirements and release gates have been resolved or explicitly documented as blocked.
