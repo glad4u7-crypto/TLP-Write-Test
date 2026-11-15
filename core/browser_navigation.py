@@ -105,10 +105,10 @@ class NavigationPolicy:
         except ValueError:
             literal = None
         if literal is not None:
-            if host not in self.allowed_hosts:
-                raise NavigationPolicyError("IP destination is not on the explicit allowlist.")
             if not literal.is_global:
                 raise NavigationPolicyError("Private or special-use IP destinations are blocked.")
+            if host not in self.allowed_hosts:
+                raise NavigationPolicyError("IP destination is not on the explicit allowlist.")
             resolved = (str(literal),)
         else:
             if host == "localhost" or host.endswith(".localhost"):
