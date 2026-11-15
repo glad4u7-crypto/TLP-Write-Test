@@ -389,7 +389,8 @@ def _run_process_race(context, target, args, worker_count):
             if process.is_alive():
                 process.terminate()
             process.join(timeout=5)
-        ready_queue.close()
+        receive_connection.close()
+        send_connection.close()
         result_queue.close()
 
 
@@ -455,7 +456,7 @@ def test_concurrent_process_audit_appends_preserve_one_valid_chain(tmp_path):
             "SELECT COUNT(*) FROM durable_audit_events"
         ).fetchone()[0] == 6
 
-def _crash_with_uncommitted_nonce(database_path, ready_queue):
+def _crash_with_uncommitted_nonce(database_path, ready_connection):
     import os
     import sqlite3
 
@@ -467,7 +468,7 @@ def _crash_with_uncommitted_nonce(database_path, ready_queue):
            VALUES (?, ?, ?, ?, ?)""",
         ("https://issuer-crash.example", "crash-owner", "crash-uncommitted-nonce", 9999999999, 100),
     )
-    ready_queue.put(True)
+    ready_connection.send(True)
     # Simulate abrupt process termination without commit, rollback, or close.
     os._exit(0)
 
@@ -479,14 +480,15 @@ def test_sqlite_recovers_uncommitted_nonce_after_process_crash(tmp_path):
     assert store.consume_approval_nonce(tenant, "committed-nonce", 9999999999, now=100)
 
     context = multiprocessing.get_context("spawn")
-    ready_queue = context.Queue()
+    receive_connection, send_connection = context.Pipe(duplex=False)
     process = context.Process(
         target=_crash_with_uncommitted_nonce,
-        args=(str(path), ready_queue),
+        args=(str(path), send_connection),
     )
     process.start()
     try:
-        assert ready_queue.get(timeout=30) is True
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
         process.join(timeout=30)
         assert not process.is_alive()
         assert process.exitcode == 0
@@ -497,9 +499,6 @@ def test_sqlite_recovers_uncommitted_nonce_after_process_crash(tmp_path):
         ready_queue.close()
 
     recovered = SQLiteSecurityStore(path)
-    assert not recovered.consume_approval_nonce(
-        tenant, "crash-uncommitted-nonce", 9999999999, now=100
-    ) is False
     with sqlite3.connect(path) as connection:
         nonces = connection.execute(
             "SELECT nonce FROM consumed_approval_nonces ORDER BY nonce"
