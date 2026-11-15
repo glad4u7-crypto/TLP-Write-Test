@@ -26,7 +26,7 @@ def test_allows_allowlisted_https_host_and_subdomain():
     "ftp://example.com/",
     "https://user:pass@example.com/",
     "https://example.com:99999/",
-    "https://example.com\\\\@evil.test/",
+    "https://example.com" + chr(92) + "@evil.test/",
     "https://localhost/",
     "http://127.0.0.1/",
     "http://10.0.0.8/",
@@ -48,6 +48,13 @@ def test_allowlist_can_disable_subdomains():
     assert p.validate_url("https://example.com") == "https://example.com"
     with pytest.raises(NavigationPolicyError):
         p.validate_url("https://docs.example.com")
+
+
+def test_public_ip_literal_requires_explicit_allowlist():
+    with pytest.raises(NavigationPolicyError, match="explicit allowlist"):
+        policy().validate_url("https://93.184.216.34/")
+    p = NavigationPolicy(allowed_hosts=frozenset({"93.184.216.34"}))
+    assert p.validate_url("https://93.184.216.34/") == "https://93.184.216.34/"
 
 
 def test_rejects_hostname_that_resolves_to_private_address():
