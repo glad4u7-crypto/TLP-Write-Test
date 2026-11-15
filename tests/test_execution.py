@@ -181,3 +181,20 @@ def test_gateway_audit_snapshot_cannot_be_mutated():
     events = gateway.audit_events
     assert isinstance(events, tuple)
     assert len(events) == 1
+
+
+def test_execution_result_returns_payload_free_audit_event():
+    authority = ApprovalAuthority()
+    payload = {"content": "sensitive-user-content"}
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: "ok"},
+        approval_authority=authority,
+    )
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert result.audit_event is not None
+    assert result.audit_event.executed is True
+    assert "sensitive-user-content" not in repr(result.audit_event)
