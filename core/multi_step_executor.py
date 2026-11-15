@@ -7,7 +7,8 @@ from typing import Any
 from core.approvals import ApprovalReceipt
 from core.execution import ExecutionGateway, ExecutionResult
 from core.safety import authorize_action
-from core.storage import TenantKey\nfrom core.task_conditions import Condition, evaluate_condition
+from core.storage import TenantKey
+from core.task_conditions import Condition, evaluate_condition
 
 MAX_PLAN_STEPS = 25
 MAX_STEP_ID_LENGTH = 64
