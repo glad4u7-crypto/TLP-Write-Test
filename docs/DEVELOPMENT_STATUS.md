@@ -30,11 +30,11 @@ This document is the source record for the Streamlit Development Status page. It
 | Area | Status | Detail |
 |---|---|---|
 | Persistent project storage | Not started | Current projects live in Streamlit session state. |
-| Tool Registry | Not started | No general tool catalog or controlled dispatch layer. |
+| Tool Registry | Implemented · non-executable | Metadata-only allow-list; no handlers, plugin loading, or dispatch. CI pending. |
 | Execution queue | Not started | Planner does not dispatch tasks to workers. |
 | Persistent memory | Not started | No durable memory store. |
 | Audit log | Not started | No durable end-to-end action audit trail. |
-| Approval UI | Not started | Policy foundation exists, but no complete user-facing workflow. |
+| Approval UI | Implemented · non-executing | Session-scoped request/review/approve/reject queue with expiry and payload fingerprint/preview. CI pending; no action execution. |
 | Android qualification | Not verified | Requires real-device/browser testing. |
 | Deployment | Not verified | No confirmed live URL. |
 
@@ -58,3 +58,13 @@ Do not interpret the parallel browser work as integrated into this dashboard bra
 ## Next planned dashboard milestone
 
 Design and implement Tool Registry plus an explicit approval workflow, including permission scopes, audit events, denial behavior, and offline tests. Execution must remain disabled until its safety boundaries are implemented and verified.
+
+
+## Tool Registry and approval milestone (code added; CI pending)
+
+- Added `core/tool_registry.py`: metadata-only allow-list; duplicate IDs and enabled tool specs are rejected. No plugin imports, handlers, or dispatch.
+- Added `core/approval.py`: session-scoped approval records, explicit boolean decisions, expiry, canonical payload digest, visible JSON preview, payload size limit, and credential-like key rejection.
+- Added `pages/3_Tool_Registry.py`: catalog and approval UI. Approve/reject only records a decision; it does not execute an action.
+- Added `tests/test_tool_registry_approval.py`: offline tests for registry validation, pending/approved/rejected/expired states, payload binding, blocked categories, and invalid inputs.
+- All queue state is volatile Streamlit session state. No persistent audit trail or execution bridge exists.
+- CI for the newly added files must complete successfully before this milestone is marked verified.
