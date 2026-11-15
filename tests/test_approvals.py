@@ -66,12 +66,25 @@ def test_receipt_rejects_replay():
     assert authority.consume(receipt, "write_file", payload) is False
 
 
-def test_expiry_is_bounded():
+def test_expired_receipt_is_rejected():
     authority = ApprovalAuthority()
-    with pytest.raises(ValueError):
-        authority.issue(
-            "write_file",
-            {"path": "a.txt"},
-            confirmed_by_user=True,
-            ttl_seconds=301,
-        )
+    receipt = authority.issue(
+        "write_file", {"path": "a.txt"}, confirmed_by_user=True
+    )
+    expired = replace(receipt, expires_at=1)
+
+    assert authority.consume(
+        expired, "write_file", {"path": "a.txt"}
+    ) is False
+
+
+def test_expiry_is_bounded_and_requires_integer():
+    authority = ApprovalAuthority()
+    for ttl in (0, 301, True):
+        with pytest.raises(ValueError):
+            authority.issue(
+                "write_file",
+                {"path": "a.txt"},
+                confirmed_by_user=True,
+                ttl_seconds=ttl,
+            )
