@@ -647,3 +647,35 @@ Implementation commits: `ecaf47155bf6a9199c431c9802d27b6e361197ad`, `bafc350b746
 ### Next serial checkpoint
 
 Review the complete approval lifecycle at the trusted UI boundary: stale approval state, duplicate clicks/reruns, receipt replacement, session changes between confirmation and dispatch, and durable nonce behavior under concurrent consumption. Preserve explicit approval and do not introduce automatic retry.
+
+
+## P08-P09-BD — End-to-end approval workflow and cross-gateway concurrency
+
+Review date: 2026-11-15  
+Implementation commits: `01c24e8282de6373e008a9d4e23e59df875cc1fc`, `d636d20530c0798967898a8ee5d2ad34c2e2a6e1`
+
+### Prior checkpoint verification correction
+
+The previous BC checkpoint is now verified by the latest PR-head CI: Agent Foundation CI run `43693914433` and Python Demo CI run `43693914448` both completed successfully on head `e9225731426883d406eb2fe9385768677da9f527`. The earlier BC entry's pending note is historical and superseded by this result.
+
+### Expanded integration coverage
+
+- Replaced review payload: the first reviewed project remains uncreated; a second review replaces it; confirmation creates only the latest exact name and description.
+- Duplicate UI rerun: after a successful confirmation clears pending state, a plain Streamlit rerun does not create a second project.
+- Cross-instance nonce race: 24 dispatch attempts are issued concurrently through two independently constructed gateways and two separate SQLite store adapters pointing to the same durable database. Both authorities share the trusted signing secret and session scope, while SQLite's unique nonce key and BEGIN IMMEDIATE transaction provide the cross-instance single-consumer boundary.
+- Assertions require exactly one successful execution, exactly one durable project, and a valid identical audit-chain tip from both adapters.
+- Existing identity-switch and logout tests also cover invalidation of pending drafts, approval authority, execution gateway, and session scope; same-subject identities from different issuers remain distinct.
+
+### Security interpretation
+
+The in-process lock in one ApprovalAuthority is not the system-wide concurrency boundary. For authenticated durable mode, atomic SQLite nonce insertion is the cross-authority replay boundary. The new test exercises independent gateway/authority objects to avoid accidentally relying on one object's lock.
+
+No automatic retry was introduced. A consumed receipt remains consumed if intent logging fails. A completion-audit failure after a side effect still requires manual review. No external account, browser, email, filesystem, device, or payment action was performed.
+
+### Verification status
+
+The BC checkpoint's two CI workflows passed on its exact head. The BD tests and documentation are newly committed; their exact-head CI is the remaining verification gate. No local test execution is claimed. Live OIDC/browser verification remains blocked pending a controlled non-production deployment and two test identities.
+
+### Next serial checkpoint
+
+Perform the S04 release-readiness audit as one integrated gate: inspect workflow permissions and dependency audit findings, validate every approval-protected mutation route and tenant boundary, run the full latest-head CI, reconcile documentation against actual behavior, and produce an explicit pass/block matrix. Do not merge, deploy, enable Auto-Run, or advance to S05 while any required gate remains open.
