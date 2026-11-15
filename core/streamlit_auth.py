@@ -4,7 +4,6 @@ Streamlit validates the OIDC flow and exposes the parsed ID-token claims through
 st.user. This module validates required claims and expiry before constructing a
 Principal. It does not replace identity-provider configuration or authorization.
 """
-from dataclasses import dataclass
 import math
 import time
 from typing import Any, Mapping
@@ -12,7 +11,6 @@ from typing import Any, Mapping
 from core.identity import AuthenticationRequired, Principal, require_authenticated
 
 
-@dataclass(frozen=True)
 class OIDCIdentityError(ValueError):
     """Raised when Streamlit's OIDC identity claims are missing or invalid."""
 
