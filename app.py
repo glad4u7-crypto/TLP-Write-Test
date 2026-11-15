@@ -6,10 +6,44 @@ from core.approvals import ApprovalAuthority
 from core.audit import JsonlAuditLog
 from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
+from core.streamlit_auth import principal_from_oidc_claims
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
 st.caption("Version 0.4.0 · Zero-cost core + Project Manager")
+
+# OIDC is optional for local single-user development, but deployments should
+# set [apaa].require_auth = true in secrets.toml. Never accept identity from UI input.
+apaa_settings = st.secrets.get("apaa", {})
+auth_required = bool(apaa_settings.get("require_auth", False))
+auth_configured = "auth" in st.secrets
+
+if auth_required:
+    if not auth_configured:
+        st.error(
+            "Authentication is required, but no [auth] OIDC configuration was found. "
+            "Configure .streamlit/secrets.toml before using this deployment."
+        )
+        st.stop()
+    if not st.user.is_logged_in:
+        st.warning("Sign in with the configured OpenID Connect provider to continue.")
+        st.button("Log in", on_click=st.login, type="primary")
+        st.stop()
+    try:
+        oidc_claims = st.user.to_dict()
+        principal = principal_from_oidc_claims(oidc_claims)
+    except (ValueError, PermissionError) as exc:
+        st.error(f"Authentication could not be verified: {exc}")
+        st.stop()
+    st.sidebar.success(f"Signed in · {principal.subject}")
+    st.sidebar.button("Log out", on_click=st.logout)
+else:
+    principal = None
+    st.warning(
+        "Local prototype mode: authentication is not enforced. "
+        "Do not expose this instance publicly. Set [apaa].require_auth = true "
+        "after configuring OIDC."
+    )
 
 if "project_registry" not in st.session_state:
     st.session_state["project_registry"] = ProjectRegistry()
