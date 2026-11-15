@@ -2,6 +2,9 @@ import streamlit as st
 
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
+from core.approvals import ApprovalAuthority
+from core.audit import JsonlAuditLog
+from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
@@ -14,6 +17,18 @@ if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
 registry = st.session_state["project_registry"]
+
+# Keep the approval authority and gateway server-side in this Streamlit session.
+# The planner/task text never receives either object.
+if "approval_authority" not in st.session_state:
+    st.session_state["approval_authority"] = ApprovalAuthority()
+if "execution_gateway" not in st.session_state:
+    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
+    st.session_state["execution_gateway"] = build_project_gateway(
+        registry,
+        st.session_state["approval_authority"],
+        audit_log=audit_log,
+    )
 
 st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
@@ -49,19 +64,58 @@ with st.sidebar:
 
 st.header("Project Manager")
 st.caption("Projects are currently held in this browser session; they are not yet saved permanently.")
-with st.form("create_project_form", clear_on_submit=True):
+with st.form("prepare_project_form", clear_on_submit=True):
     project_name = st.text_input("Project name", max_chars=80)
     project_description = st.text_area("Project description", max_chars=500)
-    create_project = st.form_submit_button("Create project")
+    prepare_project = st.form_submit_button("Review project details")
 
-if create_project:
-    try:
-        project = registry.create(project_name, project_description)
-        st.session_state["selected_project_id"] = project.project_id
-        st.success(f"Created project: {project.name}")
+if prepare_project:
+    if not project_name.strip():
+        st.error("Project name must not be empty.")
+    elif len(project_name.strip()) > 80 or len(project_description.strip()) > 500:
+        st.error("Project details exceed the allowed length.")
+    else:
+        st.session_state["pending_project"] = {
+            "name": project_name.strip(),
+            "description": project_description.strip(),
+        }
+
+pending_project = st.session_state.get("pending_project")
+if pending_project:
+    st.subheader("Review before creating")
+    st.write(f"**Project name:** {pending_project['name']}")
+    st.write(f"**Description:** {pending_project['description'] or 'No description'}")
+    st.warning("The project will be created only after you explicitly confirm these exact details.")
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        confirm_project = st.button("Confirm and create project", type="primary")
+    with cancel_col:
+        cancel_project = st.button("Cancel")
+    if cancel_project:
+        st.session_state.pop("pending_project", None)
         st.rerun()
-    except ValueError as exc:
-        st.error(str(exc))
+    if confirm_project:
+        # Only this explicit UI event can issue the short-lived receipt.
+        payload = {
+            "name": pending_project["name"],
+            "description": pending_project["description"],
+        }
+        receipt = st.session_state["approval_authority"].issue(
+            "create_project", payload
+        )
+        result = st.session_state["execution_gateway"].execute(
+            "create_project",
+            payload,
+            approval_receipt=receipt,
+        )
+        if result.executed:
+            project = result.output
+            st.session_state["selected_project_id"] = project.project_id
+            st.session_state.pop("pending_project", None)
+            st.success(f"Created project through the approval gateway: {project.name}")
+            st.rerun()
+        else:
+            st.error(result.reason)
 
 if registry.list_projects():
     selected = registry.get(st.session_state["selected_project_id"])

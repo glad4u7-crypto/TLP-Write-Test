@@ -24,6 +24,10 @@ The OpenAI adapter is dormant extension code. The current dashboard imports and 
 - Task and status models (core/models.py).
 - Deterministic starter planner (core/planner.py).
 - Explicit approval gate for mutating actions (core/safety.py).
+- HMAC-signed, short-lived, payload-bound approval receipts (core/approvals.py).
+- Payload-free, in-memory execution audit events (core/audit.py), emitted by the gateway.
+- Auto-Run allowlist is fixed at trusted gateway construction and empty by default; task calls cannot supply their own allowlist.
+- Project creation routed through a trusted controller and ExecutionGateway after UI confirmation (core/project_actions.py).
 - AI Brain orchestration layer (core/brain.py).
 - Provider-neutral ModelProvider contract (core/providers/base.py).
 - Built-in offline RuleBasedProvider (core/providers/rule_based.py).
