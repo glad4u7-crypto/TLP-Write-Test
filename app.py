@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
-from core.project_actions import create_project_after_confirmation
+from core.project_actions import confirm_and_create_project
 from core.providers.rule_based import RuleBasedProvider
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
@@ -85,7 +85,6 @@ if pending_project:
             registry,
             pending_project["name"],
             pending_project["description"],
-            confirmed_by_user=True,
         )
         if result.executed:
             project = result.output
