@@ -8,7 +8,6 @@ the worker from reaching any destination except that proxy.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import ipaddress
 from collections.abc import Sequence
 
 from core.browser_security import (
@@ -16,6 +15,7 @@ from core.browser_security import (
     Resolver,
     canonicalize_https_url,
     validate_destination,
+    validate_dns_answers,
 )
 
 
@@ -46,22 +46,18 @@ def validate_proxy_connect(
         target = canonicalize_https_url(target_url)
         if target.port != 443:
             raise EgressPolicyError("Only HTTPS TCP port 443 is allowed.")
+        addresses = validate_dns_answers(target.hostname, resolved_addresses)
         checked = validate_destination(
             target.url,
             allowed_origins,
-            resolver=lambda _host: tuple(resolved_addresses),
+            resolver=lambda _host: addresses,
         )
     except (BrowserPolicyError, TypeError) as exc:
         raise EgressPolicyError("Proxy destination rejected by browser egress policy.") from exc
-    if not resolved_addresses:
-        raise EgressPolicyError("Proxy DNS returned no addresses.")
     return PinnedEgressDecision(
         hostname=checked.hostname,
         port=443,
         origin=checked.origin,
-        validated_addresses=tuple(sorted(set(
-            ipaddress.ip_address(item).compressed.lower()
-            for item in resolved_addresses
-        ))),
+        validated_addresses=addresses,
         tls_server_name=checked.hostname,
     )
