@@ -124,6 +124,12 @@ class MultiStepTaskExecutor:
                     results.append(StepResult(step.step_id, "skipped", "Condition did not match."))
                     continue
 
+            # Freeze the validated payload so concurrent caller mutation cannot
+            # change it between approval and dispatch.
+            payload = json.loads(json.dumps(
+                step.payload, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            ))
             receipt = None
             decision = authorize_action(step.action)
             if not decision.allowed:
