@@ -174,6 +174,20 @@ def test_security_database_preexisting_file_permissions_are_restricted(tmp_path)
         assert path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX directory permissions required")
+def test_security_database_rejects_shared_parent_directory(tmp_path):
+    import os
+
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir(mode=0o700)
+    shared_dir.chmod(0o755)
+
+    with pytest.raises(ValueError, match="parent directory must be owner-only"):
+        SQLiteSecurityStore(shared_dir / "security.sqlite3")
+
+    assert not (shared_dir / "security.sqlite3").exists()
+
+
 def test_security_database_rejects_symlink_target(tmp_path):
     target = tmp_path / "outside.sqlite3"
     target.write_bytes(b"do-not-open")
