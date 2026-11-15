@@ -45,7 +45,17 @@ class SQLiteProjectStore:
         try:
             metadata = path.lstat()
         except FileNotFoundError:
-            return
+            # SQLite otherwise creates a new database using the process umask,
+            # which may briefly expose it before the post-init chmod. Create it
+            # atomically with owner-only permissions before SQLite can open it.
+            flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(path, flags, 0o600)
+            except FileExistsError:
+                metadata = path.lstat()
+            else:
+                os.close(descriptor)
+                metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
             raise ValueError("Project database must be a regular, non-symlink file.")
         os.chmod(path, 0o600)
