@@ -44,6 +44,18 @@ class PlanStep:
     expected_output: str
     requires_human_approval: bool = False
 
+    def __post_init__(self) -> None:
+        for name in ("step_id", "title", "purpose", "expected_output"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Plan step {name} must be non-empty text.")
+        if not isinstance(self.category, StepCategory):
+            raise ValueError("Plan step category must be a known StepCategory.")
+        if type(self.requires_human_approval) is not bool:
+            raise ValueError("Plan step approval flag must be boolean.")
+        if (self.category is StepCategory.PROPOSED_MUTATION) != self.requires_human_approval:
+            raise ValueError("Only proposed mutation steps must require separate human approval.")
+
 
 @dataclass(frozen=True)
 class TaskPlan:
@@ -55,6 +67,35 @@ class TaskPlan:
     clarification_questions: tuple[str, ...] = ()
     assumptions: tuple[str, ...] = ()
     safety_notes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError("Unsupported task plan schema version.")
+        if not isinstance(self.plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", self.plan_id) is None:
+            raise ValueError("Task plan ID must use the stable plan-<16 hex> format.")
+        if not isinstance(self.task_description, str) or not self.task_description.strip():
+            raise ValueError("Task plan description must be non-empty text.")
+        if not isinstance(self.status, PlanStatus):
+            raise ValueError("Task plan status must be a known PlanStatus.")
+        if not isinstance(self.steps, tuple) or any(not isinstance(step, PlanStep) for step in self.steps):
+            raise ValueError("Task plan steps must be a tuple of PlanStep objects.")
+        if len({step.step_id for step in self.steps}) != len(self.steps):
+            raise ValueError("Task plan step IDs must be unique.")
+        for field_name in ("clarification_questions", "assumptions", "safety_notes"):
+            values = getattr(self, field_name)
+            if not isinstance(values, tuple) or any(
+                not isinstance(value, str) or not value.strip() for value in values
+            ):
+                raise ValueError(f"Task plan {field_name} must be a tuple of non-empty text.")
+        if self.status is PlanStatus.READY:
+            if not self.steps or self.clarification_questions:
+                raise ValueError("Ready plans require steps and cannot contain clarification questions.")
+        elif self.steps:
+            raise ValueError("Blocked or clarification-required plans cannot contain executable-looking steps.")
+        if self.status is PlanStatus.NEEDS_CLARIFICATION and not self.clarification_questions:
+            raise ValueError("Clarification-required plans must include at least one question.")
+        if self.status is PlanStatus.BLOCKED and not self.safety_notes:
+            raise ValueError("Blocked plans must explain the safety block.")
 
     def to_dict(self) -> dict:
         """Return a stable JSON-compatible representation (no timestamps)."""
@@ -93,6 +134,10 @@ def validate_task_intake(description: object) -> IntakeResult:
         return IntakeResult(False, "", ("Task description must be text.",))
     if not description.strip():
         return IntakeResult(False, "", ("Task description must not be empty.",))
+    if len(description) > MAX_TASK_LENGTH:
+        return IntakeResult(
+            False, "", (f"Task description exceeds the {MAX_TASK_LENGTH}-character limit.",)
+        )
 
     # Permit ordinary whitespace controls, reject other control characters.
     if any(
