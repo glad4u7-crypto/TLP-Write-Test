@@ -43,6 +43,9 @@ if auth_required:
         )
         st.stop()
     if not st.user.is_logged_in:
+        # Authentication loss/expiry is a session boundary just like explicit
+        # logout. Do not retain capabilities or private drafts while signed out.
+        clear_session_identity(st.session_state)
         st.warning("Sign in with the configured OpenID Connect provider to continue.")
         st.button("Log in", on_click=st.login, type="primary")
         st.stop()
@@ -50,6 +53,9 @@ if auth_required:
         oidc_claims = st.user.to_dict()
         principal = principal_from_oidc_claims(oidc_claims)
     except (ValueError, PermissionError) as exc:
+        # Invalid/expired claims must not leave a prior authenticated context
+        # available if this browser session later authenticates again.
+        clear_session_identity(st.session_state)
         st.error(f"Authentication could not be verified: {exc}")
         st.stop()
     st.sidebar.success(f"Signed in · {principal.subject}")
