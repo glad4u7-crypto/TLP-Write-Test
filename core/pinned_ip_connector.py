@@ -71,7 +71,9 @@ class PinnedIPConnector:
         """
         if not isinstance(target, EgressTarget):
             raise TypeError("target must be an EgressTarget.")
-        if not target.hostname or isinstance(target.port, bool) or not 1 <= target.port <= 65535:
+        if (not target.hostname or target.scheme not in {"https", "http"}
+                or isinstance(target.port, bool) or not isinstance(target.port, int)
+                or not 1 <= target.port <= 65535):
             raise EgressAuthorizationError("Authorized target is malformed.")
         if not target.pinned_addresses:
             raise EgressAuthorizationError("Authorized target has no IP pins.")
@@ -94,13 +96,14 @@ class PinnedIPConnector:
             try:
                 peer = connection.getpeername()
                 peer_ip = ipaddress.ip_address(peer[0]).compressed
+                peer_port = peer[1]
             except Exception as exc:
                 connection.close()
                 raise EgressAuthorizationError("Connected socket peer could not be verified.") from exc
 
-            if peer_ip != address.compressed:
+            if peer_ip != address.compressed or peer_port != target.port:
                 connection.close()
-                raise EgressAuthorizationError("Connected socket peer does not match the selected IP pin.")
+                raise EgressAuthorizationError("Connected socket peer does not match the selected IP pin and port.")
 
             return PinnedConnection(
                 socket=connection,
