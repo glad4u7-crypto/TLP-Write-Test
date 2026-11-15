@@ -624,3 +624,26 @@ Implementation commit: `9255b68ce30c9a63a36d80a9038be456ef39ef6c`
 ### Next serial checkpoint
 
 Continue S04 with audit failure and receipt-consumption ordering: establish whether a valid approval receipt is consumed before durable intent audit succeeds, and document the safe recovery/re-approval behavior without enabling automatic retries or duplicate side effects.
+
+
+## P08-P09-BC — Approval receipt lifecycle and audit-failure recovery matrix
+
+Review date: 2026-11-15  
+Implementation commits: `ecaf47155bf6a9199c431c9802d27b6e361197ad`, `bafc350b74619d54ef7d4821f80c900da1c58f02`, `40036948c98c9b5aa42d4b0192e5962208063f33`
+
+### Scope completed
+
+- Corrected the prior issuer-fingerprint regression's expected digest encoding: the production fingerprint hashes the issuer, a real newline separator, and subject. The test had accidentally hashed the two literal characters backslash + n, causing a CI failure despite correct production behavior.
+- Added in-memory execution tests proving a receipt is consumed before durable intent-audit append; if the append fails, the handler does not run and the same receipt remains unusable after audit storage recovers.
+- Added completion-audit failure replay protection: when the handler already ran but its completion event could not be persisted, replaying the same receipt is denied and the handler is not called a second time.
+- Added the equivalent durable SQLite nonce recovery regression for persistent project creation. After intent audit failure, the project remains absent and the same receipt cannot be replayed after the audit adapter recovers.
+- These tests establish the safe recovery contract: no automatic retry, no reuse of a consumed receipt, and a fresh explicit user approval is required for a new attempt when no side effect occurred. If completion audit failed after a side effect, require manual review before any new action to avoid duplication.
+
+### Verification notes
+
+- The preceding Python Demo CI run exposed the fingerprint-test newline expectation error: 370 tests passed and one test failed. This was a test-fixture encoding defect, not a production code failure.
+- The corrected fingerprint expectation and new receipt-lifecycle tests are committed. Exact latest-head Foundation and Python Demo CI must complete before marking this checkpoint verified. No local test execution is claimed.
+
+### Next serial checkpoint
+
+Review the complete approval lifecycle at the trusted UI boundary: stale approval state, duplicate clicks/reruns, receipt replacement, session changes between confirmation and dispatch, and durable nonce behavior under concurrent consumption. Preserve explicit approval and do not introduce automatic retry.
