@@ -1,7 +1,7 @@
 # APAA S06 — Structured Task Workspace and Plan Review
 
 **Checkpoint:** APAA-S06-C01-P03  
-**Status:** IMPLEMENTATION PASS; FINAL RECORD-ONLY COMMIT CI PENDING  
+**Status:** COMPLETE — FINAL EXACT-HEAD CI PASS  
 **Approval:** User instructed to begin S06 on 2026-11-15  
 **Branch:** `feature/approval-ui-e2e-p06`  
 **PR:** #5 — remains Draft and unmerged
@@ -49,7 +49,7 @@ Connect the S05 deterministic structured planning contract to the existing Strea
 - Current Streamlit layout has not been verified on a physical Android device.
 - S04 operational blockers BY-01 through BY-07 remain independently blocked.
 
-**Next checkpoint:** APAA-S06-C01-P02 — run focused AppTest and full CI, inspect failures, fix them, then verify exact-head CI and update the S06 verification matrix.
+**Next checkpoint:** APAA-S07-C01-P01 — run focused AppTest and full CI, inspect failures, fix them, then verify exact-head CI and update the S06 verification matrix.
 
 
 ## 6. Implementation and CI result
@@ -60,7 +60,11 @@ Implementation was verified on exact PR head `730c6de0f3bee756f48b33ee8d42741ff6
 - Python Demo CI #726 / run `43708182180`: **PASS**; dependency install, full suite (**427 passed**), demo smoke test and post steps succeeded.
 - Both jobs and all individual steps were re-fetched after completion. The test suite exposed a stale legacy UI assertion and AppTest interaction sequencing issue; both were corrected before these final exact-head runs.
 
-The scope and verification-matrix documentation was then reconciled on commit `c17da8588c7decd7fcb1f003ab3518577cf18de2`. Agent Foundation CI #638 / run `43708294777` and Python Demo CI #729 / run `43708294866` both passed on that exact documentation head; both full suites reported 427 passed. The scope text above was verified on that documentation head. A final matrix/scope record-only commit is being checked separately; do not treat the earlier runs as testing a later commit.
+The final scope and verification-matrix record was verified on exact PR head `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`:
+
+- Agent Foundation CI #640 / run `43708424039`: **PASS**; dependency install, pip-audit, compileall, 427 tests passed in 16.31s, and all post steps succeeded.
+- Python Demo CI #731 / run `43708424032`: **PASS**; dependency install, 427 tests passed in 9.99s, demo smoke check and all post steps succeeded.
+- Both jobs and every individual step were re-fetched and confirmed completed/success.
 - PR #5 remains Open + Draft, unmerged; no deployment or merge was performed.
 
 S06 acceptance criteria are met within the approved read-only planning UI scope. Android physical-device verification is not claimed.
