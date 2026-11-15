@@ -58,3 +58,14 @@ Design a safe, free-by-default browser automation capability for future APAA dev
 ## 6. Gate after this checkpoint
 
 A separate implementation scope and explicit user approval are required before adding any browser runtime, dependency, handler or execution capability. S07 design completion is not permission to operate websites.
+
+
+## 7. Documentation baseline verification
+
+The complete S07 design documentation set was verified on exact commit `436a6c925d7a490f01104510ae8d0040815c44fa`:
+
+- Agent Foundation CI #647 / run `43708893269`: **PASS**; dependency installation, pip-audit (no known vulnerabilities reported), compileall, **427 tests passed in 16.37s**, and all post steps succeeded.
+- Python Demo CI #738 / run `43708893252`: **PASS**; dependency installation, **427 tests passed in 15.05s**, demo smoke check and all post steps succeeded.
+- Both jobs and all individual steps were re-fetched and confirmed completed/success.
+
+The verification-matrix record update is documentation-only and will be checked by the same two existing workflows on its own exact commit before S07-C01-P01 is closed. No new workflow is required.
