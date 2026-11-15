@@ -45,16 +45,13 @@ def principal_from_oidc_claims(
     subject = claims.get("sub")
     expires_at = claims.get("exp")
     issued_at = claims.get("iat")
-    if not isinstance(issuer, str) or not issuer.strip():
-        raise OIDCIdentityError("OIDC issuer claim is missing.")
-    issuer = issuer.strip()
+    if not isinstance(issuer, str) or not issuer or issuer != issuer.strip():
+        raise OIDCIdentityError("OIDC issuer claim is missing or contains surrounding whitespace.")
     try:
         issuer_url = urlsplit(issuer)
-        # OIDC issuer identifiers are HTTPS URLs. Reject ambiguous authority
-        # components and query/fragment suffixes before using the value as the
-        # tenant boundary in project and audit storage.
+        # Force validation of malformed port syntax.
         issuer_host = issuer_url.hostname
-        issuer_url.port  # Force validation of malformed port syntax.
+        issuer_url.port
     except ValueError as exc:
         raise OIDCIdentityError("OIDC issuer claim is invalid.") from exc
     if (
@@ -83,8 +80,10 @@ def principal_from_oidc_claims(
         raise AuthenticationRequired("OIDC identity has expired; log in again.")
     if issued_at > current_time + clock_skew_seconds:
         raise AuthenticationRequired("OIDC identity was issued in the future.")
+    # OIDC sub is an opaque, case-sensitive identifier. Preserve it byte-for-
+    # byte; normalizing whitespace could collapse two distinct tenant identities.
     principal = Principal(
-        subject=subject.strip(),
+        subject=subject,
         issuer=issuer,
         authenticated=True,
         roles=(),
