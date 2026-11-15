@@ -209,3 +209,32 @@ def test_receipt_from_another_session_is_rejected_even_for_same_tenant(tmp_path)
         receipt, "create_project", payload, tenant=tenant,
         session_scope="browser-session-A",
     ) is True
+
+
+def test_durable_receipt_has_exactly_one_winner_under_concurrent_consumption(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from core.storage import TenantKey
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    tenant = TenantKey("https://issuer.example", "alice")
+    secret = b"concurrent-durable-approval-secret-32-bytes"
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(tmp_path / "concurrent.sqlite3"),
+        signing_secret=secret,
+    )
+    payload = {"operation": "update_project", "project_id": "p-123"}
+    receipt = authority.issue(
+        "update_project", payload, tenant=tenant, session_scope="session-A"
+    )
+
+    def consume(_):
+        return authority.consume(
+            receipt, "update_project", payload,
+            tenant=tenant, session_scope="session-A",
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(consume, range(24)))
+
+    assert results.count(True) == 1
+    assert results.count(False) == 23
