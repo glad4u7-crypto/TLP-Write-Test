@@ -3,6 +3,8 @@ from streamlit.errors import StreamlitSecretNotFoundError
 
 from core.brain import AIBrain
 from core.projects import ProjectRegistry
+from core.persistent_projects import PersistentProjectRegistry
+from core.sqlite_project_store import SQLiteProjectStore
 from core.approvals import ApprovalAuthority
 from core.audit import JsonlAuditLog
 from core.project_actions import build_project_gateway
@@ -81,7 +83,11 @@ if principal is not None:
         security_db_path = apaa_settings.get(
             "security_db_path", ".apaa_security/security.sqlite3"
         )
+        project_db_path = apaa_settings.get(
+            "project_db_path", ".apaa_projects/projects.sqlite3"
+        )
         security_store = SQLiteSecurityStore(security_db_path)
+        project_store = SQLiteProjectStore(project_db_path)
     except (ValueError, OSError, TypeError) as exc:
         st.error(f"Durable security storage is not configured safely: {exc}")
         st.stop()
@@ -90,10 +96,23 @@ if principal is not None:
             nonce_store=security_store, signing_secret=signing_secret
         )
     audit_log = SQLiteExecutionAuditLog(security_store, tenant)
+    if (
+        "project_registry" not in st.session_state
+        or st.session_state.get("project_registry_tenant") != session_identity
+    ):
+        st.session_state["project_registry"] = PersistentProjectRegistry(project_store, tenant)
+        st.session_state["project_registry_tenant"] = session_identity
 else:
     if "approval_authority" not in st.session_state:
         st.session_state["approval_authority"] = ApprovalAuthority()
     audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
+    if "project_registry" not in st.session_state:
+        st.session_state["project_registry"] = ProjectRegistry()
+    st.session_state["project_registry_tenant"] = "local-prototype"
+if "selected_project_id" not in st.session_state:
+    st.session_state["selected_project_id"] = ""
+
+registry = st.session_state["project_registry"]
 gateway_owner = (
     f"{principal.issuer}\\n{principal.subject}"
     if principal is not None else "local-prototype"
@@ -160,7 +179,7 @@ with st.sidebar:
     st.success("External execution disabled")
 
 st.header("Project Manager")
-st.caption("Projects are currently held in this browser session; they are not yet saved permanently.")
+st.caption("Authenticated projects are saved in tenant-scoped SQLite storage. Local prototype projects remain session-only.")
 with st.form("prepare_project_form", clear_on_submit=True):
     project_name = st.text_input("Project name", max_chars=80)
     project_description = st.text_area("Project description", max_chars=500)
