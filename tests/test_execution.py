@@ -298,3 +298,29 @@ def test_gateway_reports_completion_audit_failure_after_side_effect(tmp_path, mo
     assert "completion audit persistence failed" in result.reason
     assert calls == [payload]
     assert len((tmp_path / "gateway.jsonl").read_text().splitlines()) == 1
+
+
+def test_gateway_fails_closed_on_unexpected_intent_audit_backend_error(tmp_path, monkeypatch):
+    from core.audit import JsonlAuditLog
+
+    authority = ApprovalAuthority()
+    calls = []
+    log = JsonlAuditLog(tmp_path / "gateway.jsonl")
+
+    def fail_append(event):
+        raise RuntimeError("audit backend unavailable")
+
+    monkeypatch.setattr(log, "append", fail_append)
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data)},
+        approval_authority=authority,
+        audit_log=log,
+    )
+    payload = {"path": "must-not-run.txt"}
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is False
+    assert "not executed" in result.reason
+    assert calls == []
