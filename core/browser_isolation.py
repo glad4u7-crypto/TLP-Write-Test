@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import ipaddress
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
@@ -95,7 +96,13 @@ def validate_worker_profile(raw: object) -> WorkerIsolationProfile:
         port = parsed.port
     except ValueError as exc:
         raise IsolationPolicyError("Egress proxy endpoint is malformed.") from exc
-    if (parsed.scheme != "http" or not parsed.hostname or not _PROXY_HOST.fullmatch(parsed.hostname)
+    try:
+        proxy_is_ip = ipaddress.ip_address(parsed.hostname or "") is not None
+    except ValueError:
+        proxy_is_ip = False
+    if (parsed.scheme != "http" or not parsed.hostname or proxy_is_ip
+            or "." not in parsed.hostname or parsed.hostname in ("localhost", "localhost.localdomain")
+            or not _PROXY_HOST.fullmatch(parsed.hostname)
             or parsed.username is not None or parsed.password is not None
             or parsed.path not in ("", "/") or parsed.query or parsed.fragment
             or port is None or not 1 <= port <= 65535):
