@@ -10,6 +10,8 @@ from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied
 from core.session_security import bind_session_identity
+from core.storage import TenantKey
+from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -55,7 +57,7 @@ else:
 
 # Clear identity-bound drafts, approval authority and gateway if a different
 # authenticated account starts using this same Streamlit session.
-session_identity = principal.subject if principal is not None else "local-prototype"
+session_identity = f"{principal.issuer}\\n{principal.subject}" if principal is not None else "local-prototype"
 bind_session_identity(st.session_state, session_identity)
 
 if "project_registry" not in st.session_state:
@@ -67,14 +69,39 @@ registry = st.session_state["project_registry"]
 
 # Keep the approval authority and gateway server-side in this Streamlit session.
 # The planner/task text never receives either object.
-if "approval_authority" not in st.session_state:
-    st.session_state["approval_authority"] = ApprovalAuthority()
-gateway_owner = principal.subject if principal is not None else "local-prototype"
+tenant = TenantKey(principal.issuer, principal.subject) if principal is not None else None
+if principal is not None:
+    # Authenticated deployments must explicitly configure a protected stable
+    # secret. Never silently fall back to an ephemeral in-memory authority.
+    try:
+        signing_secret_hex = apaa_settings.get("approval_signing_secret_hex", "")
+        signing_secret = bytes.fromhex(signing_secret_hex) if isinstance(signing_secret_hex, str) else b""
+        if len(signing_secret) < 32:
+            raise ValueError("approval_signing_secret_hex must decode to at least 32 bytes.")
+        security_db_path = apaa_settings.get(
+            "security_db_path", ".apaa_security/security.sqlite3"
+        )
+        security_store = SQLiteSecurityStore(security_db_path)
+    except (ValueError, OSError, TypeError) as exc:
+        st.error(f"Durable security storage is not configured safely: {exc}")
+        st.stop()
+    if "approval_authority" not in st.session_state:
+        st.session_state["approval_authority"] = ApprovalAuthority(
+            nonce_store=security_store, signing_secret=signing_secret
+        )
+    audit_log = SQLiteExecutionAuditLog(security_store, tenant)
+else:
+    if "approval_authority" not in st.session_state:
+        st.session_state["approval_authority"] = ApprovalAuthority()
+    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
+gateway_owner = (
+    f"{principal.issuer}\\n{principal.subject}"
+    if principal is not None else "local-prototype"
+)
 if (
     "execution_gateway" not in st.session_state
     or st.session_state.get("execution_gateway_owner") != gateway_owner
 ):
-    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
     st.session_state["execution_gateway"] = build_project_gateway(
         registry,
         st.session_state["approval_authority"],
@@ -171,12 +198,13 @@ if pending_project:
             "description": pending_project["description"],
         }
         receipt = st.session_state["approval_authority"].issue(
-            "create_project", payload
+            "create_project", payload, tenant=tenant
         )
         result = st.session_state["execution_gateway"].execute(
             "create_project",
             payload,
             approval_receipt=receipt,
+            tenant=tenant,
         )
         if result.executed:
             project = result.output
