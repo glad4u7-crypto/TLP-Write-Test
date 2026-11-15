@@ -33,7 +33,7 @@
 ### SEC-03 — No exact-head CI evidence
 
 **Severity:** Medium  
-**Evidence:** Workflow lookup for the latest P04 documentation commit returned no workflow runs. No exact-head passing test result was available during this review.  
+**Evidence:** Workflow lookup for the P06 scope-document commit returned no workflow runs. No exact-head passing test result was available during this review.  
 **Required remediation:** Run the repository's required test workflows on the final branch head and retain their run IDs and passing job results.
 
 ### SEC-04 — Android/Termux runtime is not qualified
@@ -44,6 +44,6 @@
 
 ## Decision
 
-**Do not enable live browsing or untrusted-site access.** P01–P04 are implementation artifacts with useful unit-test coverage authored, but the browser control chapter is not security-approved and must not be described as production-ready.
+**Do not enable live browsing or untrusted-site access.** P01–P06 are implementation artifacts with unit tests authored, but no exact-head passing CI evidence or operational transport-level egress boundary exists. The browser control chapter is not security-approved and must not be described as production-ready.
 
 No firewall, proxy, device permission, deployment, live website, authenticated browser profile, Auto-Run, payment/purchase, paid API or PR merge was changed or used by this review.
