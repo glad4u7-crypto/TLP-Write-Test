@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 import pytest
 
@@ -248,3 +249,61 @@ def test_project_schema_initialization_rolls_back_on_ddl_failure(tmp_path, monke
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
     assert tables == []
+
+
+def _create_project_in_process(database_path, gate, ready_queue, result_queue, index):
+    store = SQLiteProjectStore(database_path, timeout=20)
+    tenant = TenantKey("https://issuer-process.example", "shared-owner")
+    ready_queue.put(True)
+    if not gate.wait(timeout=30):
+        result_queue.put(("error", "start gate timed out"))
+        return
+    project = store.create(
+        tenant,
+        name=f"Process project {index}",
+        description="created by an independent process",
+    )
+    result_queue.put(("ok", project.project_id))
+
+
+def test_concurrent_process_project_creates_are_all_persisted(tmp_path):
+    path = tmp_path / "multiprocess-projects.sqlite3"
+    SQLiteProjectStore(path)
+    context = multiprocessing.get_context("spawn")
+    gate = context.Event()
+    ready_queue = context.Queue()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_create_project_in_process,
+            args=(str(path), gate, ready_queue, result_queue, index),
+        )
+        for index in range(6)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            ready_queue.get(timeout=45)
+        gate.set()
+        results = [result_queue.get(timeout=45) for _ in processes]
+        for process in processes:
+            process.join(timeout=45)
+        assert all(not process.is_alive() for process in processes)
+        assert all(process.exitcode == 0 for process in processes)
+        assert all(status == "ok" for status, _ in results), results
+    finally:
+        gate.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+        result_queue.close()
+
+    project_ids = [value for _, value in results]
+    assert len(set(project_ids)) == 6
+    tenant = TenantKey("https://issuer-process.example", "shared-owner")
+    projects = SQLiteProjectStore(path).list_for_tenant(tenant)
+    assert len(projects) == 6
+    assert {project.project_id for project in projects} == set(project_ids)
