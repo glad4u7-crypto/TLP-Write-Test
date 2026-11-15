@@ -372,3 +372,19 @@ def test_sqlite_recovers_uncommitted_project_after_process_crash(tmp_path, tenan
 def test_project_store_rejects_in_memory_database_path():
     with pytest.raises(ValueError, match="filesystem-backed"):
         SQLiteProjectStore(":memory:")
+
+
+
+def test_project_database_path_is_anchored_when_working_directory_changes(tmp_path, monkeypatch, tenants):
+    monkeypatch.chdir(tmp_path)
+    store = SQLiteProjectStore("relative-projects/projects.sqlite3")
+    expected_path = tmp_path / "relative-projects" / "projects.sqlite3"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    monkeypatch.chdir(elsewhere)
+    project = store.create(tenants[0], name="Anchored path", description="cwd changed")
+
+    assert expected_path.is_file()
+    assert not (elsewhere / "relative-projects" / "projects.sqlite3").exists()
+    assert SQLiteProjectStore(expected_path).get_for_tenant(tenants[0], project.project_id) == project
