@@ -22,6 +22,14 @@ def principal_from_oidc_claims(
     clock_skew_seconds: int = 60,
 ) -> Principal:
     """Convert trusted Streamlit OIDC claims to a validated principal."""
+    if not isinstance(clock_skew_seconds, int) or isinstance(clock_skew_seconds, bool) or clock_skew_seconds < 0:
+        raise OIDCIdentityError("OIDC clock skew must be a non-negative integer.")
+    if now is not None and (
+        isinstance(now, bool)
+        or not isinstance(now, (int, float))
+        or not math.isfinite(now)
+    ):
+        raise OIDCIdentityError("OIDC validation time is invalid.")
     if not isinstance(claims, Mapping):
         raise AuthenticationRequired("OIDC identity claims are unavailable.")
     if claims.get("is_logged_in") is not True:
