@@ -681,3 +681,19 @@ def test_execution_audit_fingerprint_distinguishes_same_subject_across_issuers(
 def test_security_store_rejects_in_memory_database_path():
     with pytest.raises(ValueError, match="filesystem-backed"):
         SQLiteSecurityStore(":memory:")
+
+
+
+def test_security_database_path_is_anchored_when_working_directory_changes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store = SQLiteSecurityStore("relative-security/security.sqlite3")
+    expected_path = tmp_path / "relative-security" / "security.sqlite3"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    monkeypatch.chdir(elsewhere)
+    tenant = TenantKey("https://issuer.example", "cwd-anchor")
+    assert store.consume_approval_nonce(tenant, "anchored", 500, now=100)
+
+    assert expected_path.is_file()
+    assert not (elsewhere / "relative-security" / "security.sqlite3").exists()
