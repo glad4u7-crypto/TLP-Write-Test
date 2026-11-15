@@ -1,21 +1,14 @@
-# Verification record — APAA-S08-C02-P02
+# Verification — APAA-S08-C02-P03
 
-## Added capabilities
-- Durable FIFO queue queried from SQLite (no volatile in-memory task queue).
-- Atomic task claim with worker ownership and expiry lease.
-- Recovery of expired RUNNING tasks to QUEUED, or FAILED when attempts are exhausted.
-- Idempotency-key uniqueness and duplicate suppression.
-- Bounded retry counter and append-only audit events.
-- Permission and consent are persisted and rechecked before handler invocation.
+## Implemented
+- Dead-letter storage and inspection API for retry-exhausted tasks and expired leases.
+- Explicit queued-task cancellation; running work is not falsely reported as stopped.
+- Global SHA-256 chained audit records with integrity verification.
+- Tamper/deletion detection tests.
+- Updated lifecycle state graph and safety documentation.
 
-## Test coverage
-- Successful execution and audit persistence.
-- Duplicate submission suppression.
-- Expired lease recovery after simulated worker loss.
-- Retry exhaustion.
-- Lease ownership enforcement.
-- Atomic single-claim behavior.
-- Missing-consent blocking and FIFO order.
+## Automated tests
+14 tests cover successful execution, idempotency, restart recovery, retry exhaustion, expired lease exhaustion, lease ownership, atomic claims, consent gate, FIFO, queued cancellation, running cancellation refusal, audit tampering, audit deletion, and input bounds.
 
-## Important guarantee boundary
-This is at-least-once execution. It does not promise exactly-once external side effects. Future side-effecting adapters must use idempotency keys at the destination and require a fresh, verifiable authorization policy. This package is not production deployment approval.
+## Guarantee boundaries
+At-least-once execution only. A hash chain detects accidental/local record tampering while its retained chain is intact; it is not a digital signature and cannot defeat an attacker rewriting the entire database. Production needs an externally anchored signed checkpoint. No real-world side-effect adapter or deployment is included.
