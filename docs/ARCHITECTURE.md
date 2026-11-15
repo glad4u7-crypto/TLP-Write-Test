@@ -40,6 +40,17 @@ This repository contains a reusable general-purpose personal agent foundation. T
 - The legacy `create_plan` string-list interface remains available for existing callers.
 - Planning remains deterministic, offline and provider-free. S05 does not enable browser, shell, filesystem, email, network, device or other real-world handlers.
 
+## Structured task planning UI (S06)
+
+- The Task Workspace calls `create_structured_plan(Task(...))` directly; it no longer routes task intake through the legacy free-form `AIBrain.respond()` display.
+- READY plans render ordered step IDs, purpose, category and expected output for read-only review.
+- NEEDS_CLARIFICATION plans render explicit questions and accept additional user-provided context before producing a new plan. The clarification is appended to the original task; it does not silently replace the request.
+- BLOCKED plans render the safety explanation and contain no steps.
+- Proposed mutation steps are visibly labelled as proposals requiring separate action-specific approval. The planning UI does not issue an approval receipt.
+- Plan and clarification drafts are session state only and are cleared on identity changes, logout and authentication loss.
+- The S06 Task Workspace is read-only. It does not call the execution gateway, register handlers, persist plans, schedule work or perform external actions.
+- The interface remains a Streamlit web prototype. Android browser usability is a design target, not a claim of native Android support.
+
 ## Approval and execution boundary
 
 - The UI's current mutation is project creation only.
