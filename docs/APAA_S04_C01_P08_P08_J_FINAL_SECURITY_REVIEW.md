@@ -679,3 +679,47 @@ The BC checkpoint's two CI workflows passed on its exact head. The BD tests and 
 ### Next serial checkpoint
 
 Perform the S04 release-readiness audit as one integrated gate: inspect workflow permissions and dependency audit findings, validate every approval-protected mutation route and tenant boundary, run the full latest-head CI, reconcile documentation against actual behavior, and produce an explicit pass/block matrix. Do not merge, deploy, enable Auto-Run, or advance to S05 while any required gate remains open.
+
+
+## P08-P09-BE — S04 release-readiness and CI supply-chain review
+
+Review date: 2026-11-15
+
+### Previous checkpoint verification
+
+- PR #5 remained open and Draft, unmerged, on `feature/approval-ui-e2e-p06` with base `feature/agent-v0.3-zero-cost-core`.
+- Exact BD head `381870b2785dd847346bfbfb64d33bba6301f723` passed Agent Foundation CI run `43694096596` and Python Demo CI run `43694096553`.
+- Both workflows ran the full test suite: 374 passed. Agent Foundation CI also completed `pip-audit -r requirements.txt` with `No known vulnerabilities found`, plus `compileall`; Python Demo CI validated the expected demo output.
+
+### Release-readiness review findings
+
+- Identity boundary: authenticated principal construction validates OIDC issuer, subject, expiry, issued-at, and HTTPS issuer form. Tenant keys use the issuer/subject pair. Live identity-provider verification remains unproven without a controlled deployment and test identities.
+- Approval boundary: receipts are short-lived, signed, payload-bound, tenant-bound in durable mode, and session-scope-bound. Durable nonce consumption is transactional and replay-resistant across independent authorities.
+- Execution boundary: handlers are explicitly registered; intent audit must persist before dispatch; completion audit failures are surfaced as uncertain outcomes. The current trusted project gateway registers project creation only. Generic action identifiers in the policy allowlist are not evidence that browser, shell, email, network, or device adapters exist.
+- Storage boundary: authenticated mode requires a configured 32-byte-or-longer signing secret and SQLite durable nonce/audit and tenant-scoped project stores. Startup failures clear identity-bound state and stop execution. Local prototype mode remains unauthenticated and explicitly warns against public exposure.
+- Permission boundary: both CI workflows declare only `contents: read`; no deployment, secrets, package publishing, or write permissions are granted by the workflow files. Auto-Run is not enabled by the app. Payment, financial transactions, paid providers, and unknown actions are denied by policy.
+- Dependency boundary: the exact BD CI dependency audit found no known vulnerabilities in the declared Python requirements at run time. This is a point-in-time result, not a guarantee against future advisories.
+
+### CI supply-chain improvements completed
+
+- Replaced floating major action tags with verified full commit pins for `actions/checkout` v5.0.0 (`fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09`) and `actions/setup-python` v6.0.0 (`ece7cb06caefa5fff74198d8649806c4678c61a1`). These releases use Node 24, removing the previous Node 20 deprecation warning path when the updated workflows run on a compatible GitHub-hosted runner.
+- Added per-workflow concurrency groups with cancellation of superseded runs and explicit 20/15-minute job timeouts.
+- Added weekly Dependabot update checks for both pip dependencies and GitHub Actions, capped at five open update PRs per ecosystem. Dependabot only proposes PRs; no auto-merge is configured.
+- A separate new workflow was not added: the existing Agent Foundation workflow already compiles the app, runs the complete test suite, and performs the dependency audit. A duplicate security workflow would add redundant CI without closing a distinct gate.
+
+### Explicit blockers / evidence limitations
+
+- Branch-protection and repository-ruleset settings could not be inspected with the available GitHub integration permissions (GitHub returned 403). Do not assume required-review or required-status-check enforcement is configured. Repository owner must verify these settings in GitHub repository settings.
+- Live OIDC sign-in, provider claim validation against a real issuer, multi-user deployment isolation, and browser-based confirmation remain blocked pending a private non-production deployment and two controlled test identities.
+- Dependency audit only covers the declared Python requirements and the point-in-time dependency graph. It does not certify hosted runner images, GitHub Actions internals, or deployment infrastructure.
+- Local prototype mode is not a production-ready authentication configuration. Do not expose it publicly.
+
+### S04 gate decision
+
+**Code-level CI gate: PASS at the previously verified BD head.**  
+**Updated workflow configuration: committed; exact-head CI pending.**  
+**Full S04 release readiness: BLOCKED** until updated CI passes, branch protection is independently confirmed, and controlled live OIDC/browser verification is completed. Do not merge, deploy, enable Auto-Run, or advance to S05 before these blockers are closed.
+
+### Next serial checkpoint
+
+P08-P09-BF: validate the updated pinned-action workflows on the exact latest PR head; add a workflow-configuration regression check if the repository's existing test tooling can do so without introducing a new runtime dependency; then produce a final S04 pass/block matrix and list only the externally blocked checks that cannot be executed safely in this environment.
