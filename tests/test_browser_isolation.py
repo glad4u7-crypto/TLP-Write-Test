@@ -24,7 +24,7 @@ def safe_profile(**overrides):
         "direct_egress": False,
         "proxy_only_egress": True,
         "dns_via_proxy_only": True,
-        "egress_proxy": "http://egress-proxy:3128",
+        "egress_proxy": "http://egress-proxy.internal:3128",
         "memory_limit_bytes": 512 * 1024 * 1024,
         "cpu_limit_millis": 1000,
         "pids_limit": 64,
@@ -38,7 +38,7 @@ def test_accepts_hardened_worker_profile():
     result = validate_worker_profile(safe_profile())
     assert result.uid == 10001
     assert result.gid == 10001
-    assert result.egress_proxy == "http://egress-proxy:3128"
+    assert result.egress_proxy == "http://egress-proxy.internal:3128"
     assert result.writable_mounts == ("/tmp/job",)
 
 
@@ -90,7 +90,7 @@ def test_rejects_non_ephemeral_or_duplicate_writable_mounts(mounts):
 @pytest.mark.parametrize("proxy", [
     "", "https://egress-proxy:3128", "http://user:pass@egress-proxy:3128",
     "http://egress-proxy", "http://egress-proxy:99999",
-    "http://egress-proxy:3128/path", "http://127.0.0.1:3128",
+    "http://egress-proxy.internal:3128/path", "http://127.0.0.1:3128",
 ])
 def test_rejects_invalid_proxy_endpoint(proxy):
     with pytest.raises(IsolationPolicyError):
