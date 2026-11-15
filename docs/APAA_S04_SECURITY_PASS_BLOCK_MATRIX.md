@@ -4,7 +4,7 @@ Checkpoint: APAA-S04-C01-P08-P09-BP
 Verification date: 2026-11-15  
 Repository: glad4u7-crypto/TLP-Write-Test  
 Pull request: #5 (must remain Draft)  
-Implementation head reviewed: 730a7565b7ec8e32f68d2f7929b1dde50bd16922  
+Implementation head reviewed: 9e8d52449eac691cdd442ce3c9d6fe2231ec4760  
 Head branch: feature/approval-ui-e2e-p06  
 Base branch: feature/agent-v0.3-zero-cost-core
 
@@ -25,7 +25,7 @@ The GitHub job and step records show every step completed successfully. The prec
 |---|---|---|
 | GitHub Actions external action pinning | PASS | Both existing workflows pin checkout/setup-python to full commit SHAs; regression test checks all action references. |
 | CI token permissions | PASS | Both workflows explicitly set contents: read; no pull_request_target or write-all. |
-| CI runtime and concurrency | PASS | Both workflows set bounded job timeouts and cancel superseded runs. |
+| CI runtime and concurrency | PASS | Both workflows set bounded job timeouts; PR runs use SHA-scoped concurrency groups with `cancel-in-progress: false`, avoiding cancellation of active required checks. |
 | Dependency vulnerability audit | PASS (point-in-time) | Agent Foundation CI pip-audit step completed successfully on exact head; re-run for every dependency change. |
 | Python compilation and automated regression | PASS (CI scope) | Both exact-head workflows completed compile/test steps successfully. |
 | Demo smoke test | PASS | Python Demo CI exact-output step passed. |
@@ -127,3 +127,29 @@ This is a deterministic post-initialization path-replacement check, not proof ag
 ### Next checkpoint
 
 APAA-S04-C01-P08-P09-BS: review JSONL audit path handling and SQLite journal/WAL sidecar lifecycle for cleanup, permission persistence, and tamper-detection limits. Do not claim protection beyond the tests and OS boundary above.
+
+
+## Latest exact-head verification — 2026-11-15
+
+Reviewed head: `9e8d52449eac691cdd442ce3c9d6fe2231ec4760` (PR #5, feature/approval-ui-e2e-p06).
+
+| Workflow | Run ID | Conclusion | Verified job steps |
+|---|---:|---|---|
+| Agent Foundation CI | 43698548471 | PASS | dependency install, pip-audit, compileall, foundation tests |
+| Python Demo CI | 43698548468 | PASS | dependency install, full test suite, demo smoke test |
+
+Both runs completed on the exact reviewed SHA; all reported job steps succeeded. This confirms the JSONL parent-directory replacement regression test is included in a passing exact-head CI run.
+
+## Audit durability and concurrency boundaries
+
+- JSONL append uses a process-local per-path thread lock. It serializes threads and multiple logger objects in the same Python process, but it is **not an inter-process lock**. Concurrent writers from separate OS processes are not supported or verified; deployment must enforce a single writer process until an inter-process locking design is separately implemented and tested.
+- Each append flushes and fsyncs the file descriptor, but creation of a new audit file does not fsync the containing directory. Power-loss durability of the new directory entry is therefore not guaranteed.
+- A truncated or malformed trailing JSONL record fails verification closed. There is no automatic truncation/repair recovery; preserve the file for investigation rather than silently repairing it.
+- The SHA-256 chain detects accidental corruption and ordinary edits, but has no independent external anchor. An attacker able to rewrite the entire log and recompute hashes can forge a replacement chain. Protected backup, retention, monitoring and independently stored checkpoints remain deployment blockers.
+- Parent-directory symlink replacement is now covered by a regression test, but hostile same-UID path races between validation and pathname-based open are not eliminated. Dedicated OS identity, non-writable private parent and process/container isolation remain required deployment controls.
+
+## Updated decision
+
+Code-level and offline CI gates for this exact head: **PASS**. Full S04 release readiness: **BLOCKED** by live OIDC/browser verification, repository branch-protection verification, production isolation, single-writer topology enforcement, and operational audit durability/backup/independent anchoring. PR #5 remains Open + Draft. Do not merge or deploy. Auto-Run and real-world handlers remain disabled; payment, purchases, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+Next checkpoint: `APAA-S04-C01-P08-P09-BU` — add explicit single-writer runtime guard or enforceable deployment contract, then test audit crash/truncation fail-closed behavior and update the matrix from evidence.
