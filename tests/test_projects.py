@@ -139,3 +139,83 @@ def test_legacy_project_without_issuer_is_not_visible_or_readable_to_authenticat
     assert registry.list_projects_for_owner(ALICE) == []
     with pytest.raises(AuthorizationDenied):
         registry.get_for_owner(legacy.project_id, ALICE)
+
+
+def test_persistent_registry_rejects_cross_issuer_and_cross_subject_access(tmp_path):
+    from core.persistent_projects import PersistentProjectRegistry
+    from core.sqlite_project_store import SQLiteProjectStore
+    from core.storage import TenantKey
+
+    store = SQLiteProjectStore(tmp_path / "persistent-projects.sqlite3")
+    owner = Principal("alice", "https://issuer-one.example", True)
+    other_issuer = Principal("alice", "https://issuer-two.example", True)
+    other_subject = Principal("bob", "https://issuer-one.example", True)
+    registry = PersistentProjectRegistry(
+        store, TenantKey(owner.issuer, owner.subject)
+    )
+    project = registry.create(
+        "Owner project", "", owner_subject=owner.subject,
+        owner_issuer=owner.issuer, _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
+
+    assert registry.list_projects_for_owner(owner) == [project]
+    assert registry.get_for_owner(project.project_id, owner) == project
+    for attacker in (other_issuer, other_subject):
+        assert registry.list_projects_for_owner(attacker) == []
+        with pytest.raises(AuthorizationDenied):
+            registry.get_for_owner(project.project_id, attacker)
+        with pytest.raises(AuthorizationDenied):
+            registry.update_for_owner(
+                project.project_id, attacker, name="Hijacked", description="",
+                _capability=_PROJECT_MUTATION_CAPABILITY,
+            )
+        with pytest.raises(AuthorizationDenied):
+            registry.delete_for_owner(
+                project.project_id, attacker,
+                _capability=_PROJECT_MUTATION_CAPABILITY,
+            )
+    assert registry.get_for_owner(project.project_id, owner) == project
+
+
+def test_persistent_registry_rejects_owner_spoofing(tmp_path):
+    from core.persistent_projects import PersistentProjectRegistry
+    from core.sqlite_project_store import SQLiteProjectStore
+    from core.storage import TenantKey
+
+    registry = PersistentProjectRegistry(
+        SQLiteProjectStore(tmp_path / "spoof.sqlite3"),
+        TenantKey("https://issuer.example", "alice"),
+    )
+    with pytest.raises(AuthorizationDenied):
+        registry.create(
+            "Spoofed owner", "", owner_subject="bob",
+            owner_issuer="https://issuer.example",
+            _capability=_PROJECT_MUTATION_CAPABILITY,
+        )
+    assert registry.list_projects() == []
+
+
+def test_persistent_registry_owner_can_update_and_delete(tmp_path):
+    from core.persistent_projects import PersistentProjectRegistry
+    from core.sqlite_project_store import SQLiteProjectStore
+    from core.storage import TenantKey
+
+    owner = Principal("alice", "https://issuer.example", True)
+    registry = PersistentProjectRegistry(
+        SQLiteProjectStore(tmp_path / "crud.sqlite3"),
+        TenantKey(owner.issuer, owner.subject),
+    )
+    project = registry.create(
+        "Before", "", owner_subject=owner.subject, owner_issuer=owner.issuer,
+        _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
+    updated = registry.update_for_owner(
+        project.project_id, owner, name="After", description="updated",
+        _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
+    assert updated.name == "After"
+    assert updated.owner_subject == owner.subject
+    assert registry.delete_for_owner(
+        project.project_id, owner, _capability=_PROJECT_MUTATION_CAPABILITY
+    )
+    assert registry.get_for_owner(project.project_id, owner) is None
