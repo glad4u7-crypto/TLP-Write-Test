@@ -4,6 +4,7 @@
 **Implementation:** core/linux_host_inspector.py  
 **Tests:** tests/test_linux_host_inspector.py  
 **Integration:** P07 HostSnapshotSource + P06 Ed25519 evidence verifier  
+**CI:** PASS on exact P08 matrix commit `4e9ef613342af52c1df6f04696596cc5532528e1` (661 tests in each existing workflow)  
 **Host deployment:** NOT PERFORMED  
 **Live host collection:** NOT PERFORMED  
 **Firewall changes:** NOT PERFORMED  
@@ -94,3 +95,13 @@ These are deterministic adapter unit tests. They are not live host tests, packet
 - No deployment, firewall modification, worker launch or browser execution.
 
 **P08 disposition:** CONCRETE READ-ONLY LINUX ADAPTER + DETERMINISTIC UNIT TESTS ADDED. LIVE HOST ACCEPTANCE, SIGNING-KEY CUSTODY, DURABLE CHALLENGE REPLAY PROTECTION AND PACKET-LEVEL ENFORCEMENT REMAIN OPEN.
+
+
+## 8. Exact CI record
+
+The P08 implementation and verification-matrix snapshot `4e9ef613342af52c1df6f04696596cc5532528e1` passed both existing workflows:
+
+- Agent Foundation CI run [43716609001](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716609001): 661 passed; dependency audit, compileall and all steps succeeded.
+- Python Demo CI run [43716609027](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716609027): 661 passed; demo smoke check and all steps succeeded.
+
+The final documentation-only record commit will be verified separately. CI evidence does not imply a live host inspection, actual firewall enforcement or production readiness.
