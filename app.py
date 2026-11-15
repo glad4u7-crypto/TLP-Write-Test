@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import os
 import secrets
 import sqlite3
 import streamlit as st
@@ -104,6 +107,24 @@ if principal is not None:
         clear_session_identity(st.session_state)
         st.error(f"Durable security storage is not configured safely: {exc}")
         st.stop()
+    # Bind cached approval capabilities to the active signing secret and
+    # durable nonce-store location. Keep only a keyed, non-reversible identifier
+    # in session state; never retain or log the signing secret itself.
+    authority_config_material = (
+        "apaa-approval-authority-config-v1\\n"
+        + os.path.abspath(os.fspath(security_db_path))
+    ).encode("utf-8")
+    authority_config_id = hmac.new(
+        signing_secret, authority_config_material, hashlib.sha256
+    ).hexdigest()
+    if st.session_state.get("approval_authority_config_id") != authority_config_id:
+        # Secret or nonce-store rotation invalidates receipts from the prior
+        # configuration, even if the new store has never seen their nonces.
+        st.session_state.pop("approval_authority", None)
+        st.session_state.pop("execution_gateway", None)
+        st.session_state.pop("execution_gateway_owner", None)
+        st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
+        st.session_state["approval_authority_config_id"] = authority_config_id
     if "approval_authority" not in st.session_state:
         st.session_state["approval_authority"] = ApprovalAuthority(
             nonce_store=security_store, signing_secret=signing_secret
