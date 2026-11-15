@@ -845,3 +845,89 @@ def test_sqlite_audit_tamper_blocks_append_without_extending_chain(tmp_path):
     assert after_count == before_count
     assert not store.verify_audit_chain()
 
+
+
+def test_inspector_challenge_is_durable_single_use_and_bound_to_runtime(tmp_path):
+    path = tmp_path / "inspector-challenges.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, expiry = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    assert len(challenge) == 64
+    assert expiry == 160
+    reopened = SQLiteSecurityStore(path)
+    assert not reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:other-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not reopened.consume_inspector_challenge(
+        TenantKey("https://issuer.example", "bob"), challenge,
+        runtime_id="runtime:test-001", worker_id="worker:test-001", now=110,
+    )
+    assert reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+
+
+def test_inspector_challenge_expiry_and_invalid_inputs_fail_closed(tmp_path):
+    store = SQLiteSecurityStore(tmp_path / "inspector-expiry.sqlite3")
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, expiry = store.issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=10, now=100,
+    )
+    assert expiry == 110
+    assert not store.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not store.consume_inspector_challenge(
+        tenant, "not-a-challenge", runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=105,
+    )
+    with pytest.raises(ValueError):
+        store.issue_inspector_challenge(
+            tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+            ttl_seconds=301, now=100,
+        )
+
+
+def test_concurrent_inspector_challenge_consumption_has_one_winner(tmp_path):
+    path = tmp_path / "inspector-race.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, _ = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    def attempt(_):
+        return SQLiteSecurityStore(path).consume_inspector_challenge(
+            tenant, challenge, runtime_id="runtime:test-001",
+            worker_id="worker:test-001", now=110,
+        )
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(attempt, range(16)))
+    assert sum(results) == 1
+
+
+def test_inspector_challenge_database_stores_only_hash_not_raw_challenge(tmp_path):
+    import sqlite3
+    import hashlib
+
+    path = tmp_path / "inspector-hash.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, _ = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT challenge_hash FROM inspector_challenges"
+        ).fetchone()
+    assert row[0] == hashlib.sha256(bytes.fromhex(challenge)).hexdigest()
+    assert challenge not in row[0]
