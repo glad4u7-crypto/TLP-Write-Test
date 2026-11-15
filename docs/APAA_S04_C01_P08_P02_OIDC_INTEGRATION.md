@@ -48,8 +48,8 @@ Copy each generated value into the corresponding key in your local secrets file.
 ## Security limitations
 
 - Streamlit OIDC authenticates identity; it does not implement per-project authorization by itself.
-- Project records are not yet bound to owner subjects. That is the next P08 step.
-- Live provider redirect, cookie behavior, logout, and two-browser session tests still need to be performed in a configured deployment.
+- Project records are now scoped to the validated issuer + subject through the tenant-aware project registry and SQLite persistence layer; automated ownership-isolation tests exist. Live two-user browser verification remains pending.
+- Live provider redirect, cookie behavior, logout, and two-browser session tests still need to be performed in a configured deployment. Follow the existing `APAA_S04_C01_P08_P06_LIVE_AUTH_VERIFICATION.md` matrix.
 - The local prototype mode remains unauthenticated for automated tests and local development. Never deploy publicly with `require_auth = false`.
 - Do not expose ID/access tokens; the default configuration does not expose tokens.
 
