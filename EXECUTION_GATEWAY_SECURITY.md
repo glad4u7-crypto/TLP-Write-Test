@@ -18,6 +18,10 @@
   adapter.
 - The gateway records payload-free in-memory audit events for allowed and denied
   dispatch attempts; events intentionally omit payload values and secrets.
+- When a `JsonlAuditLog` is configured, the gateway persists an authorization
+  intent before invoking a handler and blocks the handler if that write fails.
+  It then persists a completion/failure event. If completion persistence fails
+  after a side effect, the result explicitly reports that manual review is needed.
 
 ## Critical approval trust boundary
 
@@ -42,7 +46,8 @@ application process; it does not replace application-layer access control.
 - No real file, email, browser, shell, network, or device handlers are wired.
 - The Streamlit Project Manager now uses a two-step review/confirm flow and routes project creation through a trusted UI controller, one-time receipt, and `ExecutionGateway`.
 - This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
-- `JsonlAuditLog` now provides optional local JSONL persistence with a SHA-256 hash chain and verification tests. It is not yet wired into `ExecutionGateway`, and a local hash chain is not tamper-proof against an attacker who can rewrite the file and recompute hashes.
+- `JsonlAuditLog` is now optionally wired into `ExecutionGateway`; it provides local JSONL persistence with a SHA-256 hash chain. The hash chain is not tamper-proof against an attacker who can rewrite the file and recompute hashes.
+- The JSONL writer uses a process-local lock only. Concurrent writers across multiple processes/hosts need a transactional or centralized audit backend before production.
 - No production capability-isolation layer exists.
 - `ProjectRegistry.create` and `delete` require an internal in-process capability; ordinary direct calls are rejected and the trusted project controller passes the capability only through the approval-gated handler.
 - This capability prevents accidental bypasses but is not isolation against arbitrary Python code executing inside the same process.
