@@ -1,7 +1,6 @@
 """Permission-gated dispatch for explicitly registered agent actions.
 
-This gateway has no shell, browser, network, or provider adapters. Real
-handlers must be registered only by trusted application code.
+No shell, browser, network, device, or provider adapters are included.
 """
 from collections.abc import Callable, Mapping, Iterable
 from dataclasses import dataclass
@@ -9,7 +8,11 @@ import re
 from typing import Any
 
 from core.approvals import ApprovalAuthority, ApprovalReceipt
-from core.audit import ExecutionAuditEvent, create_audit_event
+from core.audit import (
+    ExecutionAuditEvent,
+    JsonlAuditLog,
+    create_audit_event,
+)
 from core.safety import authorize_action
 
 
@@ -31,10 +34,10 @@ class ExecutionResult:
 
 
 class ExecutionGateway:
-    """Dispatch registered handlers only after policy + trusted approval.
+    """Dispatch registered handlers only after policy, approval and audit checks.
 
-    The ApprovalAuthority must remain private to trusted UI/controller code.
-    Never pass model-generated text as a user approval receipt.
+    The ApprovalAuthority and audit store must remain private to trusted
+    application code. This is not isolation against arbitrary code in-process.
     """
 
     def __init__(
@@ -43,10 +46,11 @@ class ExecutionGateway:
         *,
         approval_authority: ApprovalAuthority | None = None,
         auto_run_actions: Iterable[str] = (),
+        audit_log: JsonlAuditLog | None = None,
     ) -> None:
         self._handlers: dict[str, ActionHandler] = {}
         self._approval_authority = approval_authority
-        # This allowlist is trusted application configuration, not task input.
+        self._audit_log = audit_log
         self._auto_run_actions = frozenset(
             _canonical_action(item) for item in auto_run_actions
             if _canonical_action(item)
@@ -67,6 +71,22 @@ class ExecutionGateway:
         """Read-only snapshot of payload-free events for this process lifetime."""
         return tuple(self._audit_events)
 
+    def _record(
+        self,
+        action: object,
+        executed: bool,
+        reason: str,
+    ) -> tuple[ExecutionAuditEvent, bool]:
+        event = create_audit_event(_canonical_action(action), executed, reason)
+        self._audit_events.append(event)
+        if self._audit_log is None:
+            return event, True
+        try:
+            self._audit_log.append(event)
+        except (OSError, ValueError, TypeError):
+            return event, False
+        return event, True
+
     def _finish(
         self,
         action: object,
@@ -74,8 +94,14 @@ class ExecutionGateway:
         reason: str,
         output: Any = None,
     ) -> ExecutionResult:
-        event = create_audit_event(_canonical_action(action), executed, reason)
-        self._audit_events.append(event)
+        event, persisted = self._record(action, executed, reason)
+        if not persisted:
+            return ExecutionResult(
+                False,
+                "Audit persistence failed; execution was blocked or outcome could not be fully recorded.",
+                None,
+                event,
+            )
         return ExecutionResult(executed, reason, output, event)
 
     def execute(
@@ -86,7 +112,7 @@ class ExecutionGateway:
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
     ) -> ExecutionResult:
-        """Run one handler only after read-only, Auto-Run, or receipt authorization."""
+        """Run one handler only after policy + approval + durable intent audit."""
         if payload is not None and not isinstance(payload, Mapping):
             return self._finish(action, False, "Action payload must be a mapping.")
 
@@ -119,11 +145,39 @@ class ExecutionGateway:
                 action, False, "No trusted handler is registered for this action."
             )
 
+        # Persist intent before the side effect. Fail closed if audit is unavailable.
+        intent, persisted = self._record(
+            action, False, "authorized_dispatch_pending"
+        )
+        if not persisted:
+            return ExecutionResult(
+                False, "Audit persistence unavailable; action was not executed.",
+                None, intent,
+            )
+
         try:
             output = handler(payload or {})
         except Exception:
-            return self._finish(action, False, "The registered action handler failed.")
+            completion, completed_persisted = self._record(
+                action, False, "registered_handler_failed"
+            )
+            reason = "The registered action handler failed."
+            if not completed_persisted:
+                reason = "The handler failed and completion audit persistence failed."
+            return ExecutionResult(False, reason, None, completion)
 
-        return self._finish(
-            action, True, "Action executed after permission approval.", output
+        completion, completed_persisted = self._record(
+            action, True, "action_executed"
+        )
+        if not completed_persisted:
+            # The side effect already happened; the durable intent record remains.
+            return ExecutionResult(
+                True,
+                "Action executed; completion audit persistence failed. Manual review required.",
+                output,
+                completion,
+            )
+        return ExecutionResult(
+            True, "Action executed after permission and audit checks.",
+            output, completion,
         )
