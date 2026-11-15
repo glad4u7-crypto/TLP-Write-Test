@@ -105,3 +105,11 @@ Both workflow runs were re-fetched after completion. Each job and every listed s
 P03 adds offline policy primitives and deterministic tests only. It does not establish an enforceable network boundary, prove SSRF protection at connection time, or authorize browser execution. DNS resolution is injected in tests and is never performed implicitly. Deployment must later enforce DNS/address validation at connection time and block direct worker egress.
 
 **P03 disposition:** IMPLEMENTATION ADDED; final verification remains pending until the full pytest suite and both existing CI workflows complete successfully on the exact final commit. PR #5 remains Open + Draft + unmerged.
+
+
+### P03 final implementation snapshot
+
+- Final P03 code/test snapshot: `925a6db8b58dc2944c05ec503f50f2b1222c2ce3`.
+- Includes a follow-up hardening pass for legacy numeric IPv4 spellings (shortened dotted, octal-like and hexadecimal forms) and multicast/non-unicast destinations.
+- The exact-commit workflow lookup returned no workflow-run records for this snapshot. Therefore **pytest and both CI workflows are NOT VERIFIED for P03**; no PASS status is claimed.
+- The regression suite is committed but remains pending execution in the repository's existing CI. The CI configuration was not changed and no additional workflow was created.
