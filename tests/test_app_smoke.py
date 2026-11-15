@@ -236,6 +236,7 @@ def test_authenticated_store_failure_clears_capabilities_and_same_session_can_re
     for key in (
         "active_identity_subject",
         "approval_session_scope",
+        "approval_authority_config_id",
         "approval_authority",
         "execution_gateway",
         "execution_gateway_owner",
@@ -258,3 +259,84 @@ def test_authenticated_store_failure_clears_capabilities_and_same_session_can_re
     assert "execution_gateway" in app.session_state
     assert "project_registry_tenant" in app.session_state
     assert app.session_state["project_registry_tenant"]
+
+
+def test_authenticated_approval_authority_rotates_on_secret_and_store_path_changes(
+    tmp_path, monkeypatch
+):
+    from core.storage import TenantKey
+
+    security_a_dir = tmp_path / "security-a"
+    security_b_dir = tmp_path / "security-b"
+    project_dir = tmp_path / "projects"
+    for directory in (security_a_dir, security_b_dir, project_dir):
+        directory.mkdir(mode=0o700)
+
+    security_a = security_a_dir / "security.sqlite3"
+    security_b = security_b_dir / "security.sqlite3"
+    project_db = project_dir / "projects.sqlite3"
+    secret_a = "11" * 32
+    secret_b = "22" * 32
+
+    def configure(secret, security_path):
+        monkeypatch.setattr(
+            st,
+            "secrets",
+            {
+                "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+                "apaa": {
+                    "require_auth": True,
+                    "approval_signing_secret_hex": secret,
+                    "security_db_path": str(security_path),
+                    "project_db_path": str(project_db),
+                },
+            },
+        )
+
+    _authenticated_test_user(monkeypatch)
+    configure(secret_a, security_a)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+
+    tenant = TenantKey("https://accounts.example.test", "app-smoke-test-user")
+    payload = {"name": "rotation-check", "description": "must not execute"}
+    authority_a = app.session_state["approval_authority"]
+    gateway_a = app.session_state["execution_gateway"]
+    scope_a = app.session_state["approval_session_scope"]
+    receipt_a = authority_a.issue(
+        "create_project", payload, tenant=tenant, session_scope=scope_a
+    )
+    config_id_a = app.session_state["approval_authority_config_id"]
+
+    # Rotate only the signing secret while retaining the same nonce database.
+    configure(secret_b, security_a)
+    app.run()
+    assert not app.exception
+    authority_b = app.session_state["approval_authority"]
+    gateway_b = app.session_state["execution_gateway"]
+    scope_b = app.session_state["approval_session_scope"]
+    assert authority_b is not authority_a
+    assert gateway_b is not gateway_a
+    assert scope_b != scope_a
+    assert app.session_state["approval_authority_config_id"] != config_id_a
+    assert authority_b.consume(
+        receipt_a, "create_project", payload, tenant=tenant, session_scope=scope_b
+    ) is False
+
+    # A new database path with the same secret must also rotate the authority
+    # and session scope; the fresh nonce store cannot revive an old receipt.
+    receipt_b = authority_b.issue(
+        "create_project", payload, tenant=tenant, session_scope=scope_b
+    )
+    configure(secret_b, security_b)
+    app.run()
+    assert not app.exception
+    authority_c = app.session_state["approval_authority"]
+    gateway_c = app.session_state["execution_gateway"]
+    scope_c = app.session_state["approval_session_scope"]
+    assert authority_c is not authority_b
+    assert gateway_c is not gateway_b
+    assert scope_c != scope_b
+    assert authority_c.consume(
+        receipt_b, "create_project", payload, tenant=tenant, session_scope=scope_c
+    ) is False
