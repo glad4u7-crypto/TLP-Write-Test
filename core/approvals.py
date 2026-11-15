@@ -60,10 +60,11 @@ class ApprovalAuthority:
     def _message(
         self, action: str, payload_digest: str, expires_at: int, nonce: str,
         tenant: TenantKey | None = None,
+        session_scope: str = "",
     ) -> bytes:
         issuer = tenant.issuer if tenant is not None else ""
         subject = tenant.subject if tenant is not None else ""
-        return f"{action}\n{payload_digest}\n{expires_at}\n{nonce}\n{issuer}\n{subject}".encode("utf-8")
+        return f"{action}\n{payload_digest}\n{expires_at}\n{nonce}\n{issuer}\n{subject}\n{session_scope}".encode("utf-8")
 
     def issue(
         self,
@@ -72,6 +73,7 @@ class ApprovalAuthority:
         *,
         ttl_seconds: int = 120,
         tenant: TenantKey | None = None,
+        session_scope: str = "",
     ) -> ApprovalReceipt:
         """Issue a receipt for a caller that is already inside the trusted UI boundary.
 
@@ -80,6 +82,8 @@ class ApprovalAuthority:
         """
         if not isinstance(payload, (Mapping, type(None))):
             raise ValueError("Approval payload must be a mapping.")
+        if not isinstance(session_scope, str) or len(session_scope) > 256:
+            raise ValueError("Approval session scope must be text of at most 256 characters.")
         if self._nonce_store is not None and not isinstance(tenant, TenantKey):
             raise ValueError("Durable approvals require a validated tenant identity.")
         canonical = self._canonical_action(action)
@@ -94,7 +98,7 @@ class ApprovalAuthority:
         nonce = secrets.token_urlsafe(24)
         signature = hmac.new(
             self._secret,
-            self._message(canonical, digest, expires_at, nonce, tenant),
+            self._message(canonical, digest, expires_at, nonce, tenant, session_scope),
             hashlib.sha256,
         ).hexdigest()
         return ApprovalReceipt(canonical, digest, expires_at, nonce, signature)
@@ -106,10 +110,13 @@ class ApprovalAuthority:
         payload: Mapping[str, Any] | None,
         *,
         tenant: TenantKey | None = None,
+        session_scope: str = "",
     ) -> bool:
         """Atomically verify and consume a one-time receipt."""
         with self._consume_lock:
-            return self._consume_locked(receipt, action, payload, tenant=tenant)
+            return self._consume_locked(
+                receipt, action, payload, tenant=tenant, session_scope=session_scope
+            )
 
     def _consume_locked(
         self,
@@ -118,9 +125,12 @@ class ApprovalAuthority:
         payload: Mapping[str, Any] | None,
         *,
         tenant: TenantKey | None = None,
+        session_scope: str = "",
     ) -> bool:
         """Verify action + payload + expiry + signature, then reject replay."""
         if not isinstance(receipt, ApprovalReceipt):
+            return False
+        if not isinstance(session_scope, str) or len(session_scope) > 256:
             return False
 
         # Dataclass annotations are not runtime validation. Treat every receipt
@@ -168,6 +178,7 @@ class ApprovalAuthority:
                     receipt.expires_at,
                     receipt.nonce,
                     tenant,
+                    session_scope,
                 ),
                 hashlib.sha256,
             ).hexdigest()
