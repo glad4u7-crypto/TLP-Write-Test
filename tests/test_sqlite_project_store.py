@@ -76,3 +76,27 @@ def test_concurrent_creates_do_not_overwrite_projects(tmp_path, tenants):
         projects = list(pool.map(create, range(12)))
     assert len({project.project_id for project in projects}) == 12
     assert len(SQLiteProjectStore(tmp_path / "concurrent.sqlite3").list_for_tenant(tenant)) == 12
+
+
+def test_project_database_file_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "private" / "projects.sqlite3"
+    SQLiteProjectStore(path)
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks unavailable")
+def test_project_database_rejects_symlink_target(tmp_path):
+    target = tmp_path / "outside.sqlite3"
+    target.write_bytes(b"do-not-open")
+    link = tmp_path / "projects.sqlite3"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        SQLiteProjectStore(link)
+    assert target.read_bytes() == b"do-not-open"
