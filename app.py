@@ -16,7 +16,7 @@ from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied
-from core.session_security import bind_session_identity, clear_session_identity
+from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 
