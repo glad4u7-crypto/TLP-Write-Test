@@ -44,8 +44,17 @@ class SQLiteSecurityStore:
             self._secure_database_file(create_parent=False)
 
     def _secure_database_file(self, *, create_parent: bool) -> None:
-        """Reject symlink/non-regular database targets and restrict file access."""
+        """Reject symlinked parent components and unsafe database targets."""
         path = Path(self._database_path)
+        # Checking only path.lstat() misses a symlink in a parent directory.
+        # Inspect the lexical absolute path without resolving away symlinks.
+        for parent in path.absolute().parents:
+            try:
+                parent_metadata = parent.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(parent_metadata.st_mode):
+                raise ValueError("Security database parent path must not contain symlinks.")
         if create_parent:
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
