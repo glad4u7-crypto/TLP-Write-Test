@@ -215,4 +215,36 @@ P05 adds an inert launch contract and an offline validator for externally suppli
 
 Both runs executed on the exact P05 code + matrix snapshot above. Their jobs and every listed step were re-fetched after completion and reported success. These results verify offline launch-contract and attestation logic only.
 
-**P05 disposition:** IMPLEMENTATION ADDED; both existing CI workflows passed on the exact P05 code + matrix snapshot. The subsequent documentation-only final record commit must also be checked by both workflows. No new workflow created. PR #5 remains Open + Draft + unmerged. No merge or deployment.
+**P05 disposition:** IMPLEMENTATION ADDED; both existing CI workflows passed on the exact P05 code + matrix snapshot. The final documentation-record commit `3eeaedf3bdb339c234a91c413975446bf86170cd` was also checked by both existing workflows: Agent Foundation CI run 43713691718 (615 passed; pip-audit and compileall passed) and Python Demo CI run 43713691714 (615 passed; demo smoke passed). Both jobs and all steps completed successfully. No new workflow created. PR #5 remains Open + Draft + unmerged. No merge or deployment.
+
+
+
+## P06 implementation checkpoint — signed trusted-inspector and host-firewall evidence
+
+**Checkpoint:** `APAA-S07-C01-P06`  
+**Implementation:** `core/browser_inspector.py`  
+**Tests:** `tests/test_browser_inspector.py`  
+**Detailed contract:** `docs/APAA_S07_TRUSTED_INSPECTOR_FIREWALL_P06.md`  
+**Dependency:** `cryptography>=44,<48` for Ed25519 verification
+
+| Area | P06 evidence | Status |
+|---|---|---|
+| Signed evidence envelope | Closed canonical JSON envelope; Ed25519 signature over schema, key ID and complete payload | IMPLEMENTED — OFFLINE TESTED |
+| Trusted key lookup | Requires out-of-band 32-byte public key keyed by trusted key ID | VERIFIER IMPLEMENTED; KEY PROVISIONING EXTERNAL |
+| Challenge binding | Signed 256-bit challenge must exactly match caller challenge | IMPLEMENTED — TESTED |
+| Replay prevention | Stateless verifier; caller must issue unpredictable one-time challenge and atomically consume it | CONTROL-PLANE RESPONSIBILITY |
+| P05 runtime attestation | Delegates to strict P05 validator after signature verification | IMPLEMENTED — TESTED |
+| Host firewall evidence | Signed normalized nftables snapshot, runtime/worker identity and namespace inode | SCHEMA + VALIDATOR IMPLEMENTED |
+| Default-deny egress | Requires default DROP and direct DNS blocked | IMPLEMENTED — OFFLINE TESTED |
+| Exact proxy-only allowlist | Exact configured proxy IPs + TCP port only; rejects extra destinations, UDP, wildcard/CIDR and port drift | IMPLEMENTED — OFFLINE TESTED |
+| Firewall ruleset integrity | Requires signed SHA-256 digest of effective ruleset | FORMAT VALIDATED; LIVE COLLECTION NOT IMPLEMENTED |
+| Host-side inspector collector | No kernel/runtime/nftables reader or signing daemon | NOT IMPLEMENTED |
+| Live firewall / packet proof | No nft command, packet capture, routing inspection or egress mutation | NOT IMPLEMENTED |
+| Browser worker / runtime | No worker process or browser activation | NOT IMPLEMENTED |
+| Existing CI workflows | Exact final P06 record commit must pass both existing workflows | PENDING |
+
+### P06 interpretation and exit gate
+
+P06 verifies that a trusted Ed25519 key signed a fresh, challenge-bound report whose normalized runtime and firewall fields satisfy the P05 launch contract and exact proxy-only firewall policy. It does not collect those facts itself. A valid signature is not proof that the collector is uncompromised or that the firewall is effective; the signer must be isolated from the worker and must read actual effective host state. One-time challenge generation/consumption, key provisioning/rotation and packet-level leak tests remain external requirements.
+
+**P06 disposition:** SIGNED EVIDENCE VERIFIER + OFFLINE FIREWALL POLICY VALIDATOR IMPLEMENTED; exact-commit CI verification pending. No new workflow. No host collector, firewall mutation, browser runtime, worker process or browser handler. PR #5 remains Open + Draft + unmerged.
