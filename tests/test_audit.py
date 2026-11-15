@@ -149,3 +149,18 @@ def test_jsonl_audit_log_verify_rejects_symlinked_parent_directory(tmp_path):
     with pytest.raises(AuditIntegrityError, match="parent path.*symlinks"):
         log.verify()
 
+
+
+
+def test_jsonl_audit_path_is_anchored_when_working_directory_changes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    log = JsonlAuditLog("relative-audit/events.jsonl")
+    expected_path = tmp_path / "relative-audit" / "events.jsonl"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    monkeypatch.chdir(elsewhere)
+    log.append(create_audit_event("path.anchor", False, "cwd changed"))
+
+    assert expected_path.is_file()
+    assert not (elsewhere / "relative-audit" / "events.jsonl").exists()
