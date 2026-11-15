@@ -27,3 +27,29 @@ Status: **ApprovalAuthority and gateway tenant plumbing added; application wirin
 - Prior P07-C CI Run #240 succeeded.
 - CI for this integration commit series must pass before claiming P07-D verified.
 - PR #5 remains open/draft. No merge or deployment approval.
+
+
+## Phase 2 runtime wiring update
+- Authenticated Streamlit sessions now derive `TenantKey` from the validated OIDC Principal's issuer + subject.
+- The runtime requires an operator-provided stable signing secret (hex, at least 32 bytes) in Streamlit secrets before enabling authenticated durable mode; it fails closed rather than silently using an ephemeral key.
+- Authenticated mode instantiates `SQLiteSecurityStore`, `ApprovalAuthority(nonce_store=..., signing_secret=...)`, and `SQLiteExecutionAuditLog`; the same TenantKey is passed to receipt issue and gateway consume.
+- ExecutionGateway's existing append/verify audit interface is adapted to SQLite; intent and completion events are persisted before/after handler dispatch.
+- Project ownership now stores and checks both OIDC issuer and subject. Session identity switching also uses issuer + subject.
+- Legacy projects with missing issuer ownership are intentionally not visible/readable to authenticated users; no automatic owner assignment or migration is performed.
+- Added tests for cross-issuer approval transfer, same-subject cross-issuer project access, unscoped legacy project denial, and SQLite audit adapter persistence.
+
+## Operator configuration (never commit secrets)
+Authenticated deployment requires Streamlit OIDC configuration and a local/private `.streamlit/secrets.toml` entry similar to:
+```toml
+[apaa]
+require_auth = true
+approval_signing_secret_hex = "<at-least-64-hex-characters>"
+security_db_path = ".apaa_security/security.sqlite3"
+```
+The `[auth]` OIDC section must also be configured according to Streamlit's supported OIDC setup. Keep `.streamlit/secrets.toml` and the SQLite database out of Git; restrict filesystem permissions and back up the database securely.
+
+## Remaining verification and limits
+- CI for the integration series is pending; do not mark this phase complete until the current PR head passes.
+- Project data itself remains in the session-local in-memory registry; the SQLite ProjectStore adapter is not yet wired into CRUD.
+- The local SQLite audit hash chain detects changes but is not tamper-proof against a writer who can rewrite and recompute the database. Protect the database file and host.
+- Local unauthenticated prototype mode deliberately retains in-memory approvals + JSONL audit; it must not be exposed publicly.
