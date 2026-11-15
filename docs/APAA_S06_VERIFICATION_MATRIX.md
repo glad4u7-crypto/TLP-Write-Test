@@ -1,7 +1,7 @@
 # APAA S06 — Structured Task Workspace Verification Matrix
 
 **Checkpoint:** APAA-S06-C01-P03  
-**Status:** IMPLEMENTATION PASS; FINAL RECORD-ONLY COMMIT CI PENDING  
+**Status:** COMPLETE — FINAL EXACT-HEAD CI PASS  
 **Branch:** `feature/approval-ui-e2e-p06`  
 **PR:** #5 (Draft, unmerged)  
 **Scope approval:** User instructed to begin S06 on 2026-11-15
@@ -18,8 +18,8 @@
 | UI regression tests | READY, NEEDS_CLARIFICATION, BLOCKED, mutation label and session cleanup tests added | IMPLEMENTED; CI PENDING |
 | Architecture / README docs | S06 behavior and exclusions recorded | IMPLEMENTED |
 | S06 scope | Approved scope recorded in `docs/APAA_S06_SCOPE.md` | IMPLEMENTED |
-| Exact-head Agent Foundation CI | Run #636 / `43708182193`, exact head `730c6de0f3bee756f48b33ee8d42741ff603771c`; 427 tests passed, pip-audit, compileall and post steps succeeded | PASS |
-| Exact-head Python Demo CI | Run #726 / `43708182180`, exact head `730c6de0f3bee756f48b33ee8d42741ff603771c`; 427 tests passed, demo smoke test and post steps succeeded | PASS |
+| Exact-head Agent Foundation CI | Run #640 / `43708424039`, exact head `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`; 427 tests passed in 16.31s, pip-audit, compileall and post steps succeeded | PASS |
+| Exact-head Python Demo CI | Run #731 / `43708424032`, exact head `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`; 427 tests passed in 9.99s, demo smoke test and post steps succeeded | PASS |
 | Android real-device verification | Not performed; Streamlit browser target only | NOT CLAIMED |
 
 ## Safety boundary
@@ -62,3 +62,16 @@ The reconciled S06 scope and matrix were tested on exact PR head `c17da8588c7dec
 These exact-head runs include the first S06 scope/matrix documentation reconciliation. A final record-only commit follows; its own exact-head CI must pass before S06 is labelled fully closed. No third CI workflow was added.
 
 **Next checkpoint after final CI closure:** `APAA-S07-C01-P01` — propose a browser-automation capability architecture and threat/permission model only. No browser/device action handler or execution capability is authorized by this proposal.
+
+
+## Final S06 closure record
+
+The final scope/matrix record was verified on exact PR head `8d2ff3c1c7007b2a23b01164d5862bf6fc09391d`:
+
+- Agent Foundation CI #640 / `43708424039`: **PASS**, 427 tests passed in 16.31s; audit, compile and post steps succeeded.
+- Python Demo CI #731 / `43708424032`: **PASS**, 427 tests passed in 9.99s; demo smoke test and post steps succeeded.
+- All job steps were re-fetched and confirmed successful.
+
+S06 is closed within the approved read-only planning UI scope. Physical Android verification remains not claimed. S04 BY-01…BY-07 remain blocked.
+
+**Next checkpoint:** `APAA-S07-C01-P01` — browser automation architecture and threat model proposal only.
