@@ -447,3 +447,15 @@ P10 does not establish its own trust anchor and does not claim key custody is so
 | Host acceptance | Independent PID mapping and packet-level tests | NOT RUN |
 
 **P11 disposition:** OFFLINE CONTROL-PLANE COMPOSITION ONLY. No live host collection, network endpoint, deployment, firewall mutation, worker launch or browser activation.
+
+
+### P11 exact integration CI verification — PASS
+
+The earlier P11 code/test commits exposed a genuine P10 test-suite defect: the expired-key fixture had an empty validity interval, and the exception-name assertions did not match the exported `InspectorKeyRegistryError`. The fixture and test references were corrected on the feature branch before the following exact-head verification:
+
+- **Verified snapshot:** `3914ace74f3c7b2b856cadcd6696ecff309094fd` (includes the corrected P10 tests and P11 integration/tests).
+- **Agent Foundation CI — run 43720418690:** completed SUCCESS; dependency audit reported no known vulnerabilities, compileall passed, and **683 tests passed in 15.39s**.
+- **Python Demo CI — run 43720418634:** completed SUCCESS; **683 tests passed in 13.75s**, and the demo smoke check printed `Hello TradeLab Pro`.
+- Both workflow jobs and all individual steps were re-fetched and confirmed successful on the exact verified snapshot.
+
+**P11 repository-CI disposition:** PASS for the corrected P10/P11 code snapshot. The earlier failed runs on the pre-correction P11 commits remain part of the history and are not represented as passes. This CI result proves offline tests only; it does not close caller-authentication/config-provenance, key custody, live-host, packet-level egress, multi-host replay or deployment gates. Browser runtime remains disabled; PR #5 remains Open + Draft + unmerged.
