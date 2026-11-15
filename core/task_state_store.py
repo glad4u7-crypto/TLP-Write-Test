@@ -183,8 +183,9 @@ class SQLiteTaskStateStore:
                *, consent: bool = False) -> StoredTaskState:
         self._consent(consent)
         self._validate(snapshot, event)
-        if snapshot.version != 0 or event.from_status is not None:
-            raise ValueError("Initial task state must be version 0 with no source status.")
+        if (snapshot.version != 0 or event.from_status is not None
+                or event.to_status is not TaskStatus.DRAFT):
+            raise ValueError("Initial task state must be DRAFT version 0 with no source status.")
         issuer, subject = self._tenant(tenant)
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
@@ -221,21 +222,26 @@ class SQLiteTaskStateStore:
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                current = db.execute(
+                    """SELECT status, version FROM task_states
+                       WHERE issuer=? AND subject=? AND task_id=?""",
+                    (issuer, subject, snapshot.task.task_id),
+                ).fetchone()
+                if current is None:
+                    raise TaskStateNotFound(snapshot.task.task_id)
+                if current["version"] != expected_version:
+                    raise TaskStateConflict("Persisted task version changed; reload before retrying.")
+                if event.from_status.value != current["status"]:
+                    raise ValueError("Transition event source status does not match persisted state.")
                 cur = db.execute(
                     """UPDATE task_states SET description=?, status=?, requires_approval=?,
                        version=?, updated_at=? WHERE issuer=? AND subject=? AND task_id=?
-                       AND version=?""",
+                       AND version=?""
                     (snapshot.task.description, snapshot.task.status.value,
                      int(snapshot.requires_approval), snapshot.version, snapshot.updated_at,
                      issuer, subject, snapshot.task.task_id, expected_version),
                 )
                 if cur.rowcount != 1:
-                    exists = db.execute(
-                        "SELECT 1 FROM task_states WHERE issuer=? AND subject=? AND task_id=?",
-                        (issuer, subject, snapshot.task.task_id),
-                    ).fetchone()
-                    if exists is None:
-                        raise TaskStateNotFound(snapshot.task.task_id)
                     raise TaskStateConflict("Persisted task version changed; reload before retrying.")
                 db.execute(
                     """INSERT INTO task_state_events
