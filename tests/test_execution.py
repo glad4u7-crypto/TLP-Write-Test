@@ -140,3 +140,44 @@ def test_non_mapping_payload_is_rejected_without_dispatch():
 
     assert result.executed is False
     assert calls == []
+
+
+def test_gateway_audits_denied_attempt_without_recording_payload():
+    gateway = ExecutionGateway()
+    secret_payload = {"token": "do-not-log-this"}
+    result = gateway.execute("unknown_action", secret_payload)
+
+    assert result.executed is False
+    assert len(gateway.audit_events) == 1
+    event = gateway.audit_events[0]
+    assert event.action == "unknown_action"
+    assert event.executed is False
+    assert "do-not-log-this" not in repr(event)
+
+
+def test_gateway_audits_successful_execution_without_recording_payload():
+    authority = ApprovalAuthority()
+    payload = {"path": "private.txt", "content": "secret"}
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: "saved"},
+        approval_authority=authority,
+    )
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert len(gateway.audit_events) == 1
+    event = gateway.audit_events[0]
+    assert event.action == "write_file"
+    assert event.executed is True
+    assert "secret" not in repr(event)
+
+
+def test_gateway_audit_snapshot_cannot_be_mutated():
+    gateway = ExecutionGateway()
+    gateway.execute("unknown_action")
+
+    events = gateway.audit_events
+    assert isinstance(events, tuple)
+    assert len(events) == 1
