@@ -95,7 +95,7 @@ def test_prohibited_or_unknown_actions_cannot_be_registered(action):
         ExecutionGateway({action: lambda payload: "should never run"})
 
 
-def test_auto_run_requires_exact_allowlist_and_registered_handler():
+def test_auto_run_requires_trusted_gateway_allowlist_and_registered_handler():
     calls = []
     gateway = ExecutionGateway(
         {"write_file": lambda payload: calls.append(payload) or "saved"}
@@ -105,16 +105,19 @@ def test_auto_run_requires_exact_allowlist_and_registered_handler():
         "write_file",
         {"path": "a.txt"},
         auto_run=True,
-        auto_run_actions={"delete_file"},
     )
-    allowed = gateway.execute(
+    assert denied.executed is False
+
+    trusted_configured_gateway = ExecutionGateway(
+        {"write_file": lambda payload: calls.append(payload) or "saved"},
+        auto_run_actions={"write_file"},
+    )
+    allowed = trusted_configured_gateway.execute(
         "write_file",
         {"path": "a.txt"},
         auto_run=True,
-        auto_run_actions={"write_file"},
     )
 
-    assert denied.executed is False
     assert allowed.executed is True
     assert calls == [{"path": "a.txt"}]
 
@@ -198,3 +201,20 @@ def test_execution_result_returns_payload_free_audit_event():
     assert result.audit_event is not None
     assert result.audit_event.executed is True
     assert "sensitive-user-content" not in repr(result.audit_event)
+
+
+def test_task_cannot_supply_its_own_auto_run_allowlist():
+    calls = []
+    gateway = ExecutionGateway(
+        {"write_file": lambda payload: calls.append(payload)}
+    )
+    # execute() accepts only the auto_run request; the allowlist is fixed at
+    # gateway construction by trusted application configuration.
+    with pytest.raises(TypeError):
+        gateway.execute(
+            "write_file",
+            {"path": "unapproved.txt"},
+            auto_run=True,
+            auto_run_actions={"write_file"},
+        )
+    assert calls == []
