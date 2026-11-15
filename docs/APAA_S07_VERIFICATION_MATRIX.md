@@ -87,7 +87,7 @@ Both workflow runs were re-fetched after completion. Each job and every listed s
 
 | Area | P03 evidence | Status |
 |---|---|---|
-| HTTPS URL parsing and canonicalization | Deterministic URL/IDNA/authority/port validation tests | IMPLEMENTED — CI PENDING |
+| HTTPS URL parsing and canonicalization | Deterministic URL/IDNA/authority/port validation tests | IMPLEMENTED — PASS |
 | Exact-origin allowlist | Scheme/host/effective-port exact match; wildcard/suffix/subdomain bypass rejection tests | IMPLEMENTED — CI PENDING |
 | Local/private/reserved IP rejection | IPv4/IPv6 loopback, private, link-local, metadata and special-use fixtures | IMPLEMENTED — CI PENDING |
 | DNS/SSRF answer policy | Injected resolver; empty, malformed, mixed and non-global answer rejection; resolver failure closed | IMPLEMENTED — OFFLINE ONLY |
@@ -104,12 +104,24 @@ Both workflow runs were re-fetched after completion. Each job and every listed s
 
 P03 adds offline policy primitives and deterministic tests only. It does not establish an enforceable network boundary, prove SSRF protection at connection time, or authorize browser execution. DNS resolution is injected in tests and is never performed implicitly. Deployment must later enforce DNS/address validation at connection time and block direct worker egress.
 
-**P03 disposition:** IMPLEMENTATION ADDED; final verification remains pending until the full pytest suite and both existing CI workflows complete successfully on the exact final commit. PR #5 remains Open + Draft + unmerged.
+**P03 disposition:** IMPLEMENTATION ADDED; the full pytest suite and both existing CI workflows passed on the exact P03 verification-record commit listed below. PR #5 remains Open + Draft + unmerged.
 
 
 ### P03 final implementation snapshot
 
 - Final P03 code/test snapshot: `925a6db8b58dc2944c05ec503f50f2b1222c2ce3`.
 - Includes a follow-up hardening pass for legacy numeric IPv4 spellings (shortened dotted, octal-like and hexadecimal forms) and multicast/non-unicast destinations.
-- The exact-commit workflow lookup returned no workflow-run records for this snapshot. Therefore **pytest and both CI workflows are NOT VERIFIED for P03**; no PASS status is claimed.
-- The regression suite is committed but remains pending execution in the repository's existing CI. The CI configuration was not changed and no additional workflow was created.
+- The initial exact code snapshot had no workflow records at first lookup; both existing workflows were subsequently triggered and verified on the exact P03 verification-record commit below.
+- The Python Demo CI and Agent Foundation CI each executed the full pytest suite successfully. The CI configuration was not changed and no additional workflow was created.
+
+
+### P03 exact verification-record CI — PASS
+
+**Verification Matrix commit:** `a6cb05f9eec0f316f4d065c4f0758b02aadb7557`
+
+| Existing workflow | Run | Result | Exact evidence |
+|---|---:|---|---|
+| Agent Foundation CI | [43712348056](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43712348056) | PASS | 521 passed in 14.89s; dependency install, pip-audit (no known vulnerabilities found), compileall, foundation tests and all post steps succeeded |
+| Python Demo CI | [43712348046](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43712348046) | PASS | 521 passed in 14.18s; dependency install, full test suite, demo smoke and all post steps succeeded |
+
+Both workflow jobs and every listed step were re-fetched after completion and reported `success`. These results verify the offline policy code and repository test suite only. They do not establish browser runtime safety, live SSRF resistance, worker isolation or connection-time egress enforcement.
