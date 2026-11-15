@@ -196,3 +196,44 @@ class SQLiteSecurityStore:
                 return False
             previous_hash = row["entry_hash"]
         return True
+
+
+class SQLiteExecutionAuditLog:
+    """Adapter matching ExecutionGateway's append/verify audit-log contract.
+
+    The tenant is supplied by trusted application code, not by the event/task.
+    Only a one-way principal fingerprint is persisted.
+    """
+    GENESIS = "0" * 64
+
+    def __init__(self, store: SQLiteSecurityStore, tenant: TenantKey) -> None:
+        if not isinstance(store, SQLiteSecurityStore) or not isinstance(tenant, TenantKey):
+            raise TypeError("A SQLiteSecurityStore and validated TenantKey are required.")
+        self._store = store
+        self._principal_fingerprint = hashlib.sha256(
+            f"{tenant.issuer}\n{tenant.subject}".encode("utf-8")
+        ).hexdigest()
+
+    def append(self, event: Any) -> str:
+        if not all(hasattr(event, field) for field in ("action", "executed", "reason")):
+            raise TypeError("Unsupported execution audit event.")
+        import uuid
+        record = DurableAuditEvent(
+            action=str(event.action),
+            result="success" if event.executed else "denied",
+            reason_code=str(event.reason),
+            principal_fingerprint=self._principal_fingerprint,
+            request_id=uuid.uuid4().hex,
+        )
+        return self._store.append_audit_event(record)
+
+    def verify(self) -> str:
+        if not self._store.verify_audit_chain():
+            raise ValueError("SQLite audit hash chain verification failed.")
+        # The store exposes boolean verification; return a stable non-genesis
+        # marker when entries exist, and genesis for an empty chain.
+        with closing(self._store._connect()) as connection:
+            row = connection.execute(
+                "SELECT entry_hash FROM durable_audit_events ORDER BY sequence DESC LIMIT 1"
+            ).fetchone()
+        return row["entry_hash"] if row else self.GENESIS
