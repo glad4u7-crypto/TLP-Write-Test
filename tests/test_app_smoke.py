@@ -3,6 +3,13 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 
+def _click_button_by_label(app: AppTest, label: str) -> None:
+    """Click a uniquely named button without relying on layout traversal order."""
+    matches = [button for button in app.button if button.label == label]
+    assert len(matches) == 1, f"Expected exactly one button named {label!r}"
+    matches[0].click().run()
+
+
 def test_streamlit_app_renders_in_safe_local_prototype_mode():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
@@ -22,8 +29,7 @@ def test_project_creation_requires_review_then_explicit_confirmation():
     assert len(app.session_state["project_registry"].list_projects()) == 0
     assert "pending_project" in app.session_state
 
-    # The first visible action button in the review panel is explicit confirmation.
-    app.button[0].click().run()
+    _click_button_by_label(app, "Confirm and create project")
     assert not app.exception
     projects = app.session_state["project_registry"].list_projects()
     assert len(projects) == 1
@@ -40,7 +46,7 @@ def test_project_review_can_be_cancelled_without_side_effect():
     app.form_submit_button[0].click().run()
     assert "pending_project" in app.session_state
 
-    app.button[1].click().run()
+    _click_button_by_label(app, "Cancel")
     assert not app.exception
     assert len(app.session_state["project_registry"].list_projects()) == 0
     assert "pending_project" not in app.session_state
