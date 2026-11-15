@@ -53,3 +53,17 @@ All prior CI claims remain scoped to the exact commit/run and the tests actually
 The existing automated/code-level CI baseline is green. This closes the repository-only test work evidenced so far, including the SQLite backup/restore and tamper-append tests. It does **not** close S04 production readiness. The blockers above require an actual deployment, repository-admin action or separately controlled operational infrastructure and must remain BLOCKED until evidence exists.
 
 Next checkpoint: APAA-S04-C01-P08-P09-BZ — verify the latest matrix and this closure plan on the exact PR head, confirm CI for both commits, then record the final S04 code-complete/release-blocked decision without merging or deploying.
+
+
+## P08-P09-BZ — final verification result (2026-11-15)
+
+Both commits in the S04 closure package were checked independently by commit SHA. All four required workflow runs completed successfully:
+
+- Matrix update `6e65da84d24e9cd8badde0a6fad240f68174746d`: Agent Foundation CI #605 (`43700617825`) PASS; Python Demo CI #696 (`43700617781`) PASS.
+- This closure plan `545924d062199f81022dec30846504d733b93740`: Agent Foundation CI #606 (`43700637144`) PASS; Python Demo CI #697 (`43700637180`) PASS.
+
+All job steps reported success. No failure remediation was necessary. PR #5's changed-file listing includes this plan and the consolidated S04 matrix; review-thread and review-submission queries returned no entries.
+
+**Disposition:** S04 repository/code-level CI work is complete for the documented automated scope. S04 is not production-ready: BY-01 through BY-07 remain blocked until their independently verifiable external/operational acceptance evidence is supplied. PR #5 remains Open + Draft; no merge, deployment or base change. All existing zero-cost and safety restrictions remain in force.
+
+Next checkpoint: `APAA-S05-C01-P01` — inspect the repository's S05 plan/scope and latest PR head before starting the next subject; do not weaken S04's release blockers.
