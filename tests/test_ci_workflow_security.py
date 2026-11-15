@@ -17,7 +17,11 @@ WORKFLOWS = (
 def test_all_external_workflow_actions_are_pinned_to_full_commit_shas():
     for workflow in WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
-        references = re.findall(r"^\s*-\s*uses:\s*([^\s#]+)", source, re.MULTILINE)
+        # GitHub Actions steps may put `uses` on the list item itself or as a
+        # property after `- name`; accept both valid YAML layouts.
+        references = re.findall(
+            r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", source, re.MULTILINE
+        )
         assert references, f"No actions found in {workflow.name}"
         for reference in references:
             action, separator, revision = reference.rpartition("@")
