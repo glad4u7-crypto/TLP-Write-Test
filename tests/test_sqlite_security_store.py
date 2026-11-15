@@ -737,3 +737,49 @@ def test_sqlite_stores_reject_parent_directory_symlink_replacement_after_init(
     # has been replaced. Revalidation must reject this path before SQLite opens.
     with pytest.raises(ValueError, match="parent path.*symlinks"):
         store._connect()
+
+
+def test_sqlite_recovers_uncommitted_audit_event_after_process_crash_in_wal_mode(tmp_path):
+    path = tmp_path / "audit-wal-crash-recovery.sqlite3"
+    store = SQLiteSecurityStore(path)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+    committed_hash = store.append_audit_event(
+        DurableAuditEvent("committed.before.wal.crash", "ok", "ok", "fp", "wal-req-1")
+    )
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_crash_with_uncommitted_audit_event,
+        args=(str(path), send_connection),
+    )
+    process.start()
+    try:
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_connection.close()
+        send_connection.close()
+
+    recovered = SQLiteSecurityStore(path)
+    assert recovered.verify_audit_chain()
+    assert recovered.last_audit_hash() == committed_hash
+    recovered.append_audit_event(
+        DurableAuditEvent("committed.after.wal.recovery", "ok", "ok", "fp", "wal-req-2")
+    )
+    assert recovered.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("committed.before.wal.crash",),
+        ("committed.after.wal.recovery",),
+    ]
