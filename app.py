@@ -81,7 +81,7 @@ if pending_project:
         st.session_state.pop("pending_project", None)
         st.rerun()
     if confirm_project:
-        result = create_project_after_confirmation(
+        result = confirm_and_create_project(
             registry,
             pending_project["name"],
             pending_project["description"],
