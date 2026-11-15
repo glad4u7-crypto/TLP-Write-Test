@@ -25,10 +25,12 @@
 
 ## Critical approval trust boundary
 
-The `ApprovalAuthority` is a trusted application capability. The UI calls `confirm_and_create_project` only inside the explicit Confirm-button
-branch, after rendering the exact project name and description. That controller
-creates a short-lived receipt and immediately submits it to the gateway. The
-receipt issuer is an in-process capability, not an authentication mechanism.
+The `ApprovalAuthority` is a trusted application capability. The Streamlit UI constructs a server-side `ApprovalAuthority` and
+`ExecutionGateway` in session state. The controller module only builds the
+gateway; it cannot issue approvals. The UI issues a short-lived receipt only
+inside the explicit Confirm-button branch, after rendering the exact project
+name and description, then submits that receipt to the gateway. The receipt
+issuer is an in-process capability, not an authentication mechanism.
 
 Never:
 - expose `ApprovalAuthority`, its `issue` method, or the raw gateway to the
@@ -44,9 +46,9 @@ application process; it does not replace application-layer access control.
 ## Not yet implemented / not enabled
 
 - No real file, email, browser, shell, network, or device handlers are wired.
-- The Streamlit Project Manager now uses a two-step review/confirm flow and routes project creation through a trusted UI controller, one-time receipt, and `ExecutionGateway`.
+- The Streamlit Project Manager uses a two-step review/confirm flow. Only its Confirm-button event issues the one-time receipt; the project gateway builder cannot approve its own request.
 - This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
-- `JsonlAuditLog` is now optionally wired into `ExecutionGateway`; it provides local JSONL persistence with a SHA-256 hash chain. The hash chain is not tamper-proof against an attacker who can rewrite the file and recompute hashes.
+- The Streamlit session gateway is configured with local JSONL persistence at `.apaa_audit/execution.jsonl`; it provides a SHA-256 hash chain. The hash chain is not tamper-proof against an attacker who can rewrite the file and recompute hashes.
 - The JSONL writer uses a process-local lock only. Concurrent writers across multiple processes/hosts need a transactional or centralized audit backend before production.
 - No production capability-isolation layer exists.
 - `ProjectRegistry.create` and `delete` require an internal in-process capability; ordinary direct calls are rejected and the trusted project controller passes the capability only through the approval-gated handler.
