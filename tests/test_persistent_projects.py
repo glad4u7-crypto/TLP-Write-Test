@@ -1,6 +1,10 @@
 import pytest
 
-from core.identity import AuthorizationDenied, Principal
+from core.identity import (
+    AuthenticationRequired,
+    AuthorizationDenied,
+    Principal,
+)
 from core.persistent_projects import PersistentProjectRegistry
 from core.projects import _PROJECT_MUTATION_CAPABILITY
 from core.sqlite_project_store import SQLiteProjectStore
@@ -10,12 +14,20 @@ from core.storage import TenantKey
 ALICE = Principal("alice", "https://issuer-one.example", True)
 OTHER_ISSUER = Principal("alice", "https://issuer-two.example", True)
 BOB = Principal("bob", "https://issuer-one.example", True)
+UNAUTHENTICATED_ALICE = Principal("alice", "https://issuer-one.example", False)
 
 
 def make_registry(tmp_path):
     tenant = TenantKey(ALICE.issuer, ALICE.subject)
     store = SQLiteProjectStore(tmp_path / "projects.sqlite3")
     return PersistentProjectRegistry(store, tenant), store
+
+
+def create_alice_project(registry):
+    return registry.create(
+        "Alice only", "", owner_subject=ALICE.subject, owner_issuer=ALICE.issuer,
+        _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
 
 
 def test_registry_crud_survives_reconstruction(tmp_path):
@@ -43,19 +55,75 @@ def test_registry_crud_survives_reconstruction(tmp_path):
 @pytest.mark.parametrize("principal", [OTHER_ISSUER, BOB])
 def test_registry_rejects_other_tenant_even_when_subject_or_issuer_matches(tmp_path, principal):
     registry, _ = make_registry(tmp_path)
-    registry.create(
-        "Alice only", "", owner_subject=ALICE.subject, owner_issuer=ALICE.issuer,
-        _capability=_PROJECT_MUTATION_CAPABILITY,
-    )
+    create_alice_project(registry)
     with pytest.raises(AuthorizationDenied):
         registry.list_projects_for_owner(principal)
 
 
-def test_gateway_cannot_create_project_for_spoofed_owner(tmp_path):
+@pytest.mark.parametrize("principal", [OTHER_ISSUER, BOB])
+def test_registry_rejects_cross_tenant_read_update_and_delete(tmp_path, principal):
+    registry, _ = make_registry(tmp_path)
+    project = create_alice_project(registry)
+
+    with pytest.raises(AuthorizationDenied):
+        registry.get_for_owner(project.project_id, principal)
+    with pytest.raises(AuthorizationDenied):
+        registry.update_for_owner(
+            project.project_id, principal, name="Stolen", description="",
+            _capability=_PROJECT_MUTATION_CAPABILITY,
+        )
+    with pytest.raises(AuthorizationDenied):
+        registry.delete_for_owner(
+            project.project_id, principal, _capability=_PROJECT_MUTATION_CAPABILITY
+        )
+
+    # Failed cross-tenant operations must not alter or remove the owner's record.
+    retained = registry.get_for_owner(project.project_id, ALICE)
+    assert retained is not None
+    assert retained.name == "Alice only"
+
+
+@pytest.mark.parametrize(
+    "principal",
+    [UNAUTHENTICATED_ALICE, None, object()],
+)
+def test_registry_rejects_missing_or_unauthenticated_principal_for_owner_operations(
+    tmp_path, principal
+):
+    registry, _ = make_registry(tmp_path)
+    project = create_alice_project(registry)
+
+    with pytest.raises(AuthenticationRequired):
+        registry.list_projects_for_owner(principal)
+    with pytest.raises(AuthenticationRequired):
+        registry.get_for_owner(project.project_id, principal)
+    with pytest.raises(AuthenticationRequired):
+        registry.update_for_owner(
+            project.project_id, principal, name="Unauthorized", description="",
+            _capability=_PROJECT_MUTATION_CAPABILITY,
+        )
+    with pytest.raises(AuthenticationRequired):
+        registry.delete_for_owner(
+            project.project_id, principal, _capability=_PROJECT_MUTATION_CAPABILITY
+        )
+
+    assert registry.get_for_owner(project.project_id, ALICE).name == "Alice only"
+
+
+@pytest.mark.parametrize(
+    ("owner_subject", "owner_issuer"),
+    [
+        ("bob", ALICE.issuer),
+        (ALICE.subject, OTHER_ISSUER.issuer),
+    ],
+)
+def test_gateway_cannot_create_project_for_spoofed_owner(
+    tmp_path, owner_subject, owner_issuer
+):
     registry, _ = make_registry(tmp_path)
     with pytest.raises(AuthorizationDenied):
         registry.create(
-            "Spoof", "", owner_subject="bob", owner_issuer=ALICE.issuer,
+            "Spoof", "", owner_subject=owner_subject, owner_issuer=owner_issuer,
             _capability=_PROJECT_MUTATION_CAPABILITY,
         )
 
