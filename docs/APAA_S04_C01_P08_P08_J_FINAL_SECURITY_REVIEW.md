@@ -306,6 +306,60 @@ Both checks completed successfully for the exact documentation commit, whose cod
 
 No identity-bearing global cache or store was found. The only shared lock registry is path-scoped and required for same-process append serialization; its current app usage is one fixed path. The module-level mutation sentinel remains explicitly non-isolating. Full S04 release readiness remains BLOCKED by live OIDC/browser, deployment, production isolation and repository-administration requirements. PR #5 remains open and Draft; do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
 
+
+
+## P08-P09-BO addendum — Trusted mutation sentinel and controller exposure review
+
+Review date: 2026-11-15
+Reviewed code head: 730a7565b7ec8e32f68d2f7929b1dde50bd16922
+
+### Findings
+
+- core/__init__.py exports no project mutation capability or execution gateway objects.
+- The private _PROJECT_MUTATION_CAPABILITY sentinel is defined in core/projects.py and imported only by the trusted project controller and persistent project registry implementation. It is not placed in Streamlit session state or passed to planner/provider code.
+- AIBrain, create_plan and the deterministic RuleBasedProvider handle task text as planning input only. They have no reference to the project registry, approval authority, gateway builder or mutation sentinel.
+- app.py issues an approval receipt and invokes the project gateway only inside the explicit Confirm-button branch. The task planner branch only calls the built-in planner and records a text plan; it does not dispatch project actions.
+- The controller constructs the exact project payload and supplies the private mutation sentinel from trusted server-side code. The owner identity is captured from the validated Principal closure, not task text or payload.
+- Existing tests cover no self-approval, task text cannot trigger project creation, exact confirmation, payload validation, replay prevention and session-scope rejection.
+- The sentinel is still an in-process convention: any hostile Python code executing with the same interpreter privileges could import the module-private object. This is a known isolation limitation, not a hardened sandbox. No code change was justified.
+
+## P08-P09-BP — Filesystem path anchoring and durable SQLite configuration
+
+Review date: 2026-11-15
+Reviewed code head: 730a7565b7ec8e32f68d2f7929b1dde50bd16922
+
+### Findings and remediation
+
+- JsonlAuditLog now anchors its path with Path(path).absolute() at construction. SQLiteProjectStore and SQLiteSecurityStore similarly anchor database paths with Path(database_path).absolute(). Later working-directory changes therefore cannot redirect operations to a different relative path.
+- Both SQLite stores now reject the literal :memory: before path normalization. These stores open a fresh connection per operation, so an in-memory database would otherwise disappear when the initialization connection closes and later operations would fail or lose durability.
+- Added regression tests for all three path-bearing stores: construct under one working directory, change the process working directory, then verify subsequent operations remain anchored to the original location.
+- Added regression tests that both durable SQLite stores reject :memory: configuration.
+- Existing checks remain: symlinked parent rejection, owner-only parent/file permissions, regular-file validation, JSONL final-component O_NOFOLLOW, and SQLite sidecar permission tests.
+- CI concurrency groups now include github.event_name, so push and pull_request runs on the same branch no longer cancel each other. The workflow-policy regression test checks for this event separation.
+
+### Exact-head CI verification
+
+Reviewed code head: 730a7565b7ec8e32f68d2f7929b1dde50bd16922
+
+| Workflow | PR run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | 43697663733 | PASS | 390 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | 43697663665 | PASS | 390 tests passed; demo output exactly Hello TradeLab Pro |
+
+The same exact head also completed push-triggered runs successfully. PR-triggered runs above are used as the primary verification evidence.
+
+### Residual path-security boundary
+
+- Absolute path anchoring removes working-directory drift; it does not eliminate a time-of-check/time-of-use race if a hostile process running as the same OS account renames or replaces a parent directory between validation and a later file open/SQLite connection.
+- The standard-library SQLite connection opens by pathname, so the preceding path checks cannot pin the database inode across a same-account rename race.
+- JSONL final-component no-follow flags and lexical parent checks reduce symlink redirection, but a same-account attacker may still race parent-directory replacement.
+- These risks require a dedicated OS account, non-writable private parent directories, and process/container isolation. Do not claim same-UID hostile-process protection.
+
+### Decision
+
+Relative-path working-directory drift and the :memory: durability misconfiguration are corrected and covered by passing tests. Same-account path-swap/TOCTOU protection remains an explicit production blocker. PR #5 remains open and Draft. Do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains NOT APPROVED.
+
 ### Next serial checkpoint
 
-P08-P09-BP: inspect the trusted project mutation sentinel and controller registration paths for accidental exposure through planner/task inputs, UI state or public exports. Preserve the documented same-process limitation; do not mistake a module-private object for a hardened sandbox.
+P08-P09-BQ: inspect SQLite path revalidation, parent-directory rename/symlink races and sidecar handling in detail. Implement only portable mitigations that can be proven with regression tests; retain explicit OS-isolation blockers.
+
