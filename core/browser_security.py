@@ -63,6 +63,19 @@ class BrowserJob:
 Resolver = Callable[[str], Sequence[str]]
 
 
+def _is_public_unicast(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Require a globally routable unicast address, not merely is_global."""
+    return bool(
+        address.is_global
+        and not address.is_multicast
+        and not address.is_unspecified
+        and not address.is_loopback
+        and not address.is_link_local
+        and not address.is_private
+        and not address.is_reserved
+    )
+
+
 def _canonical_host(host: str) -> tuple[str, int | None]:
     if not host or "%" in host or "\\" in host:
         raise BrowserPolicyError("Destination host is malformed.")
@@ -76,8 +89,8 @@ def _canonical_host(host: str) -> tuple[str, int | None]:
     except ValueError:
         address = None
     if address is not None:
-        if not address.is_global:
-            raise BrowserPolicyError("Private, reserved, or special-use IP destinations are blocked.")
+        if not _is_public_unicast(address):
+            raise BrowserPolicyError("Private, reserved, multicast, or special-use IP destinations are blocked.")
         return address.compressed.lower(), address.version
 
     try:
@@ -152,8 +165,8 @@ def validate_dns_answers(hostname: str, answers: Sequence[str]) -> tuple[str, ..
             address = ipaddress.ip_address(answer)
         except ValueError as exc:
             raise BrowserPolicyError("DNS answer is not an IP address.") from exc
-        if not address.is_global:
-            raise BrowserPolicyError("DNS answer includes a private or special-use address.")
+        if not _is_public_unicast(address):
+            raise BrowserPolicyError("DNS answer includes a non-public or non-unicast address.")
         normalized.append(address.compressed.lower())
     return tuple(sorted(set(normalized)))
 
