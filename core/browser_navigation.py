@@ -32,6 +32,10 @@ def _normalise_host(host: str) -> str:
     if not host or "%" in host:
         raise NavigationPolicyError("A valid destination hostname is required.")
     try:
+        return ipaddress.ip_address(host).compressed
+    except ValueError:
+        pass
+    try:
         # IDNA makes allowlist comparisons deterministic for international names.
         value = host.rstrip(".").encode("idna").decode("ascii").lower()
     except UnicodeError as exc:
@@ -78,7 +82,7 @@ class NavigationPolicy:
     def validate_url(self, url: str) -> str:
         if not isinstance(url, str) or not url or len(url) > 4096:
             raise NavigationPolicyError("URL must be a non-empty string up to 4096 characters.")
-        if any(ord(ch) < 32 or ord(ch) == 127 for ch in url) or "\\\\" in url:
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in url) or chr(92) in url:
             raise NavigationPolicyError("URL contains forbidden control or backslash characters.")
         try:
             parts: SplitResult = urlsplit(url)
@@ -101,6 +105,8 @@ class NavigationPolicy:
         except ValueError:
             literal = None
         if literal is not None:
+            if host not in self.allowed_hosts:
+                raise NavigationPolicyError("IP destination is not on the explicit allowlist.")
             if not literal.is_global:
                 raise NavigationPolicyError("Private or special-use IP destinations are blocked.")
             resolved = (str(literal),)
@@ -113,7 +119,12 @@ class NavigationPolicy:
             )
             if not allowed:
                 raise NavigationPolicyError("Hostname is not on the explicit allowlist.")
-            resolved = tuple(self.resolver(host))
+            try:
+                resolved = tuple(self.resolver(host))
+            except NavigationPolicyError:
+                raise
+            except Exception as exc:
+                raise NavigationPolicyError("Destination hostname could not be resolved.") from exc
             if not resolved:
                 raise NavigationPolicyError("Destination hostname has no address records.")
         if any(not _is_public_address(address) for address in resolved):
