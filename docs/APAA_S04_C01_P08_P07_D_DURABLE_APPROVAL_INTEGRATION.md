@@ -59,3 +59,15 @@ The `[auth]` OIDC section must also be configured according to Streamlit's suppo
 - Run #293 on commit `630c8eda5647c4df9be27798cccc9bd37147593e`: **SUCCESS** — pytest suite and `demo.py` passed.
 - Foundation CI Run #234 on the same commit: **SUCCESS** — module compilation and foundation tests passed.
 - Earlier failures were corrected and the latest head is green; continue with full app/runtime integration testing before release.
+
+## Superseding integration status — APAA-S04-C01-P08-P09-AJ
+The earlier `Not yet integrated` and Phase 2 notes above are historical checkpoint records. The current feature branch has since wired the authenticated Streamlit runtime to durable stores:
+- Authenticated sessions construct `SQLiteSecurityStore`, `SQLiteExecutionAuditLog`, and `SQLiteProjectStore` from server-side configuration and validated OIDC issuer + subject.
+- `ApprovalAuthority` uses the durable nonce store and protected signing secret; receipt issuance and gateway consumption use the same tenant and session scope.
+- `ExecutionGateway` persists the intent audit before dispatch and completion/failure audit afterward. Audit append failure before dispatch blocks the handler.
+- Authenticated project CRUD uses `PersistentProjectRegistry` backed by `SQLiteProjectStore`, with issuer + subject predicates. Unscoped legacy project records are not adopted.
+- Logout and identity-switch regression tests verify identity-bound session state and stale approval capabilities are cleared; same subject under a different issuer is treated as a different identity.
+
+Current verification on commit `11dd02d2ba2e3a77493e16a2f4e0f0d718865605`: Python Demo CI runs #481 and #482 **SUCCESS**; Agent Foundation CI runs #391 and #392 **SUCCESS**. The new SQLite gateway integration tests cover durable intent/completion rows and fail-closed audit-storage failure.
+
+These results are offline CI evidence only. They do not complete live OIDC/browser verification with two controlled identities, production secret provisioning, multi-host storage design, protected backups/retention/monitoring, independent audit anchoring, or deployment controls. PR #5 remains open and Draft. No merge, deployment, provider activation, or real-world handler enablement is authorized. Production remains **NOT APPROVED**.
