@@ -37,10 +37,10 @@ def test_runs_tasks_one_at_a_time_in_queue_order():
         active["count"] -= 1
         return "ok"
 
-    gateway = ExecutionGateway({"read_public_page": handler})
+    gateway = ExecutionGateway({"inspect_repository": handler})
     executor = SequentialTaskExecutor(queue, lifecycle, gateway)
     resolver = lambda task_id: TaskExecutionRequest(
-        "read_public_page", {"item": "first" if task_id == first.task.task_id else "second"}
+        "inspect_repository", {"item": "first" if task_id == first.task.task_id else "second"}
     )
 
     results = [executor.run_next(resolver), executor.run_next(resolver)]
@@ -65,11 +65,11 @@ def test_approval_required_task_needs_trusted_receipt_before_gateway_dispatch():
     calls = []
     payload = {"document_id": "doc-1", "content": "approved content"}
     gateway = ExecutionGateway(
-        {"write_document": lambda data: calls.append(data) or "saved"},
+        {"write_file": lambda data: calls.append(data) or "saved"},
         approval_authority=authority,
     )
     executor = SequentialTaskExecutor(queue, lifecycle, gateway)
-    resolver = lambda _: TaskExecutionRequest("write_document", payload)
+    resolver = lambda _: TaskExecutionRequest("write_file", payload)
 
     blocked = executor.run_next(resolver)
     assert blocked.status is TaskStatus.FAILED
@@ -82,7 +82,7 @@ def test_approval_required_task_needs_trusted_receipt_before_gateway_dispatch():
         expected_version=next_item.version,
     )
     queue.enqueue(next_item.task.task_id)
-    receipt = authority.issue("write_document", payload)
+    receipt = authority.issue("write_file", payload)
     approved = executor.run_next(
         resolver,
         request_approval=lambda *_: receipt,
@@ -99,11 +99,11 @@ def test_invalid_task_state_is_not_dispatched():
     calls = []
     executor = SequentialTaskExecutor(
         queue, lifecycle,
-        ExecutionGateway({"read_public_page": lambda payload: calls.append(payload)}),
+        ExecutionGateway({"inspect_repository": lambda payload: calls.append(payload)}),
     )
 
     result = executor.run_next(
-        lambda _: TaskExecutionRequest("read_public_page", {})
+        lambda _: TaskExecutionRequest("inspect_repository", {})
     )
 
     assert result.status is TaskStatus.DRAFT
@@ -118,7 +118,7 @@ def test_failed_gateway_result_marks_task_failed_without_retry():
     executor = SequentialTaskExecutor(queue, lifecycle, ExecutionGateway())
 
     result = executor.run_next(
-        lambda _: TaskExecutionRequest("read_public_page", {})
+        lambda _: TaskExecutionRequest("inspect_repository", {})
     )
 
     assert result.status is TaskStatus.FAILED
@@ -145,9 +145,9 @@ def test_concurrent_run_next_calls_do_not_overlap_handlers():
         return True
 
     executor = SequentialTaskExecutor(
-        queue, lifecycle, ExecutionGateway({"read_public_page": handler})
+        queue, lifecycle, ExecutionGateway({"inspect_repository": handler})
     )
-    resolver = lambda _: TaskExecutionRequest("read_public_page", {})
+    resolver = lambda _: TaskExecutionRequest("inspect_repository", {})
 
     threads = [
         threading.Thread(target=executor.run_next, args=(resolver,))
