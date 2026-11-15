@@ -73,3 +73,30 @@ def test_blocked_plan_displays_safety_notes_without_execution():
     assert plan.steps == ()
     assert any("BLOCKED" in item.value for item in app.error)
     assert app.session_state["execution_gateway"].audit_events == ()
+
+
+def test_structured_planning_state_is_cleared_on_identity_change():
+    from core.session_security import bind_session_identity, clear_session_identity
+
+    state = {}
+    bind_session_identity(state, "issuer-a\\nsubject-a")
+    state["structured_task_plan"] = object()
+    state["structured_task_source"] = "private task"
+    state["structured_task_clarification"] = "private clarification"
+    state["structured_task_input"] = "private draft"
+
+    changed = bind_session_identity(state, "issuer-b\\nsubject-b")
+    assert changed is True
+    assert not any(
+        key in state
+        for key in (
+            "structured_task_plan",
+            "structured_task_source",
+            "structured_task_clarification",
+            "structured_task_input",
+        )
+    )
+
+    state["structured_task_plan"] = object()
+    clear_session_identity(state)
+    assert "structured_task_plan" not in state
