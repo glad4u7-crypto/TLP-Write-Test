@@ -112,6 +112,8 @@ def test_oidc_adapter_rejects_unrepresentably_large_integer_validation_time():
         "https://accounts.example.test/path#fragment",
         "https://accounts.example.test:invalid",
         "https://accounts example.test",
+        " https://accounts.example.test",
+        "https://accounts.example.test ",
     ],
 )
 def test_oidc_adapter_rejects_ambiguous_or_non_https_issuer(issuer):
@@ -131,3 +133,12 @@ def test_oidc_adapter_preserves_valid_issuer_identifier_exactly():
         valid_claims(iss=issuer), now=1_500
     )
     assert principal.issuer == issuer
+
+
+def test_oidc_adapter_preserves_subject_exactly_without_normalization():
+    # The subject is an opaque identifier; trimming it could merge tenants.
+    subject = " subject-123 "
+    principal = principal_from_oidc_claims(
+        valid_claims(sub=subject), now=1_500
+    )
+    assert principal.subject == subject
