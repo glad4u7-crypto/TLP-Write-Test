@@ -31,7 +31,7 @@ def test_mutation_is_only_proposed_and_marked_for_separate_approval():
     assert plan.status is PlanStatus.READY
     assert proposed.category is StepCategory.PROPOSED_MUTATION
     assert proposed.requires_human_approval is True
-    assert "No handler dispatch" in plan.safety_notes[1]
+    assert "no handler dispatch" in plan.safety_notes[1].lower()
 
 
 @pytest.mark.parametrize("description", [
