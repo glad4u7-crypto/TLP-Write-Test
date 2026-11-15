@@ -16,9 +16,10 @@
 
 ## Critical approval trust boundary
 
-The `ApprovalAuthority` is a trusted application capability. Only the UI
-controller may call `issue(..., confirmed_by_user=True)`, and only after the
-user reviews the complete action, target, and payload and explicitly confirms.
+The `ApprovalAuthority` is a trusted application capability. The UI calls `confirm_and_create_project` only inside the explicit Confirm-button
+branch, after rendering the exact project name and description. That controller
+creates a short-lived receipt and immediately submits it to the gateway. The
+receipt issuer is an in-process capability, not an authentication mechanism.
 
 Never:
 - expose `ApprovalAuthority`, its `issue` method, or the raw gateway to the
