@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 import pytest
 
@@ -325,3 +326,130 @@ def test_security_store_rejects_unvalidated_tenant_before_database_access(tmp_pa
     store = SQLiteSecurityStore(tmp_path / "invalid-tenant.sqlite3")
     with pytest.raises(TypeError, match="validated TenantKey"):
         store.consume_approval_nonce(("issuer", "alice"), "nonce", 500, now=100)
+
+
+def _consume_nonce_in_process(database_path, gate, ready_queue, result_queue):
+    store = SQLiteSecurityStore(database_path, timeout=20)
+    ready_queue.put(True)
+    if not gate.wait(timeout=30):
+        result_queue.put(("error", "start gate timed out"))
+        return
+    result_queue.put((
+        "ok",
+        store.consume_approval_nonce(
+            TenantKey("https://issuer.example", "alice"),
+            "multiprocess-race-nonce",
+            500,
+            now=100,
+        ),
+    ))
+
+
+def _append_audit_in_process(database_path, gate, ready_queue, result_queue, index):
+    store = SQLiteSecurityStore(database_path, timeout=20)
+    ready_queue.put(True)
+    if not gate.wait(timeout=30):
+        result_queue.put(("error", "start gate timed out"))
+        return
+    event = DurableAuditEvent(
+        "concurrent.process.append",
+        "ok",
+        "ok",
+        "process-fingerprint",
+        f"process-request-{index}",
+    )
+    result_queue.put(("ok", store.append_audit_event(event)))
+
+
+def _run_process_race(context, target, args, worker_count):
+    gate = context.Event()
+    ready_queue = context.Queue()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(target=target, args=(*args, gate, ready_queue, result_queue))
+        for _ in range(worker_count)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            ready_queue.get(timeout=45)
+        gate.set()
+        results = [result_queue.get(timeout=45) for _ in processes]
+        for process in processes:
+            process.join(timeout=45)
+        assert all(not process.is_alive() for process in processes)
+        assert all(process.exitcode == 0 for process in processes)
+        assert all(status == "ok" for status, _ in results), results
+        return [value for _, value in results]
+    finally:
+        gate.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+        result_queue.close()
+
+
+def test_nonce_is_single_use_across_independent_processes(tmp_path):
+    path = tmp_path / "multiprocess-nonce.sqlite3"
+    SQLiteSecurityStore(path)
+    context = multiprocessing.get_context("spawn")
+
+    results = _run_process_race(
+        context,
+        _consume_nonce_in_process,
+        (str(path),),
+        worker_count=6,
+    )
+
+    assert sum(results) == 1
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM consumed_approval_nonces"
+        ).fetchone()[0] == 1
+
+
+def test_concurrent_process_audit_appends_preserve_one_valid_chain(tmp_path):
+    path = tmp_path / "multiprocess-audit.sqlite3"
+    store = SQLiteSecurityStore(path)
+    context = multiprocessing.get_context("spawn")
+    gate = context.Event()
+    ready_queue = context.Queue()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_append_audit_in_process,
+            args=(str(path), gate, ready_queue, result_queue, index),
+        )
+        for index in range(6)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            ready_queue.get(timeout=45)
+        gate.set()
+        results = [result_queue.get(timeout=45) for _ in processes]
+        for process in processes:
+            process.join(timeout=45)
+        assert all(not process.is_alive() for process in processes)
+        assert all(process.exitcode == 0 for process in processes)
+        assert all(status == "ok" for status, _ in results), results
+    finally:
+        gate.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+        result_queue.close()
+
+    hashes = [value for _, value in results]
+    assert len(set(hashes)) == 6
+    assert store.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0] == 6
