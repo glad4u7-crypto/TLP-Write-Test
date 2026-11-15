@@ -16,6 +16,13 @@ import threading
 from typing import Any
 
 
+# Share a lock between all JsonlAuditLog objects targeting the same resolved
+# path. A per-instance lock is insufficient: two Streamlit sessions can create
+# separate objects that append to the same file in one Python process.
+_PATH_LOCKS: dict[str, threading.Lock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
 @dataclass(frozen=True)
 class ExecutionAuditEvent:
     timestamp: str
@@ -44,7 +51,9 @@ class JsonlAuditLog:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self._lock = threading.Lock()
+        lock_key = str(self.path.resolve(strict=False))
+        with _PATH_LOCKS_GUARD:
+            self._lock = _PATH_LOCKS.setdefault(lock_key, threading.Lock())
 
     @staticmethod
     def _entry_hash(previous_hash: str, event: dict[str, Any]) -> str:
