@@ -105,3 +105,11 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 - Code-bearing snapshot: `798a955bf1b0290eb59a058965f20baa43d515ef`.
 - Agent Foundation CI run [43728173522](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173522) and Python Demo CI run [43728173537](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173537) were observed in progress. C02-P01 remains PENDING until both workflows finish successfully on this exact snapshot.
 - Scope limitation: this is a Python controller-level implementation, not yet wired to the Android client or production runtime. PR #5 remains Draft/Open/Unmerged; no merge or deployment performed.
+
+
+### C02-P01 CI correction note
+
+- Initial test run exposed four test-fixture failures: the test used action names outside the repository's exact safety allowlist. The implementation did not broaden the allowlist; test fixtures were corrected to use existing approved identifiers (`inspect_repository` and `write_file`).
+- Sequential locking was strengthened to a process-wide lock so a second executor instance cannot bypass the one-at-a-time guarantee. A regression test now covers two executor instances sharing a queue.
+- Latest code+test snapshot: `b0389b736bbfdc05941ea597812d0064cc6c5843`.
+- Latest exact-head Agent Foundation CI [43728332443](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728332443) and Python Demo CI [43728332454](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728332454) are in progress. P01 remains PENDING until both pass.
