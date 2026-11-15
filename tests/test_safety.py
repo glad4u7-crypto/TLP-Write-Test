@@ -7,7 +7,7 @@ from core.safety import authorize_action
     "read", "inspect", "plan", "summarize",
     "read_invoice", "inspect_repository", "summarize_report",
 ])
-def test_read_only_actions_are_allowed(action):
+def test_registered_read_only_actions_are_allowed(action):
     assert authorize_action(action).allowed is True
 
 
@@ -46,7 +46,8 @@ def test_financial_and_external_provider_actions_are_always_blocked(action):
 
 @pytest.mark.parametrize("action", [
     "run_shell", "execute_code", "open_browser", "unknown_action",
-    "unpaid_report", "external_apiary",
+    "unpaid_report", "external_apiary", "read_secret", "read_all_files",
+    "inspect_private_keys",
 ])
 def test_unknown_actions_fail_closed_even_when_named_in_approval(action):
     assert authorize_action(action, approved_action=action).allowed is False
