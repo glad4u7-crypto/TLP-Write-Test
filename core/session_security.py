@@ -13,6 +13,7 @@ _IDENTITY_BOUND_KEYS = (
     "execution_gateway_owner",
     "free_plan",
     "draft_task",
+    "approval_session_scope",
 )
 
 
