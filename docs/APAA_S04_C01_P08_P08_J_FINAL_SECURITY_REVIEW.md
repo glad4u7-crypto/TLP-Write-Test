@@ -420,3 +420,40 @@ PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `featur
 ### Next serial work
 
 Review authenticated-runtime partial initialization and session-state recovery after a durable-store failure, including a rerun/retry scenario in the same Streamlit session. Preserve the fail-closed behavior and avoid leaving stale approval authority, execution gateway, or tenant-bound project registry state reachable. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
+
+
+## P08-P09-AT — Same-session durable-store failure cleanup and safe retry
+
+Verification date: 2026-11-15  
+Reviewed code commit: `398875292f99158cf4266645ae3e6326677da2c0`
+
+### Work completed
+
+- Updated the authenticated durable-store initialization failure handler in `app.py` to call `clear_session_identity(st.session_state)` before stopping the app.
+- This clears identity-bound state from the failed session, including the approval authority, execution gateway, gateway owner, session approval scope, tenant-bound project registry, pending project draft, selected project, and prepared task state.
+- Added an AppTest regression that starts an authenticated session successfully, changes the project database path to a rejected symlink path, and reruns the same Streamlit session.
+- The test verifies the app fails closed and clears all identity-bound capabilities/state. It then restores a valid database path and reruns the same session, verifying a fresh approval authority and gateway are initialized and the tenant-bound registry is restored.
+- The first test attempt used ordinary directory permissions and correctly failed the SQLite store's private-directory requirements. The fixture was corrected to create private directories with mode `0700`; the first failed run was not accepted as verification.
+
+### Current-head CI evidence
+
+All four required GitHub Actions runs completed successfully for the exact reviewed commit:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43690911915 | PASS |
+| Agent Foundation CI | push | 43690911926 | PASS |
+| Python Demo CI | pull_request | 43690915454 | PASS |
+| Agent Foundation CI | pull_request | 43690915411 | PASS |
+
+Verified steps include the full pytest suite, `demo.py` smoke test, dependency audit, Python module compilation, and foundation tests.
+
+### Scope and release status
+
+This verifies the AppTest same-session failure/retry path under controlled configuration changes. It does not prove real-browser OIDC redirects, cookie/session handling, CSRF resistance, two-identity browser isolation, deployment secret-manager behavior, or filesystem protection against same-account races.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Review cached approval-authority lifecycle when an authenticated deployment rotates its signing secret or changes its durable security database path during a live session. Ensure a changed security configuration cannot silently reuse an authority bound to the previous secret/store. Keep the authority server-side, never log or expose signing material, and add regression tests before claiming the rotation path is safe. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
