@@ -52,6 +52,7 @@ class LinuxHostInspectorAdapter:
         self._worker_id = worker_id
         self._pid = worker_pid
         self._proc = Path(proc_root)
+        self._namespace_inode: int | None = None
         self._nsenter = self._resolve_binary(nsenter_path, ("/usr/bin/nsenter", "/bin/nsenter"))
         self._nft = self._resolve_binary(nft_path, ("/usr/sbin/nft", "/sbin/nft"))
 
@@ -95,6 +96,7 @@ class LinuxHostInspectorAdapter:
                 interfaces.append(name)
             if len(interfaces) != 1:
                 raise HostCollectionError("Exactly one non-loopback worker interface is required.")
+            self._namespace_inode = namespace_inode
             return {
                 "runtime_id": self._runtime_id,
                 "worker_id": self._worker_id,
@@ -108,6 +110,14 @@ class LinuxHostInspectorAdapter:
 
     def read_nftables_json(self) -> str:
         """Read the effective ruleset inside the target netns; never changes it."""
+        if self._namespace_inode is None:
+            raise HostCollectionError("Network namespace identity must be captured before nftables inspection.")
+        proc_ns = self._proc / str(self._pid) / "ns" / "net"
+        try:
+            if os.stat(proc_ns, follow_symlinks=True).st_ino != self._namespace_inode:
+                raise HostCollectionError("Target network namespace changed during evidence collection.")
+        except OSError as exc:
+            raise HostCollectionError("Target network namespace could not be revalidated.") from exc
         command = [
             self._nsenter, "--target", str(self._pid), "--net", "--",
             self._nft, "-j", "list", "ruleset",
@@ -134,4 +144,9 @@ class LinuxHostInspectorAdapter:
         if (not isinstance(completed.stdout, str) or not completed.stdout
                 or len(completed.stdout.encode("utf-8")) > self._MAX_NFT_OUTPUT):
             raise HostCollectionError("nftables snapshot is empty or exceeds the evidence size limit.")
+        try:
+            if os.stat(proc_ns, follow_symlinks=True).st_ino != self._namespace_inode:
+                raise HostCollectionError("Target network namespace changed during evidence collection.")
+        except OSError as exc:
+            raise HostCollectionError("Target network namespace could not be revalidated.") from exc
         return completed.stdout
