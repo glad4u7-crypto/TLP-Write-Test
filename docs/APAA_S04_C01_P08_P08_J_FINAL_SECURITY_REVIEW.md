@@ -271,3 +271,34 @@ Acceptance: every case passes, evidence is redacted, no secrets are committed, a
 ### Boundaries
 
 This runbook does not prove CSRF/cookie protections, provider configuration correctness, deployment isolation, or multi-host storage behavior until executed against the actual test deployment. Live OIDC/browser verification remains **PENDING** until the operator supplies that deployment and two controlled test identities. PR #5 remains open and Draft; no merge or deployment is authorized. Production remains **NOT APPROVED**.
+
+## P08-P09-AM — Live OIDC runbook documentation CI verification
+
+Verification date: 2026-11-15  
+Reviewed PR head: `bf37656745867314563a264aad476f02e53fab1e`
+
+### Current-head CI evidence
+
+The documentation-only follow-up adding the controlled two-identity live OIDC/browser runbook has now completed both required workflows for both push and pull-request events:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43687284417 | PASS |
+| Agent Foundation CI | push | 43687284390 | PASS |
+| Python Demo CI | pull_request | 43687286798 | PASS |
+| Agent Foundation CI | pull_request | 43687286774 | PASS |
+
+All four runs report the exact reviewed head `bf37656745867314563a264aad476f02e53fab1e` and completed successfully. The PR-triggered checks confirm the workflow coverage for the PR's actual base branch, `feature/agent-v0.3-zero-cost-core`.
+
+### Review outcome
+
+- No application runtime code was changed in this documentation-only follow-up.
+- The existing live OIDC/browser matrix remains a procedure only; it has not been executed.
+- No new runtime security claim is inferred from the documentation CI result.
+- PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`.
+- No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized.
+- Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Continue the offline-verifiable review with focused fail-closed authenticated-runtime and durable-storage initialization tests. Do not attempt live OIDC verification until a private test deployment and two controlled non-production identities are available.
