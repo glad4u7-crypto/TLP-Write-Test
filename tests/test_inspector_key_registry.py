@@ -2,7 +2,7 @@ import pytest
 
 from core.inspector_key_registry import (
     InspectorPublicKeyRegistry,
-    InspectorPublicKeyRegistryError,
+    InspectorKeyRegistryError,
     InspectorPublicKeyRecord,
 )
 
