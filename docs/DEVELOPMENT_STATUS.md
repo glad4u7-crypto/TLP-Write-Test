@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-15  
 **Dashboard version:** 0.4.0 zero-cost foundation  
 **Dashboard branch:** `feature/repository-inspector-v0.1`  
-**Reviewed branch head:** `010326d22880a56b4165a578bdd4179409c8d2ea`  
+**Baseline implementation commit:** `010326d22880a56b4165a578bdd4179409c8d2ea`  
 **Production readiness:** Not ready
 
 This document is the source record for the Streamlit Development Status page. It is a reviewed snapshot, not live telemetry.
@@ -19,8 +19,8 @@ This document is the source record for the Streamlit Development Status page. It
 
 ## Verification evidence
 
-- GitHub Actions run #58, **Agent Foundation CI**, completed successfully for commit `010326d22880a56b4165a578bdd4179409c8d2ea`.
-- The recorded CI job compiled application modules and ran foundation tests.
+- The baseline implementation commit `010326d22880a56b4165a578bdd4179409c8d2ea` previously passed GitHub Actions **Agent Foundation CI** (compile and foundation tests).
+- The new status-page update commit `5b450baa92393c3c7c4428063bac0392df6e5ebd` has a CI run in progress; do not treat it as passed until GitHub reports completion.
 - PR #3 remains open and draft; it is not merged.
 - This CI result does not certify later commits or the separate S09 browser-security branch.
 - No live Streamlit deployment URL was confirmed in the repository review.
