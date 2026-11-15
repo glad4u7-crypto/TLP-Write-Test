@@ -9,7 +9,7 @@ class TaskStatus(str, Enum):
     QUEUED="queued"; RUNNING="running"; SUCCEEDED="succeeded"; FAILED="failed"; BLOCKED="blocked"
 
 _ALLOWED={TaskStatus.QUEUED:{TaskStatus.RUNNING,TaskStatus.BLOCKED},
-          TaskStatus.RUNNING:{TaskStatus.QUEUED,TaskStatus.SUCCEEDED,TaskStatus.FAILED},
+          TaskStatus.RUNNING:{TaskStatus.QUEUED,TaskStatus.SUCCEEDED,TaskStatus.FAILED,TaskStatus.BLOCKED},
           TaskStatus.SUCCEEDED:set(),TaskStatus.FAILED:set(),TaskStatus.BLOCKED:set()}
 
 @dataclass(frozen=True)
