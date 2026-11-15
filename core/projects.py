@@ -20,6 +20,7 @@ class Project:
     project_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     owner_subject: str | None = None
+    owner_issuer: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -28,6 +29,8 @@ class Project:
             raise ValueError("Project name must be 80 characters or fewer.")
         if not isinstance(self.description, str) or len(self.description.strip()) > 500:
             raise ValueError("Project description must be 500 characters or fewer.")
+        if self.owner_issuer is not None and (not isinstance(self.owner_issuer, str) or not self.owner_issuer.strip()):
+            raise ValueError("Project owner issuer must be non-empty text.")
         if self.owner_subject is not None and (
             not isinstance(self.owner_subject, str) or not self.owner_subject.strip()
         ):
@@ -48,6 +51,7 @@ class ProjectRegistry:
         description: str = "",
         *,
         owner_subject: str | None = None,
+        owner_issuer: str | None = None,
         _capability: object | None = None,
     ) -> Project:
         if _capability is not _PROJECT_MUTATION_CAPABILITY:
@@ -56,6 +60,7 @@ class ProjectRegistry:
             name=name.strip() if isinstance(name, str) else name,
             description=description.strip() if isinstance(description, str) else description,
             owner_subject=owner_subject,
+            owner_issuer=owner_issuer,
         )
         self._projects[project.project_id] = project
         return project
@@ -69,7 +74,7 @@ class ProjectRegistry:
         verified = require_authenticated(principal)
         return [
             project for project in self._projects.values()
-            if project.owner_subject == verified.subject
+            if project.owner_subject == verified.subject and project.owner_issuer == verified.issuer
         ]
 
     def get(self, project_id: str) -> Project | None:
@@ -80,7 +85,7 @@ class ProjectRegistry:
         project = self._projects.get(project_id)
         if project is None:
             return None
-        require_project_owner(principal, project.owner_subject)
+        require_project_owner(principal, project.owner_subject, project.owner_issuer)
         return project
 
     def update_for_owner(
@@ -97,7 +102,7 @@ class ProjectRegistry:
         project = self._projects.get(project_id)
         if project is None:
             raise KeyError("Project not found.")
-        require_project_owner(principal, project.owner_subject)
+        require_project_owner(principal, project.owner_subject, project.owner_issuer)
         updated = replace(project, name=name.strip(), description=description.strip())
         self._projects[project_id] = updated
         return updated
