@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -83,3 +84,22 @@ def test_jsonl_audit_log_restricts_file_permissions(tmp_path):
 
     if os.name == "posix":
         assert (tmp_path / "private" / "events.jsonl").stat().st_mode & 0o777 == 0o600
+
+
+def test_multiple_log_instances_serialize_concurrent_appends(tmp_path):
+    path = tmp_path / "shared" / "events.jsonl"
+    logs = [JsonlAuditLog(path) for _ in range(8)]
+
+    def append_one(index):
+        return logs[index % len(logs)].append(
+            create_audit_event("write_file", False, f"event-{index}")
+        )
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        hashes = list(pool.map(append_one, range(64)))
+
+    verifier = JsonlAuditLog(path)
+    assert len(hashes) == 64
+    assert verifier.verify() == hashes[-1] or verifier.verify() in hashes
+    records = path.read_text(encoding="utf-8").splitlines()
+    assert len(records) == 64
