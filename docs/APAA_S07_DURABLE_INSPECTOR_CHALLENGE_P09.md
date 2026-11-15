@@ -4,7 +4,7 @@
 **Implementation:** `core/sqlite_security_store.py`  
 **Tests:** `tests/test_sqlite_security_store.py`  
 **Storage:** existing owner-only SQLite security database  
-**CI:** PENDING exact P09 verification commit  
+**CI:** PASS — exact final P09 commit `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`  
 **Deployment / firewall / worker / browser:** NOT PERFORMED
 
 ## Objective
@@ -58,7 +58,9 @@ The existing P06 verifier remains stateless by design. This persistence primitiv
 - Authenticate tenant and runtime/worker identity outside untrusted evidence.
 - Independently review database backup/restore, clock synchronization, concurrent multi-process use and same-UID threat assumptions.
 - Out-of-band Ed25519 private-key custody, public-key trust registry and rotation remain separate.
-- Run P09 tests and both existing workflows on the exact verification-record commit.
+- [Agent Foundation CI — run 43718083802](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083802): PASS; 665 tests passed, pip-audit found no known vulnerabilities, compileall and every step succeeded.
+- [Python Demo CI — run 43718083789](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083789): PASS; 665 tests passed, demo smoke output `Hello TradeLab Pro`, every step succeeded.
+- Both runs completed successfully against the exact final P09 commit `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`.
 - Live host, packet-level firewall and production acceptance remain unperformed.
 
-**P09 disposition:** DURABLE HASH-ONLY CHALLENGE ISSUE/CONSUME STORAGE AND TESTS ADDED. CI AND TRUSTED CONTROL-PLANE INTEGRATION PENDING. No deployment, firewall modification, worker launch or browser activation.
+**P09 disposition:** DURABLE HASH-ONLY CHALLENGE ISSUE/CONSUME STORAGE AND TESTS ADDED; BOTH EXISTING CI WORKFLOWS PASS ON THE EXACT FINAL COMMIT. TRUSTED CONTROL-PLANE INTEGRATION, LIVE HOST, KEY-CUSTODY AND PACKET-LEVEL ACCEPTANCE REMAIN OPEN. No deployment, firewall modification, worker launch or browser activation.
