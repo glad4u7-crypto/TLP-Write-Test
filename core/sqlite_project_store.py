@@ -8,7 +8,9 @@ from __future__ import annotations
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 import sqlite3
+import stat
 from uuid import uuid4
 
 from core.storage import StoredProject, TenantKey
@@ -21,8 +23,23 @@ class SQLiteProjectStore:
         self._database_path = str(database_path)
         self._timeout = timeout
         if self._database_path != ":memory:":
-            Path(self._database_path).parent.mkdir(parents=True, exist_ok=True)
+            self._secure_database_file(create_parent=True)
         self._initialize()
+        if self._database_path != ":memory:":
+            self._secure_database_file(create_parent=False)
+
+    def _secure_database_file(self, *, create_parent: bool) -> None:
+        """Reject symlink/non-regular database targets and restrict file access."""
+        path = Path(self._database_path)
+        if create_parent:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            return
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("Project database must be a regular, non-symlink file.")
+        os.chmod(path, 0o600)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
