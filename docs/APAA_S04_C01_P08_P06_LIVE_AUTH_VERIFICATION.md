@@ -1,17 +1,16 @@
 # APAA-S04-C01-P08-P06 — Live Authentication & Cross-Session Verification
 
-Status: **Verification plan prepared; live provider/browser tests not run**
+Status: **Automated CI passed; live provider/browser tests not run**
 
 ## Entry checks completed
 - Pull request #5 remains open and draft.
-- Current PR head at inspection: `befe532b6a77f3fadf4274be7ebe410d2b4ee54d`.
-- GitHub Actions Python Demo CI Run #213 completed successfully.
+- Current PR head before this documentation correction: `406295428938d8460a54f31268c2049817877c4c`.
+- GitHub Actions Python Demo CI Run #215 completed successfully.
 - Job `test-demo`: success; dependency installation, pytest, and `demo.py` smoke test steps all succeeded.
-- The repository contains the strict OIDC claim adapter and unit tests for missing/malformed claims, expired identities, future-issued identities, and bounded clock skew.
+- The repository contains the OIDC claim adapter and unit tests for missing/malformed claims, expired identities, future-issued identities, and bounded clock skew.
 
 ## Live verification prerequisites
-These are deployment/operator prerequisites, not values to commit:
-- A dedicated test OIDC client and a controlled HTTPS deployment URL (or documented localhost test setup).
+- A dedicated test OIDC client and controlled HTTPS deployment URL (or documented localhost test setup).
 - Correct provider redirect URI ending in `/oauth2callback`.
 - Private runtime secrets configured outside source control: `[auth]` client configuration and `[apaa].require_auth = true`.
 - Two separately authenticated test identities and two isolated browser profiles (or equivalent independent browser contexts).
@@ -28,13 +27,13 @@ Never paste client secrets, cookie secrets, ID tokens, access tokens, or refresh
 | P06-03 | Complete login as User A | Valid issuer/subject principal; A sees only A-owned projects | Redacted issuer/subject fingerprint and screenshot |
 | P06-04 | Complete login as User B in separate browser profile | B sees no A-owned projects and cannot access A project IDs | Redacted denial/result |
 | P06-05 | Logout User A | Session returns to unauthenticated/login state; protected actions unavailable | Redacted screenshot |
-| P06-06 | Login as User B in the same browser profile after A logout | A's pending project draft, selection, approval authority, gateway, and task draft do not carry over | Before/after state evidence without tokens |
-| P06-07 | Replay A's approval receipt as B or after logout | Execution denied; receipt is not accepted across authority/session boundary | Test result and audit event with secrets redacted |
+| P06-06 | Login as User B in same browser profile after A logout | A's pending project draft, selection, approval authority, gateway, and task draft do not carry over | Redacted before/after evidence |
+| P06-07 | Replay A's approval receipt as B or after logout | Execution denied; receipt is not accepted across authority/session boundary | Redacted test result/audit event |
 | P06-08 | Expired/invalid identity session | Protected workspace/actions fail closed and require re-authentication | Redacted result |
 | P06-09 | Inspect logs and browser-visible output | No ID/access/refresh tokens or client secrets are exposed | Redacted log review |
 
 ## Acceptance criteria
-- Every applicable test above passes in a configured deployment.
+- Every applicable test passes in a configured deployment.
 - User A and User B are distinct identities from the configured issuer.
 - No cross-user project visibility or action authorization is possible.
 - Logout/account-switch does not preserve prior identity-bound authority or drafts.
@@ -43,7 +42,7 @@ Never paste client secrets, cookie secrets, ID tokens, access tokens, or refresh
 
 ## Current limitations / stop conditions
 - No OIDC provider has been configured or exercised as part of this repository verification.
-- No live deployment URL or two real test identities were available during this task.
+- No live deployment URL or two test identities were available during this task.
 - CI success validates automated tests and demo startup only; it does not validate provider redirects, cookies, logout, browser isolation, CSRF behavior, or production session security.
 - Do not mark P06 live verification complete until the operator runs the matrix and records evidence.
 - Keep PR #5 in draft. Do not merge or enable production execution.
