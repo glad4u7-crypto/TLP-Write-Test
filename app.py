@@ -6,14 +6,14 @@ import sqlite3
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from core.brain import AIBrain
+from core.models import Task
+from core.planner import PlanStatus, StepCategory, create_structured_plan
 from core.projects import ProjectRegistry
 from core.persistent_projects import PersistentProjectRegistry
 from core.sqlite_project_store import SQLiteProjectStore
 from core.approvals import ApprovalAuthority
 from core.audit import JsonlAuditLog
 from core.project_actions import build_project_gateway
-from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
@@ -287,24 +287,80 @@ st.header("Task Workspace")
 task = st.text_area(
     "Describe a task",
     placeholder="Example: Review a Python project and suggest a safe implementation plan.",
+    key="structured_task_input",
 )
 
-if st.button("Prepare free plan", type="primary", disabled=not task.strip()):
+if st.button("Prepare structured plan", type="primary", disabled=not task.strip()):
     try:
-        brain = AIBrain(RuleBasedProvider())
-        st.session_state["free_plan"] = brain.respond(task)
-        st.session_state["draft_task"] = task.strip()
-    except ValueError as exc:
+        plan = create_structured_plan(Task(description=task))
+        st.session_state["structured_task_plan"] = plan
+        st.session_state["structured_task_source"] = plan.task_description
+        st.session_state.pop("structured_task_clarification", None)
+    except (TypeError, ValueError) as exc:
         st.error(str(exc))
 
-if st.session_state.get("draft_task"):
-    st.write("**Prepared task**")
-    st.write(st.session_state["draft_task"])
+plan = st.session_state.get("structured_task_plan")
+if plan is not None:
+    st.divider()
+    st.subheader("Structured plan review")
+    st.caption(f"Plan ID: {plan.plan_id} · Schema: {plan.schema_version}")
+    st.write("**Task:** " + plan.task_description)
 
-if st.session_state.get("free_plan"):
-    st.subheader("Built-in planning result")
-    st.markdown(st.session_state["free_plan"])
+    if plan.status is PlanStatus.READY:
+        st.success("READY · Reviewable plan prepared. Nothing has been executed.")
+        for step in plan.steps:
+            st.markdown(f"**{step.step_id} — {step.title}**")
+            st.write(step.purpose)
+            st.caption(
+                f"Category: {step.category.value.replace('_', ' ').title()} · "
+                f"Expected output: {step.expected_output}"
+            )
+            if step.category is StepCategory.PROPOSED_MUTATION:
+                st.warning(
+                    "Proposed change only — requires separate, action-specific "
+                    "human approval. This screen does not issue approval."
+                )
+    elif plan.status is PlanStatus.NEEDS_CLARIFICATION:
+        st.warning("NEEDS CLARIFICATION · No plan steps were created.")
+        for question in plan.clarification_questions:
+            st.markdown(f"- {question}")
+        clarification = st.text_area(
+            "Add the missing details",
+            key="structured_task_clarification",
+            placeholder="Describe the exact item, desired result, and constraints.",
+        )
+        if st.button(
+            "Prepare updated plan",
+            disabled=not clarification.strip(),
+        ):
+            revised_task = (
+                f"{st.session_state['structured_task_source']}. "
+                f"Additional clarification: {clarification.strip()}"
+            )
+            try:
+                revised_plan = create_structured_plan(Task(description=revised_task))
+                st.session_state["structured_task_plan"] = revised_plan
+                st.session_state["structured_task_source"] = revised_plan.task_description
+                st.session_state.pop("structured_task_clarification", None)
+                st.rerun()
+            except (TypeError, ValueError) as exc:
+                st.error(str(exc))
+    else:
+        st.error("BLOCKED · This request cannot be planned under the current safety policy.")
+        for note in plan.safety_notes:
+            st.write(f"- {note}")
 
+    if plan.assumptions:
+        st.caption("Assumptions: " + "; ".join(plan.assumptions))
+    if plan.safety_notes:
+        st.caption("Safety boundary")
+        for note in plan.safety_notes:
+            st.write(f"- {note}")
+
+st.caption(
+    "Planning is offline and deterministic. This review screen is read-only: "
+    "it cannot approve, dispatch, or execute a task."
+)
 st.caption(
     "No external AI API is configured or called. Future provider integrations "
     "must remain opt-in and must never activate paid services automatically."
