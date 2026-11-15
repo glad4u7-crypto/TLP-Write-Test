@@ -38,7 +38,7 @@ def test_require_authenticated_fails_closed_for_untrusted_or_malformed_identity(
 
 def test_project_owner_check_accepts_matching_authenticated_subject():
     principal = Principal("alice", "https://issuer.example.test", True)
-    assert require_project_owner(principal, "alice") is principal
+    assert require_project_owner(principal, "alice", principal.issuer) is principal
 
 
 @pytest.mark.parametrize(
@@ -54,3 +54,10 @@ def test_project_owner_check_accepts_matching_authenticated_subject():
 def test_project_owner_check_denies_missing_auth_or_non_owner(principal, owner):
     with pytest.raises((AuthenticationRequired, AuthorizationDenied)):
         require_project_owner(principal, owner)
+
+
+
+def test_project_owner_check_denies_missing_issuer_binding():
+    principal = Principal("alice", "https://issuer.example.test", True)
+    with pytest.raises(AuthorizationDenied):
+        require_project_owner(principal, "alice")
