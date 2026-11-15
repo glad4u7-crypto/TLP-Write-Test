@@ -42,14 +42,23 @@ def test_workflows_have_read_only_permissions_and_no_pull_request_target():
         assert "write-all" not in source
 
 
-def test_workflows_bound_runtime_and_cancel_superseded_runs():
+def test_workflows_bound_runtime_without_cancelling_active_runs():
     for workflow in WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
         assert re.search(r"^concurrency:\s*$", source, re.MULTILINE)
-        assert "cancel-in-progress: true" in source
-        assert "github.event.pull_request.head.ref || github.ref_name" in source
-        # Push and pull_request events for one branch must not cancel each other.
+        assert "cancel-in-progress: false" in source
+        # Every commit/event pair has an independent group; a newer commit
+        # cannot cancel an older in-flight verification.
+        assert "github.sha" in source
         assert "github.event_name" in source
+        # Feature work is validated by pull_request, not duplicate push runs.
+        push_section = re.search(
+            r"^  push:\s*\n(?P<body>(?:^    .*\n|^\s*\n)*)",
+            source,
+            re.MULTILINE,
+        )
+        assert push_section and 'branches: ["main"]' in push_section.group("body")
+        assert "github.event.pull_request.head.ref || github.ref_name" not in source
         assert re.search(r"^\s+timeout-minutes:\s+(15|20)\s*$", source, re.MULTILINE)
 
 
