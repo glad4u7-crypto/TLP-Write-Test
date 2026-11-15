@@ -37,3 +37,9 @@ The repository currently targets a Python/Streamlit prototype. This change does 
 - Launch failure cleanup.
 - Context creation failure cleanup.
 - Exact-head Agent Foundation CI and Python Demo CI must both pass before P01 is marked verified.
+
+## Verification update
+
+A local isolated harness run against a mirror of the committed launcher, domain model and focused test cases completed successfully: **8 focused tests passed**, and Python `compileall` passed. This validates the adapter's unit-level policy, lifecycle and failure-cleanup behavior in that harness; it is not a substitute for running the full repository suite or GitHub Actions against the exact PR head.
+
+The GitHub commit status and PR-associated workflow lookup currently return no checks/runs for the latest branch head. Therefore CI remains **PENDING / NOT VERIFIED**. Do not mark P01 complete until the repository's required checks are visible and successful.
