@@ -75,3 +75,32 @@ def test_invalid_project_payload_is_rejected(payload):
 
     assert result.executed is False
     assert registry.list_projects() == []
+
+
+def test_project_gateway_rejects_receipt_from_another_session():
+    authority = ApprovalAuthority()
+    first_registry = ProjectRegistry()
+    second_registry = ProjectRegistry()
+    first_gateway = build_project_gateway(
+        first_registry, authority, session_scope="streamlit-session-one"
+    )
+    second_gateway = build_project_gateway(
+        second_registry, authority, session_scope="streamlit-session-two"
+    )
+    payload = {"name": "Session private", "description": ""}
+    receipt = authority.issue(
+        "create_project", payload, session_scope="streamlit-session-one"
+    )
+
+    rejected = second_gateway.execute(
+        "create_project", payload, approval_receipt=receipt
+    )
+    assert rejected.executed is False
+    assert second_registry.list_projects() == []
+    assert first_registry.list_projects() == []
+
+    accepted = first_gateway.execute(
+        "create_project", payload, approval_receipt=receipt
+    )
+    assert accepted.executed is True
+    assert len(first_registry.list_projects()) == 1
