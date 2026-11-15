@@ -1,0 +1,37 @@
+name: APAA S08 C02 Verification
+
+on:
+  push:
+    branches: ["feature/apaa-s08-c02-conditional-multistep"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-s08-c02-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Install application and test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Audit Python dependencies
+        run: python -m pip install pip-audit && pip-audit -r requirements.txt
+      - name: Compile application modules
+        run: python -m compileall -q app.py core tests
+      - name: Run full test suite
+        run: python -m pytest -q
+      - name: Run demo smoke test
+        run: |
+          output="$(python demo.py)"
+          echo "$output"
+          test "$output" = "Hello TradeLab Pro"

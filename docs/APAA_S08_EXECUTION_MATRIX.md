@@ -8,9 +8,9 @@
 | S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | PASS — 709 tests; exact-head CI PASS |
 | S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | PASS — exact code snapshot CI PASS |
 | S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | PASS — exact code snapshot CI PASS |
-| S08-C02-P01 | Sequential execution | Not started | Pending | PENDING |
-| S08-C02-P02 | Conditional execution | Not started | Pending | PENDING |
-| S08-C02-P03 | Multi-step execution | Not started | Pending | PENDING |
+| S08-C02-P01 | Sequential execution | `core/sequential_executor.py` | `tests/test_sequential_executor.py` | PASS — covered by exact-head full CI (763 tests) |
+| S08-C02-P02 | Conditional execution | `core/task_conditions.py`: bounded declarative conditions, safe JSON context, fail-closed invalid conditions | `tests/test_task_conditions_and_multistep.py` | PASS — exact-head full CI (763 tests) |
+| S08-C02-P03 | Multi-step execution | `core/multi_step_executor.py`: finite ordered plans, condition skips, tenant-bound approval and stop-on-failure | `tests/test_task_conditions_and_multistep.py` | PASS — exact-head full CI (763 tests) |
 | S08-C03-P01 | Timeout | Not started | Pending | PENDING |
 | S08-C03-P02 | Retry/recovery | Not started | Pending | PENDING |
 | S08-C03-P03 | Completion verification | Not started | Pending | PENDING |
@@ -113,3 +113,15 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 - Sequential locking was strengthened to a process-wide lock so a second executor instance cannot bypass the one-at-a-time guarantee. A regression test now covers two executor instances sharing a queue.
 - Latest code+test snapshot: `b0389b736bbfdc05941ea597812d0064cc6c5843`.
 - Latest exact-head Agent Foundation CI [43728332443](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728332443) and Python Demo CI [43728332454](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728332454) are in progress. P01 remains PENDING until both pass.
+
+
+## C02 exact-head verification
+
+**Verified snapshot:** `08d1b41f267051bc525caf3ead9e2cd720a03a02`
+
+- APAA S08 C02 Verification: [43733942926](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43733942926) — PASS.
+- Dependency audit: no known vulnerabilities.
+- Python compilation: PASS.
+- Full test suite: **763 passed in 15.42s**.
+- Demo smoke test: PASS.
+- PR #8 remains Draft/Open/Unmerged. No deployment, payment, paid provider, or base-branch change.
