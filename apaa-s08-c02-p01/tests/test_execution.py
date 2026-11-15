@@ -6,6 +6,7 @@ class DurableQueueTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.db=os.path.join(self.tmp.name,"queue.sqlite")
         self.store=StateStore(self.db);self.engine=ExecutionEngine(self.store,worker_id="worker-A",lease_seconds=10)
         self.engine.register("echo",lambda p:{"echo":p["value"]})
+        self.engine.set_policy("echo","v1",True)
     def tearDown(self):self.store.close();self.tmp.cleanup()
     def task(self,**kw):return Task.create("echo",{"value":"ok"},permission_granted=True,user_consented=True,**kw)
     def test_success_and_persisted_audit(self):
@@ -22,6 +23,7 @@ class DurableQueueTests(unittest.TestCase):
         self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"succeeded")
     def test_retry_exhaustion_moves_to_dead_letter(self):
         self.engine.register("flaky",lambda p:(_ for _ in ()).throw(ValueError("no")))
+        self.engine.set_policy("flaky","v1",True)
         t=Task.create("flaky",{},permission_granted=True,user_consented=True,max_attempts=2)
         self.engine.submit(t);self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"queued")
         self.engine.run_next();self.assertEqual(self.store.get(t.task_id)["status"],"dead_letter")
@@ -43,6 +45,7 @@ class DurableQueueTests(unittest.TestCase):
         self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
     def test_fifo_order(self):
         seen=[];self.engine.register("record",lambda p:seen.append(p["n"]))
+        self.engine.set_policy("record","v1",True)
         ts=[Task.create("record",{"n":n},permission_granted=True,user_consented=True) for n in range(3)]
         for t in ts:self.engine.submit(t)
         self.engine.run_all();self.assertEqual(seen,[0,1,2])
@@ -63,5 +66,42 @@ class DurableQueueTests(unittest.TestCase):
         self.assertFalse(self.store.verify_audit_chain())
     def test_invalid_attempt_limit_rejected(self):
         with self.assertRaises(ValueError):Task.create("x",{},max_attempts=0)
+
+    def test_missing_policy_blocks_handler(self):
+        called=[]
+        self.engine.register("unapproved",lambda p:called.append(True))
+        t=Task.create("unapproved",{},permission_granted=True,user_consented=True)
+        self.engine.submit(t);self.engine.run_next()
+        self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
+        self.assertEqual(called,[])
+    def test_policy_revoked_before_execution_blocks(self):
+        called=[]
+        self.engine.register("echo2",lambda p:called.append(True))
+        self.engine.set_policy("echo2","v1",True)
+        t=Task.create("echo2",{},permission_granted=True,user_consented=True)
+        self.engine.submit(t);self.engine.set_policy("echo2","v1",False);self.engine.run_next()
+        self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
+        self.assertEqual(called,[])
+    def test_consent_revoked_before_execution_blocks(self):
+        called=[]
+        self.engine.register("echo3",lambda p:called.append(True))
+        self.engine.set_policy("echo3","v1",True)
+        t=Task.create("echo3",{},permission_granted=True,user_consented=True)
+        self.engine.submit(t);self.engine.revoke_consent(t.task_id);self.engine.run_next()
+        self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
+        self.assertEqual(called,[])
+    def test_expired_consent_blocks_execution(self):
+        called=[]
+        self.engine.register("echo4",lambda p:called.append(True))
+        self.engine.set_policy("echo4","v1",True)
+        t=Task.create("echo4",{},permission_granted=True,user_consented=True)
+        self.engine.submit(t)
+        self.engine.consent_registry.grant(t.task_id,t.action,expires_at=time.time()-1)
+        self.engine.run_next()
+        self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
+        self.assertEqual(called,[])
+    def test_payload_validation_happens_at_task_creation(self):
+        with self.assertRaises(ValueError):Task.create("bad action",{},permission_granted=True,user_consented=True)
+        with self.assertRaises(ValueError):Task.create("safe.action",{"n":float("nan")})
 
 if __name__=="__main__":unittest.main()
