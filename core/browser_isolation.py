@@ -8,8 +8,8 @@ validated setting before any browser process can be started.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 import ipaddress
+import re
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
@@ -27,7 +27,7 @@ _REQUIRED_FIELDS = frozenset({
     "memory_limit_bytes", "cpu_limit_millis", "pids_limit",
     "job_timeout_seconds",
 })
-_PROXY_HOST = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
+_PROXY_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,13 @@ def validate_worker_profile(raw: object) -> WorkerIsolationProfile:
     writable = raw["writable_mounts"]
     if not isinstance(writable, list) or any(type(x) is not str for x in writable):
         raise IsolationPolicyError("Writable mounts must be a list of paths.")
-    if any(not p.startswith("/tmp/") for p in writable) or len(set(writable)) != len(writable):
-        raise IsolationPolicyError("Only unique, job-ephemeral /tmp mounts are permitted.")
+    if any(
+        not p.startswith("/tmp/")
+        or len(p.split("/")) < 4
+        or any(part in (".", "..") for part in p.split("/"))
+        for p in writable
+    ) or len(set(writable)) != len(writable):
+        raise IsolationPolicyError("Only unique, job-ephemeral child paths below /tmp are permitted.")
 
     proxy = raw["egress_proxy"]
     if type(proxy) is not str:
@@ -101,7 +106,7 @@ def validate_worker_profile(raw: object) -> WorkerIsolationProfile:
     except ValueError:
         proxy_is_ip = False
     if (parsed.scheme != "http" or not parsed.hostname or proxy_is_ip
-            or "." not in parsed.hostname or parsed.hostname in ("localhost", "localhost.localdomain")
+            or not parsed.hostname.endswith(".internal")
             or not _PROXY_HOST.fullmatch(parsed.hostname)
             or parsed.username is not None or parsed.password is not None
             or parsed.path not in ("", "/") or parsed.query or parsed.fragment
