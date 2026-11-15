@@ -153,10 +153,7 @@ if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
 registry = st.session_state["project_registry"]
-gateway_owner = (
-    f"{principal.issuer}\\n{principal.subject}"
-    if principal is not None else "local-prototype"
-)
+gateway_owner = session_identity
 if (
     "execution_gateway" not in st.session_state
     or st.session_state.get("execution_gateway_owner") != gateway_owner
