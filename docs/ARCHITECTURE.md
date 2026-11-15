@@ -23,7 +23,9 @@ The OpenAI adapter is dormant extension code. The current dashboard imports and 
 - Streamlit dashboard shell with zero-cost default (app.py).
 - Task and status models (core/models.py).
 - Deterministic starter planner (core/planner.py).
-- Explicit approval gate for mutating actions (core/safety.py).
+- Basic safety policy helper (core/safety.py).
+- Metadata-only Tool Registry (core/tool_registry.py); no handlers or execution adapters.
+- Session-scoped approval queue (core/approval.py) with explicit approve/reject, expiry, payload fingerprint and visible payload preview. Decisions do not execute actions.
 - AI Brain orchestration layer (core/brain.py).
 - Provider-neutral ModelProvider contract (core/providers/base.py).
 - Built-in offline RuleBasedProvider (core/providers/rule_based.py).
@@ -48,4 +50,4 @@ The built-in planner generates deterministic planning text only. This version do
 
 ## Next modules
 
-Tool Registry, persistent memory, execution queue, audit log, and approval UI. Each must be introduced with tests, least-privilege permissions, and documented zero-cost constraints.
+Persistent project storage, persistent memory, execution queue, and durable audit log. Any future executor requires a separate threat model, exact typed action contracts, least-privilege permissions, one-time authorization consumption, and independent security review. Tool Registry and the non-executing approval UI now exist as a foundation only.
