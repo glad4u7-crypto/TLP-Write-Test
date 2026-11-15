@@ -78,28 +78,32 @@ class SQLiteProjectStore:
         return connection
 
     def _initialize(self) -> None:
+        statements = (
+            """CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                tenant_issuer TEXT NOT NULL CHECK (length(trim(tenant_issuer)) > 0),
+                tenant_subject TEXT NOT NULL CHECK (length(trim(tenant_subject)) > 0),
+                name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 80),
+                description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 500),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_projects_tenant_created
+                ON projects (tenant_issuer, tenant_subject, created_at)""",
+            """CREATE INDEX IF NOT EXISTS idx_projects_tenant_id
+                ON projects (tenant_issuer, tenant_subject, project_id)""",
+        )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                connection.executescript("""
-                    CREATE TABLE IF NOT EXISTS schema_migrations (
-                        version INTEGER PRIMARY KEY,
-                        applied_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS projects (
-                        project_id TEXT PRIMARY KEY,
-                        tenant_issuer TEXT NOT NULL CHECK (length(trim(tenant_issuer)) > 0),
-                        tenant_subject TEXT NOT NULL CHECK (length(trim(tenant_subject)) > 0),
-                        name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 80),
-                        description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 500),
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_projects_tenant_created
-                    ON projects (tenant_issuer, tenant_subject, created_at);
-                    CREATE INDEX IF NOT EXISTS idx_projects_tenant_id
-                    ON projects (tenant_issuer, tenant_subject, project_id);
-                """)
+                # Execute statements individually: sqlite3.executescript() may
+                # implicitly commit a pending transaction before running.
+                for statement in statements:
+                    connection.execute(statement)
                 connection.execute(
                     "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                     (1, datetime.now(timezone.utc).isoformat()),
