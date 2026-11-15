@@ -89,3 +89,14 @@ def test_oidc_adapter_accepts_issued_at_exactly_at_clock_skew_boundary():
         valid_claims(iat=1_560), now=1_500, clock_skew_seconds=60
     )
     assert principal.subject == "subject-123"
+
+
+@pytest.mark.parametrize("claim", ["exp", "iat"])
+def test_oidc_adapter_rejects_unrepresentably_large_integer_timestamps(claim):
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(valid_claims(**{claim: 10**1000}), now=1_500)
+
+
+def test_oidc_adapter_rejects_unrepresentably_large_integer_validation_time():
+    with pytest.raises(OIDCIdentityError):
+        principal_from_oidc_claims(valid_claims(), now=10**1000)
