@@ -279,8 +279,9 @@ def test_nonce_expiry_cleanup_rolls_back_when_insert_fails(tmp_path):
     finally:
         trigger_connection.close()
 
-    with pytest.raises(sqlite3.IntegrityError, match="forced nonce insert failure"):
-        store.consume_approval_nonce(tenant, "new-row", 500, now=200)
+    # Duplicate/constraint-style nonce insertion failures are deliberately
+    # handled as a rejected nonce by the store API (False), not propagated.
+    assert not store.consume_approval_nonce(tenant, "new-row", 500, now=200)
 
     with sqlite3.connect(path) as connection:
         rows = connection.execute(
