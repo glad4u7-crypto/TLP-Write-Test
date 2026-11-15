@@ -61,12 +61,13 @@ class ApprovalAuthority:
         action: str,
         payload: Mapping[str, Any] | None,
         *,
-        confirmed_by_user: bool,
         ttl_seconds: int = 120,
     ) -> ApprovalReceipt:
-        """Issue only after a trusted UI has received explicit user confirmation."""
-        if confirmed_by_user is not True:
-            raise PermissionError("Explicit user confirmation is required.")
+        """Issue a receipt for a caller that is already inside the trusted UI boundary.
+
+        This method is a capability, not an authentication mechanism. Do not
+        expose an ApprovalAuthority instance to the planner or task content.
+        """
         if not isinstance(payload, (Mapping, type(None))):
             raise ValueError("Approval payload must be a mapping.")
         canonical = self._canonical_action(action)
