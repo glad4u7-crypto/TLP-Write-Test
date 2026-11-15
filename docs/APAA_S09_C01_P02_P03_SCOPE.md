@@ -35,3 +35,10 @@ No website is visited by tests. No browser navigation, page interaction, credent
 - DNS resolution failure, empty answers and mixed public/private answers.
 - Redirect allowlist escape, private target, loop and redirect-count rejection.
 - Exact-head Agent Foundation CI and Python Demo CI remain required before verified status.
+
+
+## Local verification update
+
+An isolated local harness mirroring the committed P02/P03 policy implementation and focused tests completed: **21 tests passed**; Python `compileall` passed. The tests use an injected fake DNS resolver and make no outbound web requests. This is focused unit-level evidence, not full repository CI or device/browser integration evidence.
+
+The latest exact branch-head GitHub Actions lookup and combined status must still be checked. Until both required repository workflows are visible and successful on the exact head, P02/P03 remain **CI PENDING / NOT VERIFIED**.
