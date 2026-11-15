@@ -1,7 +1,7 @@
 # APAA S06 — Structured Task Workspace Verification Matrix
 
-**Checkpoint:** APAA-S06-C01-P02  
-**Status:** IMPLEMENTED — EXACT-HEAD CI PASS  
+**Checkpoint:** APAA-S06-C01-P03  
+**Status:** COMPLETE — FINAL DOCUMENTATION-HEAD CI PASS  
 **Branch:** `feature/approval-ui-e2e-p06`  
 **PR:** #5 (Draft, unmerged)  
 **Scope approval:** User instructed to begin S06 on 2026-11-15
@@ -50,4 +50,15 @@ Verified PR head: `730c6de0f3bee756f48b33ee8d42741ff603771c`.
 - Python Demo CI #726 — run `43708182180`: **PASS**. All individual steps completed successfully; full pytest suite reported **427 passed in 11.20s**; demo smoke output check passed.
 - The first S06 CI attempt exposed five test issues (four AppTest interactions attempted before enabling their buttons, and one stale legacy button label). The failure logs were inspected, the tests were corrected, and the exact-head rerun above passed.
 
-This matrix update is documentation-only and creates a new commit. Both existing CI workflows must pass on that new documentation commit before final S06 closure. No third workflow is needed.
+## Final documentation-head verification
+
+The reconciled S06 scope and matrix were tested on exact PR head `c17da8588c7decd7fcb1f003ab3518577cf18de2`:
+
+- Agent Foundation CI #638 — run `43708294777`: **PASS**, 427 tests passed in 12.10s; dependency audit, compileall and every post step succeeded.
+- Python Demo CI #729 — run `43708294866`: **PASS**, 427 tests passed in 13.40s; demo smoke test and every post step succeeded.
+- Both workflow jobs and all individual steps were re-fetched and confirmed completed/success.
+- PR #5 remained Open + Draft and unmerged on the approved base branch.
+
+These exact-head runs include the S06 scope and matrix documentation updates. S06 is **COMPLETE** within its read-only planning UI scope. No third CI workflow was added.
+
+**Next checkpoint:** `APAA-S07-C01-P01` — propose a browser-automation capability architecture and threat/permission model only. No browser/device action handler or execution capability is authorized by this proposal.
