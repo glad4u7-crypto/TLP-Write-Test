@@ -117,3 +117,12 @@ def test_queue_has_no_execution_or_io_surface():
     queue = TaskQueue()
     assert not hasattr(queue, "execute")
     assert not hasattr(queue, "dispatch")
+
+
+def test_removed_task_id_can_be_reused_without_stale_heap_corruption():
+    queue = TaskQueue()
+    queue.enqueue("reused", priority=0)
+    queue.remove("reused")
+    queue.enqueue("reused", priority=10)
+    queue.enqueue("other", priority=5)
+    assert [queue.dequeue().task_id, queue.dequeue().task_id] == ["reused", "other"]
