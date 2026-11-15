@@ -1,9 +1,9 @@
 """Fail-closed Playwright navigation controller.
 
-The controller applies NavigationPolicy to the initial URL and every routed
-request (including redirect hops) before allowing the browser request to
-continue. It is a policy enforcement layer, not a network sandbox: DNS
-rebinding and browser/OS traffic outside this page route remain out of scope.
+Context-level routing is preferred because it observes requests from every page
+in the context. This remains a browser request policy layer, not a network
+sandbox: WebSockets, browser/OS background traffic and traffic outside Playwright
+routing still require a separately enforced network egress boundary.
 """
 from __future__ import annotations
 
@@ -17,19 +17,33 @@ class SafeNavigationError(RuntimeError):
 
 
 class SafeNavigationController:
-    """Navigate one page while validating every request observed by Playwright."""
+    """Navigate with context-wide routing when a BrowserContext is supplied.
 
-    def __init__(self, page: Any, policy: NavigationPolicy) -> None:
+    Pass both context and page to enable context-level interception. Supplying
+    only page preserves the earlier page-scoped behavior for compatibility;
+    that narrower mode must not be treated as context-wide protection.
+    """
+
+    def __init__(self, page: Any, policy: NavigationPolicy, *, context: Any | None = None) -> None:
         if page is None:
             raise TypeError("page is required.")
         if not isinstance(policy, NavigationPolicy):
             raise TypeError("policy must be a NavigationPolicy.")
+        if context is not None and not callable(getattr(context, "route", None)):
+            raise TypeError("context must provide a route method.")
         self._page = page
+        self._context = context
+        self._router = context if context is not None else page
         self._policy = policy
         self._navigating = False
 
+    @property
+    def context_wide(self) -> bool:
+        """Whether routing is installed on the entire BrowserContext."""
+        return self._context is not None
+
     def navigate(self, url: str, *, timeout_ms: int = 15_000) -> Any:
-        """Navigate after installing a temporary all-request policy route."""
+        """Navigate after installing a temporary request policy route."""
         if self._navigating:
             raise SafeNavigationError("Concurrent navigation is not supported.")
         if type(timeout_ms) is not int or not 1_000 <= timeout_ms <= 60_000:
@@ -49,7 +63,7 @@ class SafeNavigationController:
 
         installed = False
         try:
-            self._page.route("**/*", guard)
+            self._router.route("**/*", guard)
             installed = True
             response = self._page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             if blocked:
@@ -64,6 +78,6 @@ class SafeNavigationController:
         finally:
             try:
                 if installed:
-                    self._page.unroute("**/*", guard)
+                    self._router.unroute("**/*", guard)
             finally:
                 self._navigating = False
