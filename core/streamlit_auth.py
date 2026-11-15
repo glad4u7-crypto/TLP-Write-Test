@@ -15,6 +15,16 @@ class OIDCIdentityError(ValueError):
     """Raised when Streamlit's OIDC identity claims are missing or invalid."""
 
 
+def _is_finite_number(value: Any) -> bool:
+    """Return False for non-finite values and integers too large for float conversion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def principal_from_oidc_claims(
     claims: Mapping[str, Any] | None,
     *,
@@ -24,11 +34,7 @@ def principal_from_oidc_claims(
     """Convert trusted Streamlit OIDC claims to a validated principal."""
     if not isinstance(clock_skew_seconds, int) or isinstance(clock_skew_seconds, bool) or clock_skew_seconds < 0:
         raise OIDCIdentityError("OIDC clock skew must be a non-negative integer.")
-    if now is not None and (
-        isinstance(now, bool)
-        or not isinstance(now, (int, float))
-        or not math.isfinite(now)
-    ):
+    if now is not None and not _is_finite_number(now):
         raise OIDCIdentityError("OIDC validation time is invalid.")
     if not isinstance(claims, Mapping):
         raise AuthenticationRequired("OIDC identity claims are unavailable.")
@@ -42,17 +48,9 @@ def principal_from_oidc_claims(
         raise OIDCIdentityError("OIDC issuer claim is missing.")
     if not isinstance(subject, str) or not subject.strip():
         raise OIDCIdentityError("OIDC subject claim is missing.")
-    if (
-        isinstance(expires_at, bool)
-        or not isinstance(expires_at, (int, float))
-        or not math.isfinite(expires_at)
-    ):
+    if not _is_finite_number(expires_at):
         raise OIDCIdentityError("OIDC expiration claim is invalid.")
-    if (
-        isinstance(issued_at, bool)
-        or not isinstance(issued_at, (int, float))
-        or not math.isfinite(issued_at)
-    ):
+    if not _is_finite_number(issued_at):
         raise OIDCIdentityError("OIDC issued-at claim is invalid.")
     current_time = time.time() if now is None else now
     if expires_at <= current_time - clock_skew_seconds:
