@@ -23,7 +23,9 @@
 | Prohibited action boundary | Payment/purchase/checkout/trading/money movement always denied | DESIGN |
 | Typed browser job/action/result contract | Schema strictness, unknown action rejection, approval digest binding, job expiry and replay tests | DESIGN |
 | Mobile approval UX | Exact origin/action preview, no preselected consent, cancellation and stale-state invalidation | DESIGN |
-| CI | Existing Agent Foundation CI and Python Demo CI on exact final documentation commit | PENDING |
+| CI baseline | Agent Foundation CI #647 / `43708893269`: 427 passed, audit and compile passed on design baseline `436a6c925d7a490f01104510ae8d0040815c44fa` | PASS (baseline) |
+| CI baseline | Python Demo CI #738 / `43708893252`: 427 passed and demo smoke passed on design baseline `436a6c925d7a490f01104510ae8d0040815c44fa` | PASS (baseline) |
+| Final record commit CI | Both existing workflows must pass on the final documentation record commit | PENDING |
 | Real deployment review | Independent review of browser binary, container, OS identity, egress firewall and incident handling | NOT STARTED |
 | Android compatibility | Browser-based mobile UI and real-device usability test; no native control claim | NOT STARTED |
 
@@ -46,3 +48,11 @@
 - `APAA_S07_MOBILE_APPROVAL_UX.md`: mobile-first review card, one-action approval, cancellation, accessibility and Android boundary.
 
 These are specifications only. No schema validator, UI screen or browser worker is implemented.
+
+
+## Design baseline CI evidence
+
+- Agent Foundation CI #647 / `43708893269`: **PASS**, 427 tests passed in 16.37s; dependency audit, compileall and all post steps succeeded.
+- Python Demo CI #738 / `43708893252`: **PASS**, 427 tests passed in 15.05s; demo smoke check and all post steps succeeded.
+- Exact design baseline: `436a6c925d7a490f01104510ae8d0040815c44fa`.
+- The final scope/matrix record commit is separately gated by both existing workflows; no additional workflow was created.
