@@ -8,12 +8,22 @@ from core.providers.base import ProviderError
 
 
 class OpenAIResponsesProvider:
-    def __init__(self, api_key: str | None = None, model: str | None = None, timeout: int = 30):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout: int = 30,
+        *,
+        external_enabled: bool = False,
+        paid_cost_approved: bool = False,
+    ):
         key = os.getenv("OPENAI_API_KEY", "") if api_key is None else api_key
         selected_model = os.getenv("AGENT_MODEL", "gpt-6-luna") if model is None else model
         self.api_key = key.strip()
         self.model = selected_model.strip()
         self.timeout = timeout
+        self.external_enabled = external_enabled is True
+        self.paid_cost_approved = paid_cost_approved is True
         if not self.model:
             raise ValueError("Model name must not be empty.")
         if timeout <= 0:
@@ -22,9 +32,7 @@ class OpenAIResponsesProvider:
     def generate(self, prompt: str, instructions: str = "") -> str:
         if not prompt.strip():
             raise ValueError("Prompt must not be empty.")
-        external_enabled = os.getenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "").strip().lower() == "true"
-        cost_approved = os.getenv("AGENT_PAID_PROVIDER_COST_APPROVED", "").strip().lower() == "true"
-        if not (external_enabled and cost_approved):
+        if not (self.external_enabled and self.paid_cost_approved):
             raise ProviderError(
                 "External provider is disabled. Explicit provider opt-in and paid-cost approval are both required."
             )
