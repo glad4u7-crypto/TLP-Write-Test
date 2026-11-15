@@ -88,3 +88,22 @@ def test_non_json_payload_cannot_receive_or_consume_approval():
 
     receipt = authority.issue("write_file", {"path": "safe.txt"})
     assert authority.consume(receipt, "write_file", {"path": object()}) is False
+
+
+def test_receipt_can_only_be_consumed_once_under_concurrency():
+    from concurrent.futures import ThreadPoolExecutor
+
+    authority = ApprovalAuthority()
+    payload = {"path": "concurrent.txt"}
+    receipt = authority.issue("write_file", payload)
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(
+            pool.map(
+                lambda _: authority.consume(receipt, "write_file", payload),
+                range(12),
+            )
+        )
+
+    assert results.count(True) == 1
+    assert results.count(False) == 11
