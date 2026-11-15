@@ -83,7 +83,7 @@ def test_plan_rejects_duplicate_ids_and_invalid_step():
 
 def test_plan_step_and_aggregate_payload_limits():
     validator = PreExecutionValidator(
-        max_steps=2, max_payload_bytes=64, max_total_payload_bytes=80
+        max_steps=2, max_payload_bytes=64, max_total_payload_bytes=70
     )
     too_many = validator.validate_plan([
         {"step_id": str(i), "action": "inspect_repository", "payload": {}}
