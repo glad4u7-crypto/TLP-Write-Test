@@ -121,11 +121,23 @@ def test_invalid_oidc_claims_clear_stale_identity_capabilities(monkeypatch):
 
     assert not app.exception
     assert any("Authentication could not be verified" in item.value for item in app.error)
-    assert "active_identity_subject" not in app.session_state
-    assert "approval_authority" not in app.session_state
-    assert "execution_gateway" not in app.session_state
-    assert "approval_session_scope" not in app.session_state
-    assert "pending_project" not in app.session_state
+    assert not any(
+        key in app.session_state
+        for key in (
+            "active_identity_subject",
+            "approval_session_scope",
+            "approval_authority_config_id",
+            "approval_authority",
+            "execution_gateway",
+            "execution_gateway_owner",
+            "project_registry",
+            "project_registry_tenant",
+            "pending_project",
+            "selected_project_id",
+            "free_plan",
+            "draft_task",
+        )
+    )
 
 
 def test_authenticated_app_fails_closed_for_short_signing_secret(monkeypatch):
