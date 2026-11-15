@@ -167,8 +167,8 @@ def test_logout_invalidates_pre_logout_approval_receipt():
 def test_session_identity_key_is_unambiguous_for_delimiter_like_identity_values():
     from core.session_security import session_identity_key
 
-    first = session_identity_key("https://issuer.example/path\\\\nsubject", "alice")
-    second = session_identity_key("https://issuer.example/path", "subject\\\\nalice")
+    first = session_identity_key("https://issuer.example/path\\nsubject", "alice")
+    second = session_identity_key("https://issuer.example/path", "subject\\nalice")
 
     assert first != second
 
