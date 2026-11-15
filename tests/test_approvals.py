@@ -157,3 +157,18 @@ def test_durable_nonce_mode_accepts_tenant_and_rejects_replay(tmp_path):
     receipt = authority.issue("write_file", payload, tenant=tenant)
     assert authority.consume(receipt, "write_file", payload, tenant=tenant) is True
     assert authority.consume(receipt, "write_file", payload, tenant=tenant) is False
+
+
+def test_durable_approval_receipt_cannot_be_transferred_to_another_issuer(tmp_path):
+    from core.storage import TenantKey
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    secret = b"test-only-signing-secret-material-32-bytes-minimum"
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    owner = TenantKey("https://issuer-one.example", "same-subject")
+    other = TenantKey("https://issuer-two.example", "same-subject")
+    authority = ApprovalAuthority(nonce_store=store, signing_secret=secret)
+    payload = {"name": "issuer private", "description": ""}
+    receipt = authority.issue("create_project", payload, tenant=owner)
+    assert authority.consume(receipt, "create_project", payload, tenant=other) is False
+    assert authority.consume(receipt, "create_project", payload, tenant=owner) is True
