@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from core.approvals import ApprovalAuthority, ApprovalReceipt
+from core.audit import ExecutionAuditEvent, create_audit_event
 from core.safety import authorize_action
 
 
@@ -43,6 +44,7 @@ class ExecutionGateway:
     ) -> None:
         self._handlers: dict[str, ActionHandler] = {}
         self._approval_authority = approval_authority
+        self._audit_events: list[ExecutionAuditEvent] = []
         for action, handler in (handlers or {}).items():
             canonical = _canonical_action(action)
             if not canonical or not callable(handler):
@@ -52,6 +54,23 @@ class ExecutionGateway:
             if canonical in self._handlers:
                 raise ValueError(f"Duplicate action handler: {canonical}")
             self._handlers[canonical] = handler
+
+    @property
+    def audit_events(self) -> tuple[ExecutionAuditEvent, ...]:
+        """Read-only snapshot of payload-free events for this process lifetime."""
+        return tuple(self._audit_events)
+
+    def _finish(
+        self,
+        action: object,
+        executed: bool,
+        reason: str,
+        output: Any = None,
+    ) -> ExecutionResult:
+        self._audit_events.append(
+            create_audit_event(_canonical_action(action), executed, reason)
+        )
+        return ExecutionResult(executed, reason, output)
 
     def execute(
         self,
@@ -64,7 +83,7 @@ class ExecutionGateway:
     ) -> ExecutionResult:
         """Run one handler only after read-only, Auto-Run, or receipt authorization."""
         if payload is not None and not isinstance(payload, Mapping):
-            return ExecutionResult(False, "Action payload must be a mapping.")
+            return self._finish(action, False, "Action payload must be a mapping.")
 
         decision = authorize_action(action)
         authorized = decision.allowed
@@ -86,16 +105,20 @@ class ExecutionGateway:
                 authorized = decision.allowed
 
         if not authorized:
-            return ExecutionResult(False, decision.reason)
+            return self._finish(action, False, decision.reason)
 
         canonical = _canonical_action(action)
         handler = self._handlers.get(canonical)
         if handler is None:
-            return ExecutionResult(False, "No trusted handler is registered for this action.")
+            return self._finish(
+                action, False, "No trusted handler is registered for this action."
+            )
 
         try:
             output = handler(payload or {})
         except Exception:
-            return ExecutionResult(False, "The registered action handler failed.")
+            return self._finish(action, False, "The registered action handler failed.")
 
-        return ExecutionResult(True, "Action executed after permission approval.", output)
+        return self._finish(
+            action, True, "Action executed after permission approval.", output
+        )
