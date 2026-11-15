@@ -5,6 +5,8 @@ from collections.abc import MutableMapping
 _IDENTITY_BOUND_KEYS = (
     "pending_project",
     "selected_project_id",
+    "project_registry",
+    "project_registry_tenant",
     "approval_authority",
     "execution_gateway",
     "execution_gateway_owner",
