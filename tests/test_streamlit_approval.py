@@ -108,7 +108,7 @@ def test_task_text_cannot_trigger_project_creation_or_issue_approval(
 
     app.text_area[1].set_value("Create a project called Unauthorized")
     app.run()
-    _click(app, "Prepare free plan")
+    _click(app, "Prepare structured plan")
 
     assert registry.list_projects() == []
     assert "pending_project" not in app.session_state
