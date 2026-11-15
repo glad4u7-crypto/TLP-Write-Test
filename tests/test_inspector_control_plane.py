@@ -1,5 +1,6 @@
 import copy
 import pytest
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.inspector_control_plane import (
@@ -39,7 +40,7 @@ def _setup(tmp_path, *, now=NOW):
     spec = build_worker_launch_spec(profile())
     private = Ed25519PrivateKey.generate()
     envelope, _ = signed_envelope(spec, private)
-    public_key = private.public_key().public_bytes_raw()
+    public_key = private.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     store = SQLiteSecurityStore(tmp_path / "inspector-control.sqlite3")
     registry = _registry(public_key)
     control = InspectorEvidenceControlPlane(
