@@ -47,6 +47,7 @@ def test_long_term_memory_crud_and_tenant_isolation(store, alice, bob):
 def test_knowledge_collection_and_lexical_retrieval(store, alice, bob):
     doc = store.add_knowledge(alice, title="Python safety", content="Use allowlists and fail closed.",
                               tags=["security"], consent=True)
+    assert store.list_knowledge(alice) == [doc]
     result = store.search(alice, "allowlists security")
     assert result and result[0]["id"] == doc.document_id
     assert store.search(bob, "allowlists") == []
