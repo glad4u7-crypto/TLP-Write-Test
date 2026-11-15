@@ -214,3 +214,84 @@ def test_task_cannot_supply_its_own_auto_run_allowlist():
             auto_run_actions={"write_file"},
         )
     assert calls == []
+
+
+def test_gateway_persists_intent_and_completion_audit(tmp_path):
+    from core.audit import JsonlAuditLog
+
+    authority = ApprovalAuthority()
+    payload = {"path": "approved.txt"}
+    calls = []
+    log = JsonlAuditLog(tmp_path / "gateway.jsonl")
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data) or "saved"},
+        approval_authority=authority,
+        audit_log=log,
+    )
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert calls == [payload]
+    assert log.verify() != log.GENESIS
+    assert len((tmp_path / "gateway.jsonl").read_text().splitlines()) == 2
+    assert "approved.txt" not in (tmp_path / "gateway.jsonl").read_text()
+
+
+def test_gateway_fails_closed_when_intent_audit_cannot_be_written(tmp_path, monkeypatch):
+    from core.audit import JsonlAuditLog
+
+    authority = ApprovalAuthority()
+    calls = []
+    log = JsonlAuditLog(tmp_path / "gateway.jsonl")
+
+    def fail_append(event):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(log, "append", fail_append)
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data)},
+        approval_authority=authority,
+        audit_log=log,
+    )
+    payload = {"path": "must-not-write.txt"}
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is False
+    assert "not executed" in result.reason
+    assert calls == []
+
+
+def test_gateway_reports_completion_audit_failure_after_side_effect(tmp_path, monkeypatch):
+    from core.audit import JsonlAuditLog
+
+    authority = ApprovalAuthority()
+    calls = []
+    log = JsonlAuditLog(tmp_path / "gateway.jsonl")
+    original_append = log.append
+    count = {"value": 0}
+
+    def fail_second_append(event):
+        count["value"] += 1
+        if count["value"] == 2:
+            raise OSError("disk became unavailable")
+        return original_append(event)
+
+    monkeypatch.setattr(log, "append", fail_second_append)
+    gateway = ExecutionGateway(
+        {"write_file": lambda data: calls.append(data) or "saved"},
+        approval_authority=authority,
+        audit_log=log,
+    )
+    payload = {"path": "already-written.txt"}
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert "completion audit persistence failed" in result.reason
+    assert calls == [payload]
+    assert len((tmp_path / "gateway.jsonl").read_text().splitlines()) == 1
