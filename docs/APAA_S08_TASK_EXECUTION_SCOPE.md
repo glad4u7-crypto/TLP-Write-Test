@@ -3,7 +3,7 @@
 **Roadmap identity:** S08 Task Execution Engine, defined in the APAA Master Roadmap.
 **Working branch:** `apaa/s08-c02-c03-reliability`
 **Base:** `feature/agent-v0.3-zero-cost-core`
-**Current checkpoint:** `APAA-S08-C03-P03` — implementation added; exact-head CI verification pending.
+**Current checkpoint:** `APAA-S08-C03-COMPLETE` — C02-P02 through C03-P03 exact-head CI verified; C04-P01 next.
 
 ## Scope
 
@@ -83,7 +83,15 @@ Implemented in `CompletionVerifier`:
 
 - Unit tests: `tests/test_execution_control.py`.
 - C02-P01 sequential runner is separately implemented in `core/sequential_executor.py`; its exact-head CI passed on commit `b0389b736bbfdc05941ea597812d0064cc6c5843`.
-- C02-P02 through C03-P03 are implemented on `apaa/s08-c02-c03-reliability`; their final CI status must be confirmed on the exact final branch head before marking PASS.
+- C02-P02 through C03-P03 are verified on code-bearing snapshot `b9d0b08797fba78de97725d98a535132c470542a`: Agent Foundation CI run `43732335321` PASS and Python Demo CI run `43732335307` PASS.
 - These are Python controller-level primitives, not yet connected to the Android client, dashboard, or production runtime.
 - The trusted ExecutionGateway remains the only authorized action-dispatch boundary. The multi-step adapter must use it.
 - No payment, purchase, trading, money movement, paid API/provider, API key, Auto-Run, deployment, or merge is enabled by this work.
+
+
+## C02-C03 exact-head verification
+
+- Verified code-bearing snapshot: `b9d0b08797fba78de97725d98a535132c470542a`.
+- Agent Foundation CI (`43732335321`) and Python Demo CI (`43732335307`) both completed successfully.
+- C02-P02, C02-P03, C03-P01, C03-P02 and C03-P03 pass repository CI. This does not imply production readiness or Android/dashboard integration.
+- Next checkpoint: C04-P01 — pre-execution validation.
