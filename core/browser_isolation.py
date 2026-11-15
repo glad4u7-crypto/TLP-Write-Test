@@ -27,7 +27,7 @@ _REQUIRED_FIELDS = frozenset({
     "memory_limit_bytes", "cpu_limit_millis", "pids_limit",
     "job_timeout_seconds",
 })
-_PROXY_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+_PROXY_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 @dataclass(frozen=True)
