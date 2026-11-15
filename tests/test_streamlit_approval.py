@@ -112,3 +112,47 @@ def test_task_text_cannot_trigger_project_creation_or_issue_approval(
 
     assert registry.list_projects() == []
     assert "pending_project" not in app.session_state
+
+
+def test_streamlit_replacing_reviewed_details_confirms_only_latest_payload(
+    tmp_path, monkeypatch
+):
+    app = _app(tmp_path, monkeypatch)
+    registry = app.session_state["project_registry"]
+
+    _prepare_project(app, name="Old draft", description="Must never be created")
+    assert registry.list_projects() == []
+
+    # A second explicit review replaces the pending payload before approval.
+    app.text_input[0].set_value("Latest draft")
+    app.text_area[0].set_value("Only these reviewed details may be created")
+    _click(app, "Review project details")
+
+    assert app.session_state["pending_project"] == {
+        "name": "Latest draft",
+        "description": "Only these reviewed details may be created",
+    }
+    assert registry.list_projects() == []
+
+    _click(app, "Confirm and create project")
+    projects = registry.list_projects()
+    assert len(projects) == 1
+    assert projects[0].name == "Latest draft"
+    assert projects[0].description == "Only these reviewed details may be created"
+    assert "pending_project" not in app.session_state
+
+
+def test_streamlit_second_rerun_after_confirmation_cannot_duplicate_project(
+    tmp_path, monkeypatch
+):
+    app = _app(tmp_path, monkeypatch)
+    registry = app.session_state["project_registry"]
+
+    _prepare_project(app, name="Single confirmation")
+    _click(app, "Confirm and create project")
+    assert len(registry.list_projects()) == 1
+
+    # A plain rerun has no new button event and must not dispatch again.
+    app.run()
+    assert len(registry.list_projects()) == 1
+    assert "pending_project" not in app.session_state
