@@ -29,7 +29,7 @@ def test_explicit_ui_confirmation_receipt_allows_exact_project_creation(tmp_path
     payload = {"name": "APAA workspace", "description": "Reviewed project details"}
 
     # This receipt issuance represents the trusted UI Confirm event.
-    receipt = authority.issue("create_project", payload)
+    receipt = authority.issue("create_project", payload, session_scope="session-A")
     result = gateway.execute("create_project", payload, approval_receipt=receipt)
 
     assert result.executed is True
