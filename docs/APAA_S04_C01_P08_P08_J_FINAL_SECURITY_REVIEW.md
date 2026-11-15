@@ -383,3 +383,40 @@ PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `featur
 ### Next serial work
 
 Continue with the authenticated project-database initialization failure path and confirm that no project/task actions are exposed if the security store initializes but the project store cannot. Then reassess the authenticated runtime's partial-initialization and session-state behavior. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
+
+
+## P08-P09-AS — Authenticated project-store initialization failure and partial-startup regression
+
+Verification date: 2026-11-15  
+Reviewed PR head: `b6d4cd425a3ed842d905e2546a457a942a77eda2`
+
+### Work completed
+
+- Added an AppTest regression in the existing `tests/test_app_smoke.py`; no new files and no runtime application changes were required.
+- The test configures a valid authenticated test principal, a valid 32-byte approval signing secret, and a safe private security-database path.
+- It deliberately supplies a symlinked parent directory for the project database so `SQLiteProjectStore` initialization fails after `SQLiteSecurityStore` has initialized successfully.
+- It verifies the security database was created, the project database was not created through the symlink, the app stops with the durable-storage error, and Logout is the only remaining button. No project or task actions are exposed after the partial initialization.
+- This is a regression test for safe startup failure, not proof of a full transactional rollback of the security database file. The security store is initialized before the project store and its file may remain after the app stops; no authenticated execution path is exposed.
+
+### Current-head CI evidence
+
+All four required GitHub Actions runs completed successfully for the exact reviewed commit:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43690660413 | PASS |
+| Agent Foundation CI | push | 43690660416 | PASS |
+| Python Demo CI | pull_request | 43690664045 | PASS |
+| Agent Foundation CI | pull_request | 43690664019 | PASS |
+
+Verified steps include dependency installation, full pytest suite, `demo.py` smoke test, `pip-audit`, Python module compilation, and foundation tests. The dependency audit reported no known vulnerabilities.
+
+### Scope and release status
+
+This verifies the AppTest startup behavior when project-store initialization fails after security-store initialization. It does not prove live OIDC redirects, browser cookie/session controls, CSRF resistance, multi-identity browser isolation, secret-manager correctness, or protection from same-account filesystem races. The prior P09-AR signing-secret and security-database path regressions remain covered and the complete four-run CI matrix passes at this head.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Review authenticated-runtime partial initialization and session-state recovery after a durable-store failure, including a rerun/retry scenario in the same Streamlit session. Preserve the fail-closed behavior and avoid leaving stale approval authority, execution gateway, or tenant-bound project registry state reachable. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
