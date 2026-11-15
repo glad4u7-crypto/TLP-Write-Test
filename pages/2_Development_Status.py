@@ -27,7 +27,7 @@ right.metric("Production readiness", "Not ready")
 st.caption(
     "Dashboard source: feature/repository-inspector-v0.1 · "
     "Reviewed snapshot: 2026-11-15 · "
-    "Reviewed branch head: 010326d22880a56b4165a578bdd4179409c8d2ea"
+    "Baseline implementation commit: 010326d22880a56b4165a578bdd4179409c8d2ea"
 )
 
 st.divider()
@@ -46,9 +46,9 @@ for name, detail in completed:
 st.divider()
 st.subheader("Verification evidence")
 st.success(
-    "GitHub Actions CI passed for dashboard commit "
-    "010326d22880a56b4165a578bdd4179409c8d2ea (run #58, "
-    "Agent Foundation CI; compile and foundation tests)."
+    "Previous baseline CI passed for commit "
+    "010326d22880a56b4165a578bdd4179409c8d2ea (Agent Foundation CI; "
+    "compile and foundation tests). The new status-page commit is undergoing CI."
 )
 st.markdown(
     "- CI result applies to the dashboard branch commit shown above; it does not "
