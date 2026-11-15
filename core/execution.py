@@ -119,7 +119,6 @@ class ExecutionGateway:
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
         tenant: TenantKey | None = None,
-        session_scope: str = "",
     ) -> ExecutionResult:
         """Run one handler only after policy + approval + durable intent audit."""
         if payload is not None and not isinstance(payload, Mapping):
@@ -141,7 +140,7 @@ class ExecutionGateway:
         if not authorized and self._approval_authority is not None:
             if self._approval_authority.consume(
                 approval_receipt, action, payload, tenant=tenant,
-                session_scope=session_scope or self._session_scope,
+                session_scope=self._session_scope,
             ):
                 exact_action = _canonical_action(action)
                 decision = authorize_action(action, approved_action=exact_action)
