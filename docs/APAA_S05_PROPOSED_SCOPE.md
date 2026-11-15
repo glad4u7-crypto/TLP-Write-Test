@@ -4,7 +4,8 @@
 **Status:** IMPLEMENTED — CODE AND RECONCILED-DOCUMENTATION CI PASS; FINAL RECORD-ONLY HEAD PENDING  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
-**Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
+**Approved by user:** 2026-11-15; approval recorded in this conversation  
+**Implementation branch:** feature/approval-ui-e2e-p06
 
 ## 1. Purpose and baseline
 
