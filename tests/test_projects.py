@@ -161,7 +161,9 @@ def test_persistent_registry_rejects_cross_issuer_and_cross_subject_access(tmp_p
     assert registry.list_projects_for_owner(owner) == [project]
     assert registry.get_for_owner(project.project_id, owner) == project
     for attacker in (other_issuer, other_subject):
-        assert registry.list_projects_for_owner(attacker) == []
+        # This registry is tenant-bound and fails closed for foreign principals.
+        with pytest.raises(AuthorizationDenied):
+            registry.list_projects_for_owner(attacker)
         with pytest.raises(AuthorizationDenied):
             registry.get_for_owner(project.project_id, attacker)
         with pytest.raises(AuthorizationDenied):
