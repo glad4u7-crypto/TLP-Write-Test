@@ -1,18 +1,22 @@
 # APAA S08-C02 — Durable Execution Foundation
 
-P01: guarded in-process execution. P02: durable SQLite queue, leases, bounded retries and idempotency. P03: dead-letter queue, safe queued-task cancellation, and tamper-evident audit chain.
+P01–P03: guarded in-process execution, durable SQLite queue, leases/retries, idempotency, dead-letter queue, queued cancellation and hash-chained audit.
 
-## Safety boundaries
-- Deny by default: permission grant AND explicit user consent are both required.
-- Only explicitly registered in-process handlers execute.
-- No browser, device, network, payment, purchase, deployment, or firewall actions.
-- Lease recovery is at-least-once, not exactly-once. Side-effecting adapters must enforce idempotency at the destination.
-- Cancellation is supported only while QUEUED. Running Python handlers cannot be safely force-killed; cancellation returns false rather than pretending the work stopped.
-- Retry exhaustion and exhausted leases move tasks to DEAD_LETTER for inspection; no automatic replay from that queue.
-- Audit events use a global SHA-256 hash chain. This detects edits/deletions/reordering relative to the retained chain, but a local attacker able to rewrite the entire database can recompute it. Production requires an external append-only/WORM anchor or signed checkpoints.
-- SQLite is a single-host persistence layer, not distributed consensus.
+P04 adds a security-hardening module:
+- strict JSON payload/action validation (64 KiB default payload cap, depth limit 12, no NaN/Infinity);
+- versioned action policy registry (missing policy is deny);
+- durable, scope-bound consent grants with expiry and immediate revocation;
+- SQLite-consistent backups and restore with external HMAC-SHA256 signature files.
 
-## Run tests
+## Critical safety boundaries
+- P04 security controls are reusable primitives; they are not yet wired as mandatory gates into every P01–P03 execution path. Integration is a separately verified next step.
+- HMAC key is caller-supplied, must be at least 32 bytes, and is never stored in the database. Keep it in a secure secret store; never commit it.
+- Signed backup protects integrity/authenticity only while the HMAC key remains secret. It does not encrypt backup contents.
+- Restore verifies signature and SQLite integrity before writing to target.
+- No network, browser, device, payment, purchase, deployment, or firewall action is present.
+- Lease recovery remains at-least-once; SQLite is single-host, not distributed consensus.
+
+## Run all tests
 `python -m unittest discover -s tests -v`
 
 Python 3.11+, standard library only.
