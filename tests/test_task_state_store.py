@@ -157,3 +157,25 @@ def test_concurrent_store_instances_use_compare_and_swap(tmp_path):
         thread.join()
     assert sorted(outcomes) == ["conflict", "saved"]
     assert store_one.get(ALICE, initial.task.task_id).snapshot.version == 1
+
+
+def test_event_source_must_match_current_persisted_status(store):
+    lifecycle, initial, created = make_initial()
+    store.create(ALICE, initial, created, consent=True)
+    planned = lifecycle.transition(initial.task.task_id, TaskStatus.PLANNED, expected_version=0)
+    mismatched = TaskLifecycleEvent(
+        initial.task.task_id, TaskStatus.CANCELLED, TaskStatus.PLANNED,
+        1, lifecycle.events[-1].occurred_at, "mismatched_source",
+    )
+    with pytest.raises(ValueError, match="source status"):
+        store.save_transition(ALICE, planned, mismatched, expected_version=0, consent=True)
+    assert store.get(ALICE, initial.task.task_id).snapshot.version == 0
+
+
+def test_missing_task_transition_raises_not_found(store):
+    lifecycle, initial, _ = make_initial()
+    planned = lifecycle.transition(initial.task.task_id, TaskStatus.PLANNED, expected_version=0)
+    with pytest.raises(TaskStateNotFound):
+        store.save_transition(
+            ALICE, planned, lifecycle.events[-1], expected_version=0, consent=True
+        )
