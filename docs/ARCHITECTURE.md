@@ -30,6 +30,16 @@ This repository contains a reusable general-purpose personal agent foundation. T
 - External model adapters are dormant extension points and must remain disabled by default. No automatic fallback to a paid provider is permitted.
 - A future paid provider requires a separate explicit user opt-in and separate cost approval; no credentials or billable service are needed for the current build.
 
+## Task intake and planning boundary
+
+- `core.planner.validate_task_intake` accepts text-only task descriptions, normalizes whitespace, rejects unsupported control characters and empty input, and enforces a 4,000-character bound.
+- `core.planner.create_structured_plan` returns a typed, deterministic `TaskPlan` with schema version, content-derived stable plan ID, ordered steps, status, clarification questions and safety notes.
+- Plans can be READY, NEEDS_CLARIFICATION or BLOCKED. The blocked-intent detector is deliberately conservative and lexical; it is not semantic intent understanding and may require users to rephrase informational requests that contain prohibited action wording.
+- Proposed mutations are labelled as proposals requiring separate action-specific human approval. This label is not an approval and does not create a receipt.
+- The planner has no reference to `ApprovalAuthority` or `ExecutionGateway`; it cannot issue receipts, register handlers or dispatch actions.
+- The legacy `create_plan` string-list interface remains available for existing callers.
+- Planning remains deterministic, offline and provider-free. S05 does not enable browser, shell, filesystem, email, network, device or other real-world handlers.
+
 ## Approval and execution boundary
 
 - The UI's current mutation is project creation only.
