@@ -14,7 +14,7 @@
 | S08-C03-P01 | Timeout | `ExecutionDeadline`: bounded cooperative deadline; distinguishes pre-dispatch timeout from uncertain post-dispatch outcome | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
 | S08-C03-P02 | Retry/recovery | `SafeRetryPolicy`: bounded retry only for explicit pre-dispatch failures; unknown outcomes never retried | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
 | S08-C03-P03 | Completion verification | `CompletionVerifier`: read-only expected/observed verification; mismatch and verifier errors fail closed | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
-| S08-C04-P01 | Pre-execution validation | Not started | Pending | PENDING |
+| S08-C04-P01 | Pre-execution validation | `core/pre_execution_validation.py`: bounded action/payload/plan validation; distinguishes read-only from approval-required mutations | `tests/test_pre_execution_validation.py` | IMPLEMENTED — CI pending |
 | S08-C04-P02 | Permission check | Not started; must use trusted approval gateway | Pending | PENDING |
 | S08-C04-P03 | Audit | Not started; must use payload-free durable audit | Pending | PENDING |
 
@@ -133,3 +133,13 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 | Python Demo CI | [43732335307](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43732335307) | PASS — full test suite and demo smoke passed |
 
 C02-P02, C02-P03, C03-P01, C03-P02 and C03-P03 are verified at repository CI level on the exact code-bearing snapshot. The next chapter is C04 Safety; no merge or deployment was performed.
+
+
+## C04-P01 implementation review (verification pending)
+
+- Added `PreExecutionValidator` to validate canonical action identifiers, exact known action eligibility, mapping-only JSON payloads, finite JSON values, byte/depth/string/key limits, unique step IDs, maximum plan size and aggregate payload size.
+- Read-only allowlisted actions are marked as not requiring approval; known mutations are marked approval-required. This is validation metadata only: it does not issue receipts, grant permission, or dispatch actions. The trusted `ExecutionGateway` remains the final authorization boundary.
+- Unknown, prohibited, malformed, noncanonical and oversized intents fail closed. No handler execution or I/O is performed.
+- Added tests for read-only/mutation distinction, prohibited/unknown actions, malformed payloads, NaN/infinity, depth/byte bounds, plan limits, duplicate IDs and invalid configuration.
+- Code commit: `cdf6288f27f05da0d096cca0fe195cc4ea2efead`; test commit: `c264359c3afb46fe7fa3d66b4753711673c3aa5b`.
+- Exact-head CI is pending; do not mark PASS until both existing workflows succeed.
