@@ -88,17 +88,17 @@ Both workflow runs were re-fetched after completion. Each job and every listed s
 | Area | P03 evidence | Status |
 |---|---|---|
 | HTTPS URL parsing and canonicalization | Deterministic URL/IDNA/authority/port validation tests | IMPLEMENTED — PASS |
-| Exact-origin allowlist | Scheme/host/effective-port exact match; wildcard/suffix/subdomain bypass rejection tests | IMPLEMENTED — CI PENDING |
-| Local/private/reserved IP rejection | IPv4/IPv6 loopback, private, link-local, metadata and special-use fixtures | IMPLEMENTED — CI PENDING |
+| Exact-origin allowlist | Scheme/host/effective-port exact match; wildcard/suffix/subdomain bypass rejection tests | IMPLEMENTED — PASS |
+| Local/private/reserved IP rejection | IPv4/IPv6 loopback, private, link-local, metadata and special-use fixtures | IMPLEMENTED — PASS |
 | DNS/SSRF answer policy | Injected resolver; empty, malformed, mixed and non-global answer rejection; resolver failure closed | IMPLEMENTED — OFFLINE ONLY |
-| Redirect validation | Relative redirects supported; cross-origin, unsafe protocol and private destination rejected | IMPLEMENTED — CI PENDING |
-| Typed job envelope | Closed schema, immutable result, ID/action/expiry/origin/resource-limit validation | IMPLEMENTED — CI PENDING |
-| Prohibited browser actions | Click/fill/type/submit/eval/download/upload/clipboard/shell/payment/trading/unknown rejected | IMPLEMENTED — CI PENDING |
-| No implicit network activity | Test patches socket.getaddrinfo to fail; validation succeeds without calling it | IMPLEMENTED — CI PENDING |
+| Redirect validation | Relative redirects supported; cross-origin, unsafe protocol and private destination rejected | IMPLEMENTED — PASS |
+| Typed job envelope | Closed schema, immutable result, ID/action/expiry/origin/resource-limit validation | IMPLEMENTED — PASS |
+| Prohibited browser actions | Click/fill/type/submit/eval/download/upload/clipboard/shell/payment/trading/unknown rejected | IMPLEMENTED — PASS |
+| No implicit network activity | Test patches socket.getaddrinfo to fail; validation succeeds without calling it | IMPLEMENTED — PASS |
 | Connection-time egress / DNS rebinding | Requires isolated worker + fail-closed proxy/firewall + connection pinning | NOT IMPLEMENTED |
 | Browser runtime / handler registration | No browser dependency, worker, handler or ExecutionGateway registration | NOT IMPLEMENTED |
 | Android device validation | No real-device browser UX or native device control | NOT STARTED |
-| Existing CI workflows | Both existing workflows must pass on the exact final P03 record commit | PENDING |
+| Existing CI workflows | Both existing workflows passed on the exact P03 verification-record commit | PASS |
 
 ### P03 interpretation and exit gate
 
@@ -136,24 +136,40 @@ Both workflow jobs and every listed step were re-fetched after completion and re
 
 | Area | P04 evidence | Status |
 |---|---|---|
-| Worker launch profile schema | Closed schema; unknown/missing keys rejected | IMPLEMENTED — CI PENDING |
-| Non-root identity | UID/GID must be non-zero and bounded | IMPLEMENTED — CI PENDING |
-| Container privilege / namespaces | Privileged, host network/PID/IPC all denied | IMPLEMENTED — CI PENDING |
-| Filesystem boundary | Read-only root required; host/secret mounts denied; writable paths restricted to ephemeral /tmp children | IMPLEMENTED — CI PENDING |
-| Linux capabilities | Drop ALL required | IMPLEMENTED — CI PENDING |
-| Browser profile / CDP | Persistent profile and exposed CDP prohibited | IMPLEMENTED — CI PENDING |
-| Network egress manifest | Direct egress denied; proxy-only and proxy-side DNS required | IMPLEMENTED — CI PENDING |
-| Proxy endpoint | Explicit named internal .internal endpoint required | IMPLEMENTED — CI PENDING |
-| Resource bounds | Memory, CPU, PID and job timeout ranges validated | IMPLEMENTED — CI PENDING |
-| Proxy CONNECT decision | HTTPS/TCP 443 and exact approved origin only | IMPLEMENTED — CI PENDING |
+| Worker launch profile schema | Closed schema; unknown/missing keys rejected | IMPLEMENTED — PASS |
+| Non-root identity | UID/GID must be non-zero and bounded | IMPLEMENTED — PASS |
+| Container privilege / namespaces | Privileged, host network/PID/IPC all denied | IMPLEMENTED — PASS |
+| Filesystem boundary | Read-only root required; host/secret mounts denied; writable paths restricted to ephemeral /tmp children | IMPLEMENTED — PASS |
+| Linux capabilities | Drop ALL required | IMPLEMENTED — PASS |
+| Browser profile / CDP | Persistent profile and exposed CDP prohibited | IMPLEMENTED — PASS |
+| Network egress manifest | Direct egress denied; proxy-only and proxy-side DNS required | IMPLEMENTED — PASS |
+| Proxy endpoint | Explicit named internal .internal endpoint required | IMPLEMENTED — PASS |
+| Resource bounds | Memory, CPU, PID and job timeout ranges validated | IMPLEMENTED — PASS |
+| Proxy CONNECT decision | HTTPS/TCP 443 and exact approved origin only | IMPLEMENTED — PASS |
 | Connection-time address set | Injected resolver answers checked for public-unicast and returned for IP pinning | IMPLEMENTED — OFFLINE ONLY |
 | DNS rebinding / TOCTOU | Pure policy provides validated address set; real proxy must connect to that exact pinned IP without re-resolving | DEPLOYMENT NOT IMPLEMENTED |
 | Worker network namespace / firewall | No container, namespace, firewall or proxy service created | NOT IMPLEMENTED |
 | Browser runtime / handler | No Playwright/Chromium, worker process or ExecutionGateway registration | NOT IMPLEMENTED |
-| Existing CI workflows | Both existing workflows must pass on the exact final P04 verification-record commit | PENDING |
+| Existing CI workflows | Both existing workflows passed on the exact P04 verification-record commit | PASS |
 
 ### P04 interpretation and exit gate
 
 P04 adds deterministic validators and regression tests only. A valid manifest is not an enforced sandbox. A returned address set is not a live proxy connection. Actual isolation requires a separately implemented deployment adapter, effective runtime inspection, firewall enforcement proving proxy-only egress, packet-level DNS leak tests, proxy connection pinning tests, TLS validation and independent security review. Browser execution remains disabled.
 
-**P04 disposition:** IMPLEMENTATION ADDED; exact-commit full pytest and both existing CI workflow results pending. No new workflow was added. PR #5 remains Open + Draft + unmerged.
+**P04 disposition:** OFFLINE POLICY + VERIFICATION HARNESS COMPLETE; full pytest and both existing CI workflows passed on the exact P04 verification-record commit listed below. No new workflow was added. PR #5 remains Open + Draft + unmerged.
+
+
+### P04 exact verification-record CI — PASS
+
+**Verification Matrix commit:** `91951a956e576b6db17d015f11919bda03d83315`
+
+| Existing workflow | Run | Result | Exact evidence |
+|---|---:|---|---|
+| Agent Foundation CI | [43713013008](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43713013008) | PASS | 569 passed in 15.25s; dependency install, pip-audit (no known vulnerabilities found), compileall, foundation tests and all post steps succeeded |
+| Python Demo CI | [43713013015](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43713013015) | PASS | 569 passed in 14.71s; dependency install, full test suite, demo smoke and all post steps succeeded |
+
+Both workflow jobs and every listed step were re-fetched after completion and reported `success`. The two workflows ran on the exact Verification Matrix commit above.
+
+**CI correction record:** Early intermediate runs caught an omitted `ipaddress` import and an overly strict `/tmp` path check. Both were corrected before the final verification-record commit; the final full suite passed in both workflows.
+
+These CI results verify offline validators and deterministic tests only. They do not prove an actual container sandbox, firewall enforcement, proxy operation, packet-level DNS leak prevention, IP pinning in a live socket, browser runtime safety or production readiness.
