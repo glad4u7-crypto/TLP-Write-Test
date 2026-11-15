@@ -160,6 +160,20 @@ def test_security_database_file_permissions_are_restricted(tmp_path):
 
 
 @pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks unavailable")
+def test_security_database_preexisting_file_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "security-existing.sqlite3"
+    path.write_bytes(b"")
+    if os.name == "posix":
+        path.chmod(0o644)
+
+    SQLiteSecurityStore(path)
+
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
 def test_security_database_rejects_symlink_target(tmp_path):
     target = tmp_path / "outside.sqlite3"
     target.write_bytes(b"do-not-open")
