@@ -608,3 +608,19 @@ Implementation commit: `056473bcfb56a6084c4b1b7a49e0387654c5d94a`
 ### Next serial checkpoint
 
 Review and test audit integrity failure behavior at the application boundary, including whether an unverifiable durable audit chain blocks subsequent protected actions. Do not advance to S05 while S04's remaining security and external live-auth gates are unresolved.
+
+
+## P08-P09-BB — Tampered durable audit chain blocks protected project actions
+
+Review date: 2026-11-15  
+Implementation commit: `9255b68ce30c9a63a36d80a9038be456ef39ef6c`
+
+- Added an integration regression that seeds a valid durable audit event, modifies the stored event outside the audit API, then attempts an approved persistent project creation.
+- The gateway's intent-audit append must verify the existing hash chain inside its SQLite write transaction. A tampered chain causes audit persistence to fail before the project handler runs.
+- The regression asserts the project is not created and the audit adapter refuses to verify the damaged chain.
+- No runtime code changed: the existing gateway/store boundary already fails closed, and this checkpoint adds end-to-end regression evidence for that security invariant.
+- Exact-head CI is pending; this checkpoint is not CI-verified until the latest PR head's checks complete successfully.
+
+### Next serial checkpoint
+
+Continue S04 with audit failure and receipt-consumption ordering: establish whether a valid approval receipt is consumed before durable intent audit succeeds, and document the safe recovery/re-approval behavior without enabling automatic retries or duplicate side effects.
