@@ -457,3 +457,40 @@ PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `featur
 ### Next serial work
 
 Review cached approval-authority lifecycle when an authenticated deployment rotates its signing secret or changes its durable security database path during a live session. Ensure a changed security configuration cannot silently reuse an authority bound to the previous secret/store. Keep the authority server-side, never log or expose signing material, and add regression tests before claiming the rotation path is safe. Live OIDC/browser verification remains pending a private test deployment and two controlled non-production identities.
+
+
+## P08-P09-AU — Approval authority configuration rotation and stale receipt invalidation
+
+Verification date: 2026-11-15  
+Reviewed code commit: `1ab9d03c9261a99f85b6f5aa21e6fa85ce0340fb`
+
+### Work completed
+
+- Bound the authenticated session's cached approval authority to a keyed configuration identifier derived with HMAC-SHA256 from the validated signing secret and the absolute durable nonce-store path.
+- The configuration identifier is non-reversible and does not expose or retain the signing secret. It is stored only in identity-bound Streamlit session state and is cleared on identity transition, logout, or fail-closed durable-store initialization.
+- When the signing secret or nonce-store path changes, the app invalidates the cached approval authority and execution gateway and rotates the approval session scope. This rejects receipts issued under the previous configuration, including receipts whose nonce is unknown to a newly selected database.
+- Added an authenticated AppTest regression that issues a receipt, rotates only the signing secret, and verifies the old receipt is rejected; it then issues another receipt, changes only the durable security database path, and verifies that receipt is rejected too. Both rotations are checked for fresh authority/gateway objects and a changed session scope.
+- The test performs no project creation or external execution.
+
+### Current-head CI evidence
+
+All four required GitHub Actions checks completed successfully for the exact reviewed code commit:
+
+| Workflow | Event | Run ID | Result |
+|---|---|---:|---|
+| Python Demo CI | push | 43691991479 | PASS |
+| Agent Foundation CI | push | 43691991471 | PASS |
+| Python Demo CI | pull_request | 43691996216 | PASS |
+| Agent Foundation CI | pull_request | 43691996223 | PASS |
+
+The four check runs on commit `1ab9d03c9261a99f85b6f5aa21e6fa85ce0340fb` report `completed/success`. The workflows cover the Python demo test suite and smoke test, dependency audit, Python compilation, and foundation tests.
+
+### Scope and release status
+
+This verifies in-process AppTest behavior for signing-secret and nonce-store-path rotation. It does not establish real-browser OIDC behavior, deployment secret-manager rotation procedures, browser cookie/session controls, CSRF resistance, or multi-identity isolation in a live deployment. A process restart naturally discards in-memory Streamlit session state; operational secret rotation and rollback still require a controlled deployment procedure.
+
+PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+### Next serial work
+
+Continue S04 with an offline-verifiable review of authenticated session binding and approval-scope lifecycle across identity transitions, logout, and partially restored session state. Add focused tests for configuration-fingerprint cleanup and ensure no old gateway or receipt context survives. Live OIDC/browser verification remains blocked on a private test deployment and two controlled non-production identities.
