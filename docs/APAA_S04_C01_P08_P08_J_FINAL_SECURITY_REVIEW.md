@@ -723,3 +723,29 @@ Review date: 2026-11-15
 ### Next serial checkpoint
 
 P08-P09-BF: validate the updated pinned-action workflows on the exact latest PR head; add a workflow-configuration regression check if the repository's existing test tooling can do so without introducing a new runtime dependency; then produce a final S04 pass/block matrix and list only the externally blocked checks that cannot be executed safely in this environment.
+
+
+## P08-P09-BF — CI policy regression coverage
+
+Review date: 2026-11-15  
+Implementation commits: `ad5c467f89dbd392127f83328b26d8dfb7ab416a`, `02cadede335582fc52e73d5c0c6a20bb3c926aab`, `dd2ada5f29a2a23cb67d20b48ae0d52b5b3d0cf3`, `cac21abb94c59645daec515c601d53c72238b323`, `6c1d9b706e8f0b5cb91aa6f0fa8e1ec7c763466a`, `d4a882265b0cae3b91bc9686194bb335b016e6c4`
+
+### Completed
+
+- Both GitHub Actions workflows now pin checkout v5.0.0 and setup-python v6.0.0 to the verified full commit SHAs, declare read-only `contents: read`, cancel superseded runs by workflow/ref concurrency group, and set explicit job timeouts.
+- Added weekly Dependabot update configuration for pip and GitHub Actions. It can open dependency update PRs but no automatic merge is configured.
+- Added standard-library-only regression tests to assert that all workflow actions are full-SHA pinned, workflow permissions remain read-only, `pull_request_target` and `write-all` are absent, runtime is bounded, superseded runs are cancelled, and both Dependabot ecosystems remain scheduled weekly.
+- Existing Agent Foundation CI remains the main security gate because it already performs compile checks, the full pytest suite, and pip-audit. A separate overlapping workflow was intentionally not created.
+
+### Verification
+
+The previously verified BD head passed 374 tests in each existing workflow and reported no known Python dependency vulnerabilities. The new BF workflow-policy tests and updated workflow files are committed after that run; the latest exact-head CI is required to validate them. No local execution is claimed.
+
+### Remaining S04 blockers
+
+- GitHub branch protection/ruleset configuration is not readable through the current integration permission set; owner-side verification is still required.
+- Live OIDC/browser and two-user deployment verification still requires a controlled private non-production environment and two test identities.
+
+### Next checkpoint
+
+P08-P09-BG: inspect exact-head CI and its logs; fix any regression; then consolidate a release-readiness matrix separating code-level PASS items from externally blocked deployment and repository-administration checks. S04 must remain open until those external blockers are resolved.
