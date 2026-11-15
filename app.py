@@ -436,6 +436,15 @@ else:
                 st.write(f"**{result['kind']} · {result['title']}**")
                 st.write(result["content"])
                 st.caption(f"Score: {result['score']} · Source: {result['source']}")
+        st.subheader("Saved knowledge documents")
+        for document in memory_store.list_knowledge(tenant):
+            with st.container(border=True):
+                st.write(f"**{document.title}**")
+                st.caption(f"Tags: {', '.join(document.tags) or 'none'} · Source: {document.source}")
+                st.write(document.content[:1200] + ("…" if len(document.content) > 1200 else ""))
+                if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
+                    memory_store.delete_knowledge(tenant, document.document_id)
+                    st.rerun()
 
     with memory_tabs[2]:
         st.subheader("Short-term conversation continuity")
