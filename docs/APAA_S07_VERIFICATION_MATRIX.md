@@ -357,3 +357,35 @@ The final documentation-only P08 record commit `fe38d77e2250d76cd77658bf782907ae
 - [Python Demo CI — run 43716745798](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716745798): completed, conclusion SUCCESS.
 
 Both workflows ran against the exact final documentation commit. This closes the P08 repository CI verification checkpoint. It does not close the separately listed live-host, key-custody, durable challenge-consumption or packet-level acceptance gates.
+
+
+## P09 implementation checkpoint — durable inspector challenge replay protection
+
+**Checkpoint:** APAA-S07-C01-P09  
+**Implementation:** `core/sqlite_security_store.py`  
+**Tests:** `tests/test_sqlite_security_store.py`  
+**Detailed contract:** `docs/APAA_S07_DURABLE_INSPECTOR_CHALLENGE_P09.md`  
+**Implementation/test commit:** `5c738fd265f508f2d085e45fc884aa30409e314a`  
+**Final P09 documentation commit:** `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`
+
+| Area | P09 evidence | Status |
+|---|---|---|
+| Challenge entropy | 256-bit `secrets.token_hex(32)` challenge | IMPLEMENTED |
+| At-rest minimization | SHA-256 hash only; raw challenge is returned once and not persisted | IMPLEMENTED — TESTED |
+| Identity binding | Tenant issuer/subject, trusted runtime ID and worker ID | IMPLEMENTED — TESTED |
+| Lifetime | TTL restricted to 10–300 seconds; expired challenges rejected | IMPLEMENTED — TESTED |
+| Single-use/replay | Conditional update under `BEGIN IMMEDIATE`; concurrent test confirms one winner | IMPLEMENTED — TESTED |
+| Durability | Issued/consumed state survives store reopen | IMPLEMENTED — TESTED |
+| Trusted integration | Verify signature/evidence first, then consume; reject on false | CONTROL-PLANE INTEGRATION NOT IMPLEMENTED |
+| Multi-host operation | Shared authoritative transactional store not designed/accepted | OPEN — NOT CLAIMED |
+| Key custody/trust registry | Out-of-band private-key custody, public-key registry and rotation | OPEN — RELEASE GATE |
+| Live host/packet acceptance | Real isolated host and independent packet-level tests | NOT RUN |
+| Existing CI workflows | Both existing workflows on exact final P09 commit | PASS — 665 TESTS EACH |
+
+### P09 exact CI verification — PASS
+
+- [Agent Foundation CI — run 43718083802](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083802): completed SUCCESS; 665 tests passed in 16.44s; pip-audit reported no known vulnerabilities; compileall and every job step succeeded.
+- [Python Demo CI — run 43718083789](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083789): completed SUCCESS; 665 tests passed in 14.63s; demo smoke output was `Hello TradeLab Pro`; every job step succeeded.
+- Both workflow jobs and all steps were re-fetched after completion. Both ran against exact final P09 commit `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`.
+
+**P09 disposition:** HASH-ONLY DURABLE CHALLENGE ISSUE/CONSUME PRIMITIVE AND TESTS COMPLETE; EXACT DUAL-CI PASS. This is not end-to-end challenge verification: no trusted control-plane handler was added. No deployment, firewall modification, worker launch or browser activation. PR #5 remains Open + Draft + unmerged.
