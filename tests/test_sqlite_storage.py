@@ -114,3 +114,15 @@ def test_sqlite_store_rejects_symlinked_parent_directory(tmp_path):
     with pytest.raises(ValueError, match="parent path.*symlinks"):
         SQLiteProjectStore(link_dir / "projects.sqlite3")
     assert not (target_dir / "projects.sqlite3").exists()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX directory permissions required")
+def test_legacy_project_database_rejects_shared_parent_directory(tmp_path):
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir(mode=0o700)
+    shared_dir.chmod(0o755)
+
+    with pytest.raises(ValueError, match="parent directory must be owner-only"):
+        SQLiteProjectStore(shared_dir / "projects.sqlite3")
+
+    assert not (shared_dir / "projects.sqlite3").exists()
