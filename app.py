@@ -74,7 +74,7 @@ else:
 
 # Clear identity-bound drafts, approval authority and gateway if a different
 # authenticated account starts using this same Streamlit session.
-session_identity = f"{principal.issuer}\\n{principal.subject}" if principal is not None else "local-prototype"
+session_identity = session_identity_key(principal.issuer, principal.subject) if principal is not None else "local-prototype"
 bind_session_identity(st.session_state, session_identity)
 if "approval_session_scope" not in st.session_state:
     st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
