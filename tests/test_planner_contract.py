@@ -99,7 +99,7 @@ def test_plan_schema_rejects_ready_state_without_steps():
     with pytest.raises(ValueError, match="Ready plans require steps"):
         TaskPlan(
             schema_version="1.0",
-            plan_id="plan-0123456789abcdef",
+            plan_id="plan-" + hashlib.sha256(b"Inspect repository").hexdigest()[:16],
             task_description="Inspect repository",
             status=PlanStatus.READY,
             steps=(),
