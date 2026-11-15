@@ -11,6 +11,7 @@ import json
 import re
 import secrets
 import time
+import threading
 from typing import Any
 
 from core.safety import authorize_action
@@ -44,6 +45,7 @@ class ApprovalAuthority:
     def __init__(self) -> None:
         self._secret = secrets.token_bytes(32)
         self._consumed_nonces: set[str] = set()
+        self._consume_lock = threading.Lock()
 
     @staticmethod
     def _canonical_action(action: str) -> str:
@@ -88,6 +90,16 @@ class ApprovalAuthority:
         return ApprovalReceipt(canonical, digest, expires_at, nonce, signature)
 
     def consume(
+        self,
+        receipt: ApprovalReceipt | None,
+        action: str,
+        payload: Mapping[str, Any] | None,
+    ) -> bool:
+        """Atomically verify and consume a one-time receipt."""
+        with self._consume_lock:
+            return self._consume_locked(receipt, action, payload)
+
+    def _consume_locked(
         self,
         receipt: ApprovalReceipt | None,
         action: str,
