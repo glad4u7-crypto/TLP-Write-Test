@@ -91,8 +91,21 @@ def test_blocked_markers_do_not_match_unrelated_substrings(action):
         "external api request",
         "make-payment",
         "purchase_now",
+        "pay_invoice",
+        "buy_item",
+        "subscription_upgrade",
+        "donate_money",
+        "openai_request",
+        "gemini_generate",
+        "api_call",
+        "provider_request",
     ],
 )
 def test_blocked_markers_are_normalized_and_always_rejected(action):
     decision = authorize_action(action, approved_action=action)
     assert decision.allowed is False
+
+
+def test_reading_an_invoice_is_not_itself_a_payment_action():
+    decision = authorize_action("read_invoice", approved_action="read_invoice")
+    assert decision.allowed is True
