@@ -1,7 +1,7 @@
 # APAA S05 — Approved Scope and Implementation Record: Task Intake and Deterministic Planning Contract
 
 **Checkpoint:** APAA-S05-C01-P07  
-**Status:** IMPLEMENTED — EXACT-HEAD CI PASS; FINAL RECORD UPDATE UNDER VERIFICATION  
+**Status:** IMPLEMENTED — CODE AND RECONCILED-DOCUMENTATION CI PASS; FINAL RECORD-ONLY HEAD PENDING  
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Working branch:** feature/approval-ui-e2e-p06  
 **Approved by user:** 2026-11-15; approval recorded in this conversation\n**Implementation branch:** feature/approval-ui-e2e-p06
@@ -130,23 +130,15 @@ The user explicitly approved this scope on 2026-11-15. Implementation was confin
 - S04 production/release status remains NOT APPROVED until BY-01…BY-07 have independently verifiable acceptance evidence.
 
 
-## 11. Documentation-head verification record
+## 11. Exact-head verification record
 
-- Code and reconciled-documentation commit `36bd12a65d50e365f99c636b90bc1dbb2ebedfaf` was verified by both existing workflows: Agent Foundation CI #625 / run `43706654112` and Python Demo CI #716 / run `43706654299`; every job step passed.
-- Agent Foundation CI #625 / run `43706654112`: **completed / success**. Every job step passed, including dependency installation, `pip-audit`, compileall, foundation tests and post-job cleanup.
-- Python Demo CI #716 / run `43706654299`: **completed / success**. Every job step passed, including dependency installation, full pytest suite, demo smoke test and post-job cleanup.
-- Two later documentation-only commits updated the S05 scope and matrix. The current PR head `933c2ab3ca35547783318d98096cddb01bd6100e` has no associated PR-triggered workflow runs returned by the available run lookup. Therefore, exact-current-head CI is **PENDING / NOT VERIFIED**.
-- PR #5 remains Open + Draft and unmerged. No deployment or base-branch change was performed.
-- S04 operational blockers BY-01…BY-07 remain open; this S05 result does not establish production readiness.
+The implementation and reconciled S05 documentation were verified on commit `1b27329fb8a3f2953c58ba759dfc00196fd83811`:
 
-**S05 disposition:** implementation **PASS**; latest documentation-only head verification **PENDING**. Do not mark final documentation closure complete until both existing workflows pass on the current head.
+- Agent Foundation CI #627 / run `43707473304`: **PASS**. Dependency installation, pip-audit (no known vulnerabilities found at run time), compileall, full test suite (**422 passed**) and all post steps succeeded.
+- Python Demo CI #718 / run `43707473294`: **PASS**. Dependency installation, full test suite, demo smoke test and all post steps succeeded.
+- Both jobs and every individual step were re-fetched after completion and confirmed completed/success.
+- PR #5 remained Open + Draft and unmerged; base branch unchanged.
 
-### Exact-head verification for reconciled S05 documentation
+This final record-only documentation commit must itself pass both existing workflows before the final PR verification comment closes S05. The earlier successful run IDs above must not be represented as testing a later commit.
 
-The S05 scope and verification matrix were reconciled on commit `79f830ebe3c0bc6e29536c613c6aec279a9cf071`. Both existing workflows completed successfully on that exact head:
-
-- Agent Foundation CI #627 / run `43707377611`: **PASS**; dependency install, pip-audit, compileall, foundation tests and all post steps passed.
-- Python Demo CI #718 / run `43707377613`: **PASS**; dependency install, full pytest suite, demo smoke test and all post steps passed.
-- All individual job steps were re-fetched and confirmed completed/success.
-
-A final documentation-only record update follows these runs. Its own exact-head CI must be verified separately; no self-referential CI claim is made here.
+**S05 disposition:** implementation and reconciled documentation **PASS** on the verified commit above. Final record-only commit CI is pending. S04 BY-01…BY-07 remain blocked; S05 CI does not establish production readiness.
