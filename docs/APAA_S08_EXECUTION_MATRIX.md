@@ -5,7 +5,7 @@
 
 | Checkpoint | Scope | Implementation | Tests | Status |
 |---|---|---|---|---|
-| S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | IMPLEMENTED — CI PENDING |
+| S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | PASS — 709 tests; exact-head CI PASS |
 | S08-C01-P02 | Task queue | Not started | Pending | PENDING |
 | S08-C01-P03 | Task state | Not started; durable state follows S07 storage and tenant controls | Pending | PENDING |
 | S08-C02-P01 | Sequential execution | Not started | Pending | PENDING |
@@ -32,3 +32,15 @@
 Android-first; free-only implementation; Ask First by default; no payment, purchase, trading, money movement, paid APIs/providers, or API keys. No merge, deployment, or base-branch modification without explicit authorization.
 
 **P01 disposition:** Implementation and unit tests added. Exact-head CI is pending; do not mark verified until both existing workflows pass.
+
+
+## Exact-head verification
+
+**Verified snapshot:** `b78ce04c56bf0f5dfd88bff2ebaa401764e711d9`
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [43724507507](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43724507507) | PASS — 709 tests in 12.61s; compileall passed; dependency audit clear |
+| Python Demo CI | [43724507501](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43724507501) | PASS — 709 tests in 18.48s; demo smoke test passed |
+
+P01 is verified at repository/CI level. The lifecycle is in-memory only and is not integrated into the dashboard or an Android app. P02 queue, P03 durable task state, execution control, reliability and dedicated safety Parts remain pending.
