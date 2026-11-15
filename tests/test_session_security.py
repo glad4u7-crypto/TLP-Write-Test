@@ -180,3 +180,40 @@ def test_session_identity_key_rejects_missing_identity_parts():
         session_identity_key("", "alice")
     with pytest.raises(ValueError):
         session_identity_key("https://issuer.example", "")
+
+
+def test_every_literal_app_session_state_key_is_identity_cleanup_covered():
+    import ast
+    from pathlib import Path
+
+    from core.session_security import _IDENTITY_BOUND_KEYS
+
+    app_path = Path(__file__).resolve().parents[1] / "app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+
+    def is_session_state(node):
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "session_state"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "st"
+        )
+
+    referenced = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and is_session_state(node.value):
+            if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+                referenced.add(node.slice.value)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and is_session_state(node.func.value)
+            and node.func.attr in {"get", "pop"}
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            referenced.add(node.args[0].value)
+
+    # The active identity marker is cleared separately by clear_session_identity.
+    assert referenced <= set(_IDENTITY_BOUND_KEYS) | {"active_identity_subject"}
