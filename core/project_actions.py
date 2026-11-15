@@ -8,7 +8,7 @@ code execution in the same process.
 """
 from core.approvals import ApprovalAuthority
 from core.execution import ExecutionGateway, ExecutionResult
-from core.projects import ProjectRegistry
+from core.projects import ProjectRegistry, _PROJECT_MUTATION_CAPABILITY
 
 
 def confirm_and_create_project(
@@ -30,7 +30,8 @@ def confirm_and_create_project(
     gateway = ExecutionGateway(
         {
             "create_project": lambda data: registry.create(
-                data["name"], data["description"]
+                data["name"], data["description"],
+                _capability=_PROJECT_MUTATION_CAPABILITY,
             )
         },
         approval_authority=authority,
