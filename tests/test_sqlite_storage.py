@@ -126,3 +126,25 @@ def test_legacy_project_database_rejects_shared_parent_directory(tmp_path):
         SQLiteProjectStore(shared_dir / "projects.sqlite3")
 
     assert not (shared_dir / "projects.sqlite3").exists()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX file permissions required")
+def test_legacy_sqlite_wal_sidecars_have_owner_only_permissions(tmp_path):
+    import os
+
+    path = tmp_path / "projects.sqlite3"
+    store = SQLiteProjectStore(path)
+    connection = store._connect()
+    try:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("CREATE TABLE sidecar_permission_probe (value TEXT)")
+
+        for suffix in ("-wal", "-shm"):
+            sidecar = path.with_name(path.name + suffix)
+            assert sidecar.exists()
+            assert sidecar.stat().st_mode & 0o777 == 0o600
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        connection.rollback()
+        connection.close()
