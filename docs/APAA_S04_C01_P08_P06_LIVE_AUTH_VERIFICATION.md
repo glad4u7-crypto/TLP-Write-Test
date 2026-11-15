@@ -1,12 +1,13 @@
 # APAA-S04-C01-P08-P06 — Live Authentication & Cross-Session Verification
 
-Status: **Automated CI passed; live provider/browser tests not run**
+Status: **Current-head CI passed; live provider/browser tests remain blocked on operator-provided OIDC deployment and test identities**
 
 ## Entry checks completed
 - Pull request #5 remains open and draft.
-- Current PR head before this documentation correction: `406295428938d8460a54f31268c2049817877c4c`.
-- GitHub Actions Python Demo CI Run #215 completed successfully.
-- Job `test-demo`: success; dependency installation, pytest, and `demo.py` smoke test steps all succeeded.
+- Latest verified PR head: `643f9ef22a5f24d4d0e209e3f0df73cc9c49eed8` (verification snapshot; this documentation update will create a newer head).
+- Current-head GitHub Actions checks all completed successfully: Agent Foundation CI push #276 (`43676035943`), Python Demo CI push #368 (`43676035947`), Agent Foundation CI pull request #277 (`43676039985`), and Python Demo CI pull request #369 (`43676039990`).
+- The earlier workflow-definition failures on commits `db18de13d07ad886576d10c5b142dd0a2e5b7165` and `ebdb886c5b48f28795aba25265b3250369e652b0` were caused by malformed YAML during the trigger/permissions edit. The workflow YAML was corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`; the corrected current-head push and PR runs above pass.
+- Foundation CI validates compileall and pytest; Python Demo CI validates dependency installation, pytest, and demo smoke test. These checks do not replace live OIDC/browser testing.
 - The repository contains the OIDC claim adapter and unit tests for missing/malformed claims, expired identities, future-issued identities, and bounded clock skew.
 
 ## Live verification prerequisites
