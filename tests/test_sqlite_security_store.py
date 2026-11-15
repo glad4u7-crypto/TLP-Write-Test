@@ -783,3 +783,65 @@ def test_sqlite_recovers_uncommitted_audit_event_after_process_crash_in_wal_mode
         ("committed.before.wal.crash",),
         ("committed.after.wal.recovery",),
     ]
+
+
+def test_sqlite_audit_backup_restore_preserves_verified_chain_and_allows_append(tmp_path):
+    source_path = tmp_path / "source.sqlite3"
+    backup_path = tmp_path / "backup.sqlite3"
+    restored_path = tmp_path / "restored.sqlite3"
+    source = SQLiteSecurityStore(source_path)
+    source.append_audit_event(
+        DurableAuditEvent("before.backup", "ok", "ok", "fp", "backup-req-1")
+    )
+    source.append_audit_event(
+        DurableAuditEvent("before.backup.second", "denied", "policy", "fp", "backup-req-2")
+    )
+
+    with sqlite3.connect(source_path) as source_connection:
+        with sqlite3.connect(backup_path) as backup_connection:
+            source_connection.backup(backup_connection)
+            assert backup_connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    with sqlite3.connect(backup_path) as backup_connection:
+        with sqlite3.connect(restored_path) as restored_connection:
+            backup_connection.backup(restored_connection)
+            assert restored_connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    restored = SQLiteSecurityStore(restored_path)
+    assert restored.verify_audit_chain()
+    assert restored.last_audit_hash() == source.last_audit_hash()
+    restored.append_audit_event(
+        DurableAuditEvent("after.restore", "ok", "ok", "fp", "backup-req-3")
+    )
+    assert restored.verify_audit_chain()
+    with sqlite3.connect(restored_path) as connection:
+        actions = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert actions == [
+        ("before.backup",),
+        ("before.backup.second",),
+        ("after.restore",),
+    ]
+
+
+def test_sqlite_audit_tamper_blocks_append_without_extending_chain(tmp_path):
+    path = tmp_path / "tampered-append-atomic.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("original", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE durable_audit_events SET reason_code = 'forged'")
+        before_count = connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0]
+
+    with pytest.raises(ValueError, match="audit"):
+        store.append_audit_event(DurableAuditEvent("must.not.append", "ok", "ok", "fp", "req-2"))
+
+    with sqlite3.connect(path) as connection:
+        after_count = connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0]
+    assert after_count == before_count
+    assert not store.verify_audit_chain()
+
