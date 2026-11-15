@@ -88,3 +88,53 @@ def test_expiry_is_bounded_and_requires_integer():
                 confirmed_by_user=True,
                 ttl_seconds=ttl,
             )
+
+
+def test_receipt_from_another_authority_is_rejected():
+    issuer = ApprovalAuthority()
+    other_authority = ApprovalAuthority()
+    payload = {"path": "same.txt"}
+    receipt = issuer.issue("write_file", payload, confirmed_by_user=True)
+
+    assert other_authority.consume(receipt, "write_file", payload) is False
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"action": None},
+        {"payload_digest": []},
+        {"expires_at": True},
+        {"nonce": []},
+        {"signature": None},
+        {"payload_digest": "not-a-digest"},
+        {"signature": "not-a-signature"},
+    ],
+)
+def test_malformed_receipts_fail_closed_without_raising(changes):
+    authority = ApprovalAuthority()
+    receipt = authority.issue(
+        "write_file", {"path": "safe.txt"}, confirmed_by_user=True
+    )
+    malformed = replace(receipt, **changes)
+
+    assert authority.consume(
+        malformed, "write_file", {"path": "safe.txt"}
+    ) is False
+
+
+def test_non_json_payload_cannot_receive_or_consume_approval():
+    authority = ApprovalAuthority()
+    with pytest.raises(ValueError):
+        authority.issue(
+            "write_file",
+            {"path": object()},
+            confirmed_by_user=True,
+        )
+
+    receipt = authority.issue(
+        "write_file", {"path": "safe.txt"}, confirmed_by_user=True
+    )
+    assert authority.consume(
+        receipt, "write_file", {"path": object()}
+    ) is False
