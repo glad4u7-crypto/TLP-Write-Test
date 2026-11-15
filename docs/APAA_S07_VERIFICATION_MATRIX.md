@@ -265,7 +265,7 @@ Both existing workflows passed on the exact P06 code-bearing snapshot. The initi
 **Implementation:** core/browser_nftables.py  
 **Tests:** tests/test_browser_nftables.py  
 **Detailed contract:** docs/APAA_S07_HOST_COLLECTOR_NFTABLES_P07.md  
-**CI:** PENDING exact-commit verification
+**CI:** PASS on P07 code-bearing and verification-matrix commits
 
 | Area | P07 evidence | Status |
 |---|---|---|
@@ -280,10 +280,22 @@ Both existing workflows passed on the exact P06 code-bearing snapshot. The initi
 | Kernel-state authenticity | Source must independently inspect effective state; protocol cannot attest source integrity | EXTERNAL TRUST REQUIREMENT |
 | Packet-level / host forwarding proof | No packet capture, routing inspection, host forwarding chain or live egress test | NOT IMPLEMENTED |
 | Browser runtime / worker | No worker, browser process or ExecutionGateway handler | NOT IMPLEMENTED |
-| Existing CI workflows | Both existing workflows must pass on final P07 matrix commit | PENDING |
+| Existing CI workflows | Both existing workflows passed on the exact P07 verification-matrix commit | PASS |
 
 ### P07 interpretation and exit gate
 
 P07 provides an injected collection protocol and a deliberately narrow nftables JSON parser, not a deployed host inspector. The parser rejects unknown output-chain syntax and accepts only an exact proxy allowlist under default DROP. It is not a general nftables interpreter and does not prove that the snapshot is the effective kernel ruleset or that no alternate route exists. A separately reviewed adapter must collect actual state, bind it to the worker namespace, protect the signing key, and support one-time challenge consumption. Host forwarding and packet-level DNS/egress proofs remain separate operational gates.
 
-**P07 disposition:** SOURCE PROTOCOL + STRICT NFTABLES JSON PARSER + SIGNED EVIDENCE ASSEMBLER IMPLEMENTED; exact CI pending. No host daemon, shell command, firewall mutation, live network operation, worker process or browser handler. No new workflow. PR #5 remains Open + Draft + unmerged.
+**P07 disposition:** SOURCE PROTOCOL + STRICT NFTABLES JSON PARSER + SIGNED EVIDENCE ASSEMBLER IMPLEMENTED; exact code and matrix CI verified. No host daemon, shell command, firewall mutation, live network operation, worker process or browser handler. No new workflow. PR #5 remains Open + Draft + unmerged.
+
+### P07 exact CI verification
+
+Code-bearing commit: dfb2ed9dec2875aaf8fbc750bde69acbbf5ef6cc  
+Final verification-matrix commit: de4dcb54f02679421c5e07407ffd13b9cbbb1c2c
+
+| Existing workflow | Code run | Matrix run | Result |
+|---|---:|---:|---|
+| Agent Foundation CI | [43715954496](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715954496) | [43715966826](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715966826) | PASS — 651 tests on each commit; pip-audit reported no known vulnerabilities; compileall and all steps succeeded |
+| Python Demo CI | [43715954510](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715954510) | [43715966694](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43715966694) | PASS — 651 tests on each commit; demo smoke printed Hello TradeLab Pro; all steps succeeded |
+
+All four workflow jobs and every listed step were re-fetched and reported success. The P07 implementation and final verification-matrix commits were both tested by both existing workflows.
