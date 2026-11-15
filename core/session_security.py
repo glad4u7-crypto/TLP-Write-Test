@@ -1,6 +1,7 @@
 """Session security helpers for identity transitions."""
 
 from collections.abc import MutableMapping
+import json
 
 
 _IDENTITY_BOUND_KEYS = (
@@ -52,3 +53,10 @@ def clear_session_identity(session_state: MutableMapping) -> None:
     for key in _IDENTITY_BOUND_KEYS:
         session_state.pop(key, None)
     session_state.pop("active_identity_subject", None)
+
+
+def session_identity_key(issuer: str, subject: str) -> str:
+    """Encode issuer and subject without ambiguous delimiter collisions."""
+    if not isinstance(issuer, str) or not issuer or not isinstance(subject, str) or not subject:
+        raise ValueError("A non-empty issuer and subject are required.")
+    return json.dumps([issuer, subject], ensure_ascii=True, separators=(",", ":"))
