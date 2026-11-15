@@ -15,6 +15,7 @@ import threading
 from typing import Any
 
 from core.safety import authorize_action
+from core.storage import TenantKey
 
 
 def _payload_digest(payload: Mapping[str, Any] | None) -> str:
@@ -42,9 +43,10 @@ class ApprovalReceipt:
 class ApprovalAuthority:
     """Issues short-lived, one-time receipts after a trusted UI confirmation."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, nonce_store: Any | None = None) -> None:
         self._secret = secrets.token_bytes(32)
         self._consumed_nonces: set[str] = set()
+        self._nonce_store = nonce_store
         self._consume_lock = threading.Lock()
 
     @staticmethod
@@ -94,16 +96,20 @@ class ApprovalAuthority:
         receipt: ApprovalReceipt | None,
         action: str,
         payload: Mapping[str, Any] | None,
+        *,
+        tenant: TenantKey | None = None,
     ) -> bool:
         """Atomically verify and consume a one-time receipt."""
         with self._consume_lock:
-            return self._consume_locked(receipt, action, payload)
+            return self._consume_locked(receipt, action, payload, tenant=tenant)
 
     def _consume_locked(
         self,
         receipt: ApprovalReceipt | None,
         action: str,
         payload: Mapping[str, Any] | None,
+        *,
+        tenant: TenantKey | None = None,
     ) -> bool:
         """Verify action + payload + expiry + signature, then reject replay."""
         if not isinstance(receipt, ApprovalReceipt):
@@ -129,7 +135,11 @@ class ApprovalAuthority:
             return False
 
         canonical = self._canonical_action(action)
-        if canonical != receipt.action or receipt.nonce in self._consumed_nonces:
+        if canonical != receipt.action:
+            return False
+        if self._nonce_store is None and receipt.nonce in self._consumed_nonces:
+            return False
+        if self._nonce_store is not None and not isinstance(tenant, TenantKey):
             return False
         if not isinstance(payload, (Mapping, type(None))):
             return False
@@ -156,5 +166,10 @@ class ApprovalAuthority:
             return False
         if not hmac.compare_digest(expected, receipt.signature):
             return False
+        if self._nonce_store is not None:
+            try:
+                return bool(self._nonce_store.consume_approval_nonce(tenant, receipt.nonce, receipt.expires_at))
+            except Exception:
+                return False
         self._consumed_nonces.add(receipt.nonce)
         return True
