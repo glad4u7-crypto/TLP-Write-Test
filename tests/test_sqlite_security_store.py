@@ -108,3 +108,15 @@ def test_execution_audit_adapter_persists_only_principal_fingerprint(tmp_path):
         b"https://issuer.example\nalice"
     ).hexdigest()
     assert "alice" not in row[0]
+
+
+def test_audit_append_fails_closed_when_existing_chain_is_tampered(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "tampered-before-append.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("first", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE durable_audit_events SET action = 'forged'")
+    with pytest.raises(ValueError, match="audit"):
+        store.append_audit_event(DurableAuditEvent("second", "ok", "ok", "fp", "req-2"))
