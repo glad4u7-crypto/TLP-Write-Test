@@ -74,3 +74,61 @@ The reviewed UI mutation and tenant ownership paths have automated regression co
 ### Next serial checkpoint
 
 P08-P09-BI: verify the BG documentation commit's exact-head CI, then review the OIDC claim adapter and authentication-required startup/failure branches for mismatches between documented claim validation and actual code. Add focused tests only for a demonstrated gap. Live provider/browser testing remains an external blocker.
+
+
+## P08-P09-BI — OIDC exact-claim preservation and exact-head CI
+
+Review date: 2026-11-15  
+Reviewed code commit: \`26c9138511d96d43ec16ca1421bf73ed5485e2aa\`
+
+### Change and verification
+
+- OIDC issuer claims with leading/trailing whitespace are rejected rather than silently normalized.
+- OIDC subject is treated as an opaque, case-sensitive ASCII identifier and preserved exactly; no trimming or case normalization is performed.
+- \`core.identity.Principal\` and \`require_authenticated\` validate identity presence without mutating issuer or subject.
+- Exact-head PR CI completed successfully:
+  - Agent Foundation CI run \`43696373596\` — PASS; 381 tests passed, compile passed, dependency audit reported no known vulnerabilities.
+  - Python Demo CI run \`43696373598\` — PASS; 381 tests passed and the demo emitted exactly \`Hello TradeLab Pro\`.
+
+### Decision
+
+The exact-claim preservation change passed both required workflows. This does not establish live OIDC provider or browser-session security; those remain external release blockers.
+
+## P08-P09-BJ — Authentication startup and failure-path review
+
+Review date: 2026-11-15  
+Reviewed files: \`app.py\`, \`core/streamlit_auth.py\`, \`core/identity.py\`, \`core/session_security.py\`, \`tests/test_app_smoke.py\`, \`tests/test_streamlit_auth.py\`, and \`tests/test_session_security.py\`.
+
+### Findings
+
+- When authentication is required but OIDC configuration is absent, startup displays a configuration error and stops before rendering authenticated controls. AppTest covers this fail-closed branch.
+- When the user is not logged in, the app clears identity-bound state, presents the login action, and stops. Existing AppTest verifies stale drafts, approval authority, gateway, tenant registry and user-specific state are cleared.
+- Invalid or expired OIDC claims clear the same identity-bound state and stop before authenticated controls. Adapter tests cover malformed claims, expiry, future issue time, issuer URL ambiguity, subject bounds and clock-skew boundaries.
+- Durable security/project storage initialization errors clear identity-bound state and stop before authenticated project/task controls. Existing AppTests cover weak signing material, unsafe database paths, project-store initialization failure, and safe retry with fresh capabilities.
+- A concrete session identity-key ambiguity was found: the old delimiter-concatenated issuer/subject marker could collide when a literal delimiter sequence occurred in an accepted issuer path and subject. This could make two distinct identity pairs compare equal for session-state invalidation.
+- Corrected this by introducing \`session_identity_key\`, which encodes the issuer and subject as a compact JSON array, and using that structured key in \`app.py\`. Added regression tests proving delimiter-like values produce distinct keys and empty identity components are rejected.
+
+### Exact-head verification of the correction
+
+Reviewed code head: \`d3a1d468c1c70a553c4949b45488cd0baf003a74\`
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | \`43696620709\` | PASS | 383 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | \`43696620722\` | PASS | 383 tests passed; demo output exactly \`Hello TradeLab Pro\` |
+
+The successful runs above are PR-triggered runs on the exact reviewed head. Superseded push-triggered runs were cancelled by the configured concurrency policy and are not counted as failures.
+
+### Residual limitations
+
+- These tests validate application-level state handling, not real OIDC provider behavior, browser cookie isolation, CSRF, reverse-proxy behavior or multi-worker session isolation.
+- The login/logout interaction still requires a real-browser test against a configured non-production OIDC client.
+- Branch protection/ruleset enforcement remains unverified because repository administration settings are not available through the current integration.
+
+### Decision
+
+The offline-verifiable authentication startup/failure paths and collision-safe session identity key pass their automated checks at the reviewed code head. Full S04 release readiness remains BLOCKED by the external deployment and repository-administration requirements already listed above. PR #5 remains open and Draft. Do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BK: continue the offline review of logout callback behavior, login callback/session renewal and identity-bound capability invalidation after re-authentication. Add tests only for demonstrated gaps; keep live browser/OIDC verification as an explicit external blocker.
