@@ -161,3 +161,43 @@ def test_concurrent_run_next_calls_do_not_overlap_handlers():
     assert active["max"] == 1
     assert all(lifecycle.get(item.task.task_id).task.status is TaskStatus.SUCCEEDED for item in items)
     assert queue.snapshot() == ()
+
+
+def test_separate_executor_instances_cannot_bypass_sequential_dispatch():
+    lifecycle = TaskLifecycle()
+    items = [_planned(lifecycle, f"shared task {i}") for i in range(2)]
+    queue = TaskQueue()
+    for item in items:
+        queue.enqueue(item.task.task_id)
+    active = {"count": 0, "max": 0}
+    lock = threading.Lock()
+
+    def handler(_):
+        with lock:
+            active["count"] += 1
+            active["max"] = max(active["max"], active["count"])
+        time.sleep(0.02)
+        with lock:
+            active["count"] -= 1
+
+    resolver = lambda _: TaskExecutionRequest("inspect_repository", {})
+    first = SequentialTaskExecutor(
+        queue, lifecycle, ExecutionGateway({"inspect_repository": handler})
+    )
+    second = SequentialTaskExecutor(
+        queue, lifecycle, ExecutionGateway({"inspect_repository": handler})
+    )
+    threads = [
+        threading.Thread(target=first.run_next, args=(resolver,)),
+        threading.Thread(target=second.run_next, args=(resolver,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert active["max"] == 1
+    assert all(
+        lifecycle.get(item.task.task_id).task.status is TaskStatus.SUCCEEDED
+        for item in items
+    )
