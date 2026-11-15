@@ -387,3 +387,19 @@ PR #5 remains Open and Draft. No merge/deploy, Auto-Run, paid provider, payment/
 ### Next checkpoint
 
 P08-P09-BS: inspect JSONL audit path handling and SQLite journal/WAL sidecar lifecycle, permissions, cleanup and tamper-detection limits.
+
+
+## P08-P09-BU — JSONL crash-tail test and runtime mode boundary
+
+Review date: 2026-11-15  
+Reviewed code head: `74930fbcc505d87c42263db8712118e1635a86e2`
+
+- Added `test_jsonl_audit_log_fails_closed_on_truncated_trailing_record`. It simulates a process-crash-style partial final JSONL record, verifies the chain rejects it, and verifies append remains blocked. There is deliberately no silent truncation/repair path.
+- Exact-head Agent Foundation CI `43699703242` and Python Demo CI `43699703273` both passed; all job steps completed successfully.
+- Reviewed `app.py` audit selection: authenticated OIDC mode uses `SQLiteExecutionAuditLog`; unauthenticated local-prototype mode uses `JsonlAuditLog` and visibly warns that authentication is not enforced and the instance must not be publicly exposed.
+- JSONL uses process-local thread locks, not cross-process locks. Its use must remain restricted to one local prototype process. It is not a production multi-process audit backend.
+- Authenticated SQLite audit durability, multi-process/multi-host topology, backup, retention, external anchoring and recovery still require separate verification. No claim of production readiness is made.
+
+Decision: latest exact-head code-level CI PASS; full S04 remains BLOCKED. PR #5 remains Open + Draft, and Production remains NOT APPROVED.
+
+Next checkpoint: P08-P09-BV — inspect authenticated SQLite audit transaction and recovery semantics, and add targeted tests only for demonstrated gaps.
