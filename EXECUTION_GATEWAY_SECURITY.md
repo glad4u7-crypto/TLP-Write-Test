@@ -49,7 +49,7 @@ application process; it does not replace application-layer access control.
 - The Streamlit Project Manager uses a two-step review/confirm flow. Only its Confirm-button event issues the one-time receipt; the project gateway builder cannot approve its own request.
 - This is an in-process prototype boundary, not a hardened multi-user authentication boundary.
 - The Streamlit session gateway is configured with local JSONL persistence at `.apaa_audit/execution.jsonl`; it provides a SHA-256 hash chain. The hash chain is not tamper-proof against an attacker who can rewrite the file and recompute hashes.
-- The JSONL writer uses a process-local lock only. Concurrent writers across multiple processes/hosts need a transactional or centralized audit backend before production.
+- The JSONL writer shares a thread lock between instances targeting the same resolved path within one Python process. This serializes concurrent Streamlit-session threads in that process only; it does not coordinate separate processes, containers, or hosts. Production multi-worker deployments require an OS-level inter-process lock or, preferably, a transactional/centralized append-only audit backend.
 - No production capability-isolation layer exists.
 - `ProjectRegistry.create` and `delete` require an internal in-process capability; ordinary direct calls are rejected and the trusted project controller passes the capability only through the approval-gated handler.
 - This capability prevents accidental bypasses but is not isolation against arbitrary Python code executing inside the same process.
