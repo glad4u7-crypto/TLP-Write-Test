@@ -3,6 +3,8 @@ name: APAA S08 Completion Verification
 on:
   push:
     branches: ["feature/apaa-s08-completion"]
+  pull_request:
+    branches: ["feature/apaa-s08-c02-conditional-multistep"]
 
 permissions:
   contents: read
