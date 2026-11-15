@@ -68,6 +68,7 @@ class ApprovalAuthority:
         payload: Mapping[str, Any] | None,
         *,
         ttl_seconds: int = 120,
+        tenant: TenantKey | None = None,
     ) -> ApprovalReceipt:
         """Issue a receipt for a caller that is already inside the trusted UI boundary.
 
@@ -76,6 +77,8 @@ class ApprovalAuthority:
         """
         if not isinstance(payload, (Mapping, type(None))):
             raise ValueError("Approval payload must be a mapping.")
+        if self._nonce_store is not None and not isinstance(tenant, TenantKey):
+            raise ValueError("Durable approvals require a validated tenant identity.")
         canonical = self._canonical_action(action)
         decision = authorize_action(canonical, approved_action=canonical)
         if not decision.allowed:
@@ -88,7 +91,7 @@ class ApprovalAuthority:
         nonce = secrets.token_urlsafe(24)
         signature = hmac.new(
             self._secret,
-            self._message(canonical, digest, expires_at, nonce),
+            self._message(canonical, digest, expires_at, nonce, tenant),
             hashlib.sha256,
         ).hexdigest()
         return ApprovalReceipt(canonical, digest, expires_at, nonce, signature)
@@ -161,6 +164,7 @@ class ApprovalAuthority:
                     receipt.payload_digest,
                     receipt.expires_at,
                     receipt.nonce,
+                    tenant,
                 ),
                 hashlib.sha256,
             ).hexdigest()
