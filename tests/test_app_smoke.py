@@ -435,3 +435,68 @@ def test_authenticated_approval_authority_rotates_on_secret_and_store_path_chang
     assert authority_c.consume(
         receipt_b, "create_project", payload, tenant=tenant, session_scope=scope_c
     ) is False
+
+
+def test_explicit_logout_clears_identity_state_before_provider_logout(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    user = SimpleNamespace(
+        is_logged_in=True,
+        to_dict=lambda: {
+            "is_logged_in": True,
+            "iss": "https://accounts.example.test",
+            "sub": "logout-integration-user",
+            "iat": 1_000,
+            "exp": 4_000_000_000,
+        },
+    )
+    logout_calls = []
+
+    def fake_logout():
+        logout_calls.append("logout")
+        user.is_logged_in = False
+
+    monkeypatch.setattr(st, "user", user)
+    monkeypatch.setattr(st, "logout", fake_logout)
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": "ab" * 32,
+                "security_db_path": str(tmp_path / "security" / "security.sqlite3"),
+                "project_db_path": str(tmp_path / "projects" / "projects.sqlite3"),
+            },
+        },
+    )
+
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+    app.run()
+    assert not app.exception
+    assert "approval_authority" in app.session_state
+    assert "execution_gateway" in app.session_state
+    assert "active_identity_subject" in app.session_state
+
+    _click_button_by_label(app, "Log out")
+
+    assert not app.exception
+    assert logout_calls == ["logout"]
+    assert any("Sign in with the configured" in item.value for item in app.warning)
+    assert not any(
+        key in app.session_state
+        for key in (
+            "active_identity_subject",
+            "approval_session_scope",
+            "approval_authority_config_id",
+            "approval_authority",
+            "execution_gateway",
+            "execution_gateway_owner",
+            "project_registry",
+            "project_registry_tenant",
+            "pending_project",
+            "selected_project_id",
+            "free_plan",
+            "draft_task",
+        )
+    )
