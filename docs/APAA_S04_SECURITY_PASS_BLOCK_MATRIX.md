@@ -66,4 +66,4 @@ PR #5 remains open and Draft. Keep base branch unchanged. Do not merge, deploy, 
 
 ## Next checkpoint
 
-APAA-S04-C01-P08-P09-BO: review process-global caches and lock registries for cross-session retention and growth. Preserve the shared audit append lock unless a safe replacement is proven.
+APAA-S04-C01-P08-P09-BP: review filesystem path handling and same-account TOCTOU boundaries across JSONL and SQLite stores. Confirm which risks can be reduced safely in code and which require OS-level isolation; do not claim same-user hostile-process protection.
