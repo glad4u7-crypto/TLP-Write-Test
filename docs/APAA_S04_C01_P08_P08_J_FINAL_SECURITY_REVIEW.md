@@ -591,3 +591,20 @@ Implementation commits: `9c19b8aeafd2a8499955abe6eaa6168120206947`, `b5ce2e1da01
 ### Next serial checkpoint
 
 Inspect and test authorization isolation for issuer/subject tenant collisions across persistent project and audit records. Keep live two-identity browser verification blocked until controlled OIDC test identities and a private deployment are supplied.
+
+
+## P08-P09-BA — Composite tenant isolation regression coverage
+
+Review date: 2026-11-15  
+Implementation commit: `056473bcfb56a6084c4b1b7a49e0387654c5d94a`
+
+- Added a durable nonce replay regression proving the nonce uniqueness boundary is the full issuer + subject pair: the same nonce is independently valid for a different issuer with the same subject and for the same issuer with a different subject, while replay within the exact tenant is denied.
+- Added an audit-fingerprint regression proving two users with the same subject string under different issuers receive distinct one-way principal fingerprints.
+- Verified by test assertions that the audit database stores fingerprints rather than raw subject text; the audit hash chain remains verifiable after both tenant events.
+- Existing persistent-project registry tests already cover same-subject/different-issuer and same-issuer/different-subject read/update/delete denial; this checkpoint adds corresponding durable nonce and audit identity-boundary coverage.
+- No production behavior was changed in this checkpoint; tests were added to protect the existing composite tenant model.
+- CI status must be checked for the exact latest PR head before this checkpoint is marked verified. No local test execution is claimed.
+
+### Next serial checkpoint
+
+Review and test audit integrity failure behavior at the application boundary, including whether an unverifiable durable audit chain blocks subsequent protected actions. Do not advance to S05 while S04's remaining security and external live-auth gates are unresolved.
