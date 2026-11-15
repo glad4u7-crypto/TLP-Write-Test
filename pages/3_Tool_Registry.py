@@ -86,6 +86,7 @@ else:
                 f"Expires: {item.expires_at}"
             )
             st.caption(f"Payload fingerprint (SHA-256): {item.payload_digest}")
+            st.code(item.payload_preview, language="json")
             if item.decision_note:
                 st.caption(f"Decision note: {item.decision_note}")
             if item.status == "pending":
