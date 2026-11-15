@@ -117,3 +117,15 @@ def test_fails_closed_on_command_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", timeout)
     with pytest.raises(HostCollectionError):
         adapter.read_nftables_json()
+
+def test_rejects_namespace_inode_change_before_nftables_read(tmp_path, monkeypatch):
+    import core.linux_host_inspector as host_module
+
+    adapter, _, _ = make_adapter(tmp_path)
+    adapter.read_network_namespace_identity()
+    monkeypatch.setattr(
+        host_module.os, "stat",
+        lambda *_args, **_kwargs: SimpleNamespace(st_ino=999999),
+    )
+    with pytest.raises(HostCollectionError):
+        adapter.read_nftables_json()
