@@ -1,0 +1,23 @@
+name: APAA S08-C02-P03 Verification
+on:
+  push:
+    paths:
+      - "apaa-s08-c02-p01/**"
+      - ".github/workflows/apaa-s08-c02-p03.yml"
+  pull_request:
+    paths:
+      - "apaa-s08-c02-p01/**"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lifecycle-integrity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run lifecycle, cancellation and audit-integrity tests
+        working-directory: apaa-s08-c02-p01
+        run: python -m unittest discover -s tests -v
