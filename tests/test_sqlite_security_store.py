@@ -676,3 +676,8 @@ def test_execution_audit_fingerprint_distinguishes_same_subject_across_issuers(
     assert fingerprints[0] != fingerprints[1]
     assert "alice" not in repr(fingerprints)
     assert store.verify_audit_chain()
+
+
+def test_security_store_rejects_in_memory_database_path():
+    with pytest.raises(ValueError, match="filesystem-backed"):
+        SQLiteSecurityStore(":memory:")
