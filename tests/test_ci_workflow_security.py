@@ -48,6 +48,8 @@ def test_workflows_bound_runtime_and_cancel_superseded_runs():
         assert re.search(r"^concurrency:\s*$", source, re.MULTILINE)
         assert "cancel-in-progress: true" in source
         assert "github.event.pull_request.head.ref || github.ref_name" in source
+        # Push and pull_request events for one branch must not cancel each other.
+        assert "github.event_name" in source
         assert re.search(r"^\s+timeout-minutes:\s+(15|20)\s*$", source, re.MULTILINE)
 
 
