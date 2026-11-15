@@ -1,4 +1,5 @@
 import secrets
+import sqlite3
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
@@ -95,7 +96,7 @@ if principal is not None:
         )
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
-    except (ValueError, OSError, TypeError) as exc:
+    except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
         st.error(f"Durable security storage is not configured safely: {exc}")
         st.stop()
     if "approval_authority" not in st.session_state:
