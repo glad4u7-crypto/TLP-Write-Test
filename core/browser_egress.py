@@ -12,7 +12,6 @@ from collections.abc import Sequence
 
 from core.browser_security import (
     BrowserPolicyError,
-    Resolver,
     canonicalize_https_url,
     validate_destination,
     validate_dns_answers,
@@ -47,6 +46,12 @@ def validate_proxy_connect(
         if target.port != 443:
             raise EgressPolicyError("Only HTTPS TCP port 443 is allowed.")
         addresses = validate_dns_answers(target.hostname, resolved_addresses)
+        try:
+            literal_target = ipaddress.ip_address(target.hostname)
+        except ValueError:
+            literal_target = None
+        if literal_target is not None and addresses != (literal_target.compressed.lower(),):
+            raise EgressPolicyError("IP-literal proxy target must pin exactly that address.")
         checked = validate_destination(
             target.url,
             allowed_origins,
