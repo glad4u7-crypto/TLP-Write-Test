@@ -367,3 +367,8 @@ def test_sqlite_recovers_uncommitted_project_after_process_crash(tmp_path, tenan
             ("crash-uncommitted-project",),
         ).fetchone()[0] == 0
 
+
+
+def test_project_store_rejects_in_memory_database_path():
+    with pytest.raises(ValueError, match="filesystem-backed"):
+        SQLiteProjectStore(":memory:")
