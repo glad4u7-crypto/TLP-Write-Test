@@ -574,3 +574,20 @@ Implementation commits: `19fd665b4acf1a781f7a7a10e3e388c098a0e8fe`, `d5b650a888d
 ### Next serial checkpoint
 
 Continue S04 security review with malformed/hostile OIDC claim-value coverage and session/auth boundary regression tests. Do not advance to S05 until remaining S04 gates are completed or explicitly documented as externally blocked.
+
+
+## P08-P09-AZ — OIDC issuer and subject claim validation
+
+Review date: 2026-11-15  
+Implementation commits: `9c19b8aeafd2a8499955abe6eaa6168120206947`, `b5ce2e1da015a1b01a3e67b1b6f3a9eafe6dc1f4`
+
+- Tightened the trusted OIDC claim adapter so issuer identifiers must be unambiguous HTTPS URLs with a valid authority/port and without user-info, query, fragment, whitespace, or control characters.
+- Subject identifiers must be non-empty ASCII strings no longer than the OIDC 255-character limit.
+- Valid issuer identifiers are preserved exactly after surrounding whitespace is excluded; this avoids silently normalizing tenant identity boundaries.
+- Added regression cases for HTTP/malformed issuers, user-info, query/fragment injection, invalid ports, whitespace in authority, empty/non-ASCII/overlong subjects, and valid issuer path preservation.
+- This validates claim shape at the adapter boundary; it does not replace Streamlit's OIDC signature/nonce/state validation or live identity-provider verification.
+- CI for this implementation head must complete successfully before this checkpoint is marked verified. No local test execution is claimed.
+
+### Next serial checkpoint
+
+Inspect and test authorization isolation for issuer/subject tenant collisions across persistent project and audit records. Keep live two-identity browser verification blocked until controlled OIDC test identities and a private deployment are supplied.
