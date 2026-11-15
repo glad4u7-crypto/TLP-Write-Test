@@ -27,6 +27,7 @@ class ExecutionResult:
     executed: bool
     reason: str
     output: Any = None
+    audit_event: ExecutionAuditEvent | None = None
 
 
 class ExecutionGateway:
@@ -67,10 +68,9 @@ class ExecutionGateway:
         reason: str,
         output: Any = None,
     ) -> ExecutionResult:
-        self._audit_events.append(
-            create_audit_event(_canonical_action(action), executed, reason)
-        )
-        return ExecutionResult(executed, reason, output)
+        event = create_audit_event(_canonical_action(action), executed, reason)
+        self._audit_events.append(event)
+        return ExecutionResult(executed, reason, output, event)
 
     def execute(
         self,
