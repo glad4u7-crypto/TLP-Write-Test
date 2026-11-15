@@ -162,3 +162,21 @@ def test_logout_invalidates_pre_logout_approval_receipt():
 
     assert result.executed is False
     assert calls == []
+
+
+def test_session_identity_key_is_unambiguous_for_delimiter_like_identity_values():
+    from core.session_security import session_identity_key
+
+    first = session_identity_key("https://issuer.example/path\\\\nsubject", "alice")
+    second = session_identity_key("https://issuer.example/path", "subject\\\\nalice")
+
+    assert first != second
+
+
+def test_session_identity_key_rejects_missing_identity_parts():
+    from core.session_security import session_identity_key
+
+    with pytest.raises(ValueError):
+        session_identity_key("", "alice")
+    with pytest.raises(ValueError):
+        session_identity_key("https://issuer.example", "")
