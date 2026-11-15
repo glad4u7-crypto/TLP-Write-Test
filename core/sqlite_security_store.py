@@ -57,6 +57,14 @@ class SQLiteSecurityStore:
                 raise ValueError("Security database parent path must not contain symlinks.")
         if create_parent:
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # SQLite rollback journals and WAL sidecars live beside the database.
+        # A private database file is not sufficient if other users can list or
+        # access its containing directory. Never chmod an existing shared dir.
+        parent_metadata = path.parent.stat()
+        if not stat.S_ISDIR(parent_metadata.st_mode):
+            raise ValueError("Security database parent path must be a directory.")
+        if os.name == "posix" and parent_metadata.st_mode & 0o077:
+            raise ValueError("Security database parent directory must be owner-only.")
         try:
             metadata = path.lstat()
         except FileNotFoundError:
