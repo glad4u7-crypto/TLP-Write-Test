@@ -56,3 +56,25 @@ These are specifications only. No schema validator, UI screen or browser worker 
 - Python Demo CI #738 / `43708893252`: **PASS**, 427 tests passed in 15.05s; demo smoke check and all post steps succeeded.
 - Exact design baseline: `436a6c925d7a490f01104510ae8d0040815c44fa`.
 - The final scope/matrix record commit is separately gated by both existing workflows; no additional workflow was created.
+
+## P02 design checkpoint — exact-commit CI closure
+
+**P02 design commit:** `08c107b59ebaa1f3cd4f0914fd939587f012b775`
+
+| Workflow | Run | Exact commit | Result | Verified steps |
+|---|---:|---|---|---|
+| Agent Foundation CI | [43711409883](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43711409883) | `08c107b59ebaa1f3cd4f0914fd939587f012b775` | PASS | dependency install, pip-audit, compile, foundation tests, post steps |
+| Python Demo CI | [43711409874](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43711409874) | `08c107b59ebaa1f3cd4f0914fd939587f012b775` | PASS | dependency install, test suite, demo smoke, post steps |
+
+Both workflow runs were re-fetched after completion. Each job and every listed step completed with `success`. These results verify the repository's current foundation/demo checks on the P02 design commit; they do **not** verify browser-specific security behavior.
+
+| Browser security area | Current evidence status |
+|---|---|
+| URL/origin/redirect/DNS/SSRF policy tests | DESIGN — not implemented or executed |
+| Read-only behavior and prompt-injection fixtures | DESIGN — not implemented or executed |
+| Worker/container isolation and enforced egress | DESIGN — operational proof not available |
+| Approval binding, tenant isolation and ephemeral cleanup | DESIGN — not implemented or executed |
+| Android real-device usability | NOT STARTED |
+| Browser runtime | NOT AUTHORIZED / NOT INSTALLED |
+
+**P02 disposition:** DESIGN PACKAGE + EXISTING CI BASELINE VERIFIED. No browser runtime, browser dependency, worker, handler or live website operation was introduced. Implementation remains a separate approval gate. PR #5 remains Open + Draft + unmerged.
