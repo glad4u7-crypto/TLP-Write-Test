@@ -8,6 +8,7 @@ from core.audit import JsonlAuditLog
 from core.project_actions import build_project_gateway
 from core.providers.rule_based import RuleBasedProvider
 from core.streamlit_auth import principal_from_oidc_claims
+from core.identity import AuthorizationDenied
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -86,7 +87,10 @@ def visible_projects():
 
 def visible_project(project_id):
     if principal is not None:
-        return registry.get_for_owner(project_id, principal)
+        try:
+            return registry.get_for_owner(project_id, principal)
+        except AuthorizationDenied:
+            return None
     project = registry.get(project_id)
     return project if project and project.owner_subject == "local-prototype" else None
 
