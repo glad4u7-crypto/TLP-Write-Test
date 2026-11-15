@@ -30,12 +30,16 @@ _BLOCKED_TOKENS = {
     "charge", "donate", "subscription", "subscribe", "paid", "premium",
     "order", "trade", "trading", "invest", "investment", "transfer",
     "remit", "wire", "withdraw", "deposit", "refund", "fund", "funding",
+    "money", "cash", "payout", "disburse", "settle",
     "openai", "anthropic", "gemini", "claude", "gpt", "llm",
 }
 _BLOCKED_PHRASES = {
     "external_api", "provider_call", "api_call", "provider_request",
     "network_request", "fund_account", "add_funds", "money_transfer",
     "bank_transfer", "wire_transfer", "execute_order", "place_order",
+    "move_money", "send_money", "transfer_funds", "send_funds",
+    "account_top_up", "top_up_account", "cash_out", "cashout",
+    "pay_vendor", "payee_transfer", "settle_invoice",
 }
 
 
