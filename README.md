@@ -9,6 +9,7 @@ A safety-first, zero-cost foundation for a personal digital-task agent. The curr
 - In-memory project registry (projects reset when the app session ends).
 - Action authorization primitives with exact-action approval checks.
 - Project creation uses a two-step review/confirm UI and the approval-gated execution gateway.
+- The gateway records payload-free in-memory execution audit events.
 - ZIP repository inspection utilities with defensive archive validation.
 - GitHub Actions CI for Python compilation and automated tests.
 
