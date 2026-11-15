@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+import base64
 import hashlib
 import ipaddress
 import json
@@ -113,7 +114,6 @@ def parse_nftables_egress(
         raise HostCollectionError("Approved proxy port is invalid.")
 
     output_chains: list[dict] = []
-    output_rules: list[dict] = []
     for item in document["nftables"]:
         if not isinstance(item, dict) or len(item) != 1:
             raise HostCollectionError("Malformed nftables object.")
@@ -126,8 +126,6 @@ def parse_nftables_egress(
         elif kind == "rule":
             if not isinstance(value, dict):
                 raise HostCollectionError("Malformed nftables rule.")
-            if value.get("chain") == "output" and value.get("hook", "output") == "output":
-                output_rules.append(value)
         elif kind not in {"metainfo", "table", "set", "element", "counter"}:
             raise HostCollectionError("Unsupported nftables object type.")
 
@@ -251,8 +249,6 @@ def collect_signed_inspector_evidence(
     }
     signed = {"schema_version": 1, "key_id": key_id, "payload": payload}
     signature = signing_key.sign(_canonical_json(signed))
-    import base64
-    import binascii
     envelope = {
         **signed,
         "signature": base64.b64encode(signature).decode("ascii"),
