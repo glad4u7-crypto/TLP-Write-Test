@@ -24,8 +24,8 @@
 | Tenant issuer + subject isolation | IMPLEMENTED — TESTS ADDED |
 | Credential-like content rejection | IMPLEMENTED — TESTS ADDED |
 | Local DB file/directory permissions and symlink rejection | IMPLEMENTED — TESTS ADDED |
-| Existing CI workflows on exact final commit | PENDING |
-| User-facing consent/preferences/memory UI | NOT IMPLEMENTED |
+| Authenticated Streamlit memory UI | Consent-gated memory, knowledge, conversation, preference and checkpoint controls; local prototype disabled | IMPLEMENTED — AUTHENTICATED UI PATH NOT YET LIVE-OIDC VERIFIED |\n| Existing CI workflows on exact final commit | PENDING |
+| User-facing consent/preferences/memory UI | IMPLEMENTED — Streamlit authenticated mode; not a native Android client |
 | Native Android client | NOT IMPLEMENTED |
 | Live OIDC two-identity verification | NOT RUN |
 | Backup/restore and multi-host deployment | NOT VALIDATED |
