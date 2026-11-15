@@ -239,6 +239,15 @@ def test_persistent_gateway_blocks_project_creation_when_sqlite_intent_audit_fai
     assert "not executed" in result.reason
     assert registry.list_projects_for_owner(ALICE) == []
 
+    # Nonce consumption is durable even though intent logging failed. A retry
+    # with the same receipt must remain denied after the audit adapter recovers.
+    monkeypatch.undo()
+    retry = gateway.execute(
+        "create_project", payload, approval_receipt=receipt, tenant=tenant
+    )
+    assert retry.executed is False
+    assert registry.list_projects_for_owner(ALICE) == []
+
 
 def test_persistent_gateway_blocks_protected_action_when_existing_audit_chain_is_tampered(
     tmp_path,
