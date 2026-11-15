@@ -4,10 +4,10 @@ Status: **Current-head CI passed; live provider/browser tests remain blocked on 
 
 ## Entry checks completed
 - Pull request #5 remains open and draft.
-- Latest verified PR head: `643f9ef22a5f24d4d0e209e3f0df73cc9c49eed8` (verification snapshot; this documentation update will create a newer head).
-- Current-head GitHub Actions checks all completed successfully: Agent Foundation CI push #276 (`43676035943`), Python Demo CI push #368 (`43676035947`), Agent Foundation CI pull request #277 (`43676039985`), and Python Demo CI pull request #369 (`43676039990`).
+- Latest verified CI head: `7d0b0ba2958db3b33bdaa6d028fa3df8a6c458d` (the following documentation-only commits require their own CI verification).
+- Current-head GitHub Actions checks all completed successfully on `7d0b0ba...`: Agent Foundation CI push (`43676566026`), Python Demo CI push (`43676566108`), Agent Foundation CI pull request (`43676570288`), and Python Demo CI pull request (`43676570332`). The Foundation workflow's `Audit Python dependencies` step passed on both events; its log reports `pip-audit 2.10.1` and `No known vulnerabilities found` for `requirements.txt` and its resolved dependency set.
 - The earlier workflow-definition failures on commits `db18de13d07ad886576d10c5b142dd0a2e5b7165` and `ebdb886c5b48f28795aba25265b3250369e652b0` were caused by malformed YAML during the trigger/permissions edit. The workflow YAML was corrected in commit `81a07587437e145ebcc683e6e80ba1e42a452a75`; the corrected current-head push and PR runs above pass.
-- Foundation CI validates compileall and pytest; Python Demo CI validates dependency installation, pytest, and demo smoke test. These checks do not replace live OIDC/browser testing.
+- Foundation CI validates dependency installation, `pip-audit`, compileall, and pytest; Python Demo CI validates dependency installation, pytest, and demo smoke test. These checks do not replace live OIDC/browser testing.
 - The repository contains the OIDC claim adapter and unit tests for missing/malformed claims, expired identities, future-issued identities, and bounded clock skew.
 
 ## Live verification prerequisites
