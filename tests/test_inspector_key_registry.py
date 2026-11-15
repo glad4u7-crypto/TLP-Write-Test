@@ -1,8 +1,8 @@
 import pytest
 
 from core.inspector_key_registry import (
-    InspectorKeyRegistry,
-    InspectorKeyRegistryError,
+    InspectorPublicKeyRegistry,
+    InspectorPublicKeyRegistryError,
     InspectorPublicKeyRecord,
 )
 
@@ -51,14 +51,14 @@ def test_registry_supports_explicit_rotation_overlap_without_private_keys():
 def test_revoked_key_is_rejected_even_inside_validity_window():
     registry = InspectorPublicKeyRegistry([_record(revoked=True)])
     assert registry.active_public_keys(now=150) == {}
-    with pytest.raises(InspectorKeyRegistryError, match="not currently trusted"):
+    with pytest.raises(InspectorPublicKeyRegistryError, match="not currently trusted"):
         registry.require_active_key("inspector:key-001", now=150)
 
 
 def test_registry_rejects_duplicate_ids_and_duplicate_public_key_material():
-    with pytest.raises(InspectorKeyRegistryError, match="Duplicate.*identifier"):
+    with pytest.raises(InspectorPublicKeyRegistryError, match="Duplicate.*identifier"):
         InspectorPublicKeyRegistry([_record(), _record(key_byte=2)])
-    with pytest.raises(InspectorKeyRegistryError, match="multiple IDs"):
+    with pytest.raises(InspectorPublicKeyRegistryError, match="multiple IDs"):
         InspectorPublicKeyRegistry([
             _record("inspector:key-one"),
             _record("inspector:key-two"),
@@ -73,7 +73,7 @@ def test_registry_rejects_duplicate_ids_and_duplicate_public_key_material():
     _record(revoked=1),
 ])
 def test_registry_rejects_malformed_trust_records(record):
-    with pytest.raises(InspectorKeyRegistryError):
+    with pytest.raises(InspectorPublicKeyRegistryError):
         InspectorPublicKeyRegistry([record])
 
 
@@ -81,9 +81,9 @@ def test_registry_rejects_untyped_records_and_invalid_evaluation_time():
     with pytest.raises(TypeError):
         InspectorPublicKeyRegistry([{"key_id": "inspector:key-001"}])
     registry = InspectorPublicKeyRegistry([_record()])
-    with pytest.raises(InspectorKeyRegistryError):
+    with pytest.raises(InspectorPublicKeyRegistryError):
         registry.active_public_keys(now=True)
-    with pytest.raises(InspectorKeyRegistryError):
+    with pytest.raises(InspectorPublicKeyRegistryError):
         registry.require_active_key("unknown:key-001", now=150)
 
 
