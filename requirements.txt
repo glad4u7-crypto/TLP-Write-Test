@@ -1,2 +1,2 @@
-streamlit>=1.40,<2.0
+streamlit[auth]>=1.45,<2.0
 pytest>=8.0,<10.0
