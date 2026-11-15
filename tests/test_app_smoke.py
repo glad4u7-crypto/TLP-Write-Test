@@ -183,8 +183,8 @@ def test_authenticated_store_failure_clears_capabilities_and_same_session_can_re
 ):
     security_dir = tmp_path / "security"
     project_dir = tmp_path / "projects"
-    security_dir.mkdir()
-    project_dir.mkdir()
+    security_dir.mkdir(mode=0o700)
+    project_dir.mkdir(mode=0o700)
     security_db = security_dir / "security.sqlite3"
     project_db = project_dir / "projects.sqlite3"
     secret = "ef" * 32
