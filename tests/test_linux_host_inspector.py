@@ -52,6 +52,7 @@ def test_runtime_attestation_is_read_from_trusted_injected_source(tmp_path):
 
 def test_nftables_command_is_fixed_read_only_no_shell_and_namespace_scoped(tmp_path, monkeypatch):
     adapter, nsenter, nft = make_adapter(tmp_path)
+    adapter.read_network_namespace_identity()
     observed = {}
 
     def fake_run(command, **kwargs):
@@ -99,6 +100,7 @@ def test_rejects_invalid_pid_and_missing_inspection_binary(tmp_path):
 ])
 def test_fails_closed_on_nftables_command_failure_or_oversize(tmp_path, monkeypatch, result):
     adapter, _, _ = make_adapter(tmp_path)
+    adapter.read_network_namespace_identity()
     monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: result)
     with pytest.raises(HostCollectionError):
         adapter.read_nftables_json()
@@ -106,6 +108,8 @@ def test_fails_closed_on_nftables_command_failure_or_oversize(tmp_path, monkeypa
 
 def test_fails_closed_on_command_timeout(tmp_path, monkeypatch):
     adapter, _, _ = make_adapter(tmp_path)
+
+    adapter.read_network_namespace_identity()
 
     def timeout(*_args, **_kwargs):
         raise subprocess.TimeoutExpired("nft", 5)
