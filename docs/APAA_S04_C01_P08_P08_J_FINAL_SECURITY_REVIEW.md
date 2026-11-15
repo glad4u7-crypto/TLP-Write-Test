@@ -72,3 +72,28 @@ The code snapshot has passing automated CI and useful prototype security control
 4. Reassess production approval only after the blockers are closed and independently verified.
 
 Safety policy remains unchanged: no payments or purchases; no paid API/provider activation or charges; no automatic execution by default.
+
+## P08-P08-Q — Current-head regression verification addendum
+
+Verification date: 2026-11-15
+Current PR head reviewed: `64a5d65fa9481f16b4fcfe90947b9a478ff623e8`
+Commit message: `Assert identity switch clears approval session scope`
+
+The current PR head was checked after the P08-P08-Q session-security regression assertion was added.
+
+| Workflow | Run | Event | Result |
+|---|---:|---|---|
+| Python Demo CI | #396 / 43678014330 | pull_request | PASS |
+| Agent Foundation CI | #304 / 43678014322 | pull_request | PASS |
+
+Verified completed job steps:
+- Python Demo CI: dependency installation, full pytest suite, and `demo.py` smoke test.
+- Agent Foundation CI: dependency installation, `pip-audit`, module compilation, and foundation pytest suite.
+
+The specific P08-P08-Q test change adds `approval_session_scope` to the identity-switch cleanup fixture and asserts that the old identity's approval scope is removed. The implementation's identity-bound key list already includes this scope. No application runtime code was changed by this checkpoint.
+
+The PR remains open and Draft. This CI result does not satisfy the outstanding live OIDC/browser verification or production release gates. No merge, deployment, provider activation, or real-world handler enablement is authorized.
+
+## Next serial work
+
+Proceed with the next offline-verifiable security review item on the existing feature branch. Prioritize tests that can be completed without provider credentials or a deployment. The live P08-P06 browser matrix remains blocked until the operator supplies a configured test OIDC deployment and two controlled test identities. Keep production status **NOT APPROVED**.
