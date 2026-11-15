@@ -165,3 +165,37 @@ The explicit logout cleanup callback and the identity transition invalidation pa
 ### Next serial checkpoint
 
 P08-P09-BL: inspect whether all session-state keys that carry user-specific or approval-related information are included in the central identity cleanup list, including any future UI state introduced by later modules. Check for stale references outside the current list and add a focused regression test only if a concrete omission is found.
+
+
+## P08-P09-BL — Complete inventory of app session-state cleanup keys
+
+Review date: 2026-11-15  
+Reviewed code head: \`d72238a2483ed19a049337e456406370c9d2355d\`
+
+### Review result
+
+- Enumerated all literal \`st.session_state[...] \`, \`st.session_state.get(...)\` and \`st.session_state.pop(...)\` keys referenced by \`app.py\`.
+- The app currently references 11 keys: \`approval_authority\`, \`approval_authority_config_id\`, \`approval_session_scope\`, \`draft_task\`, \`execution_gateway\`, \`execution_gateway_owner\`, \`free_plan\`, \`pending_project\`, \`project_registry\`, \`project_registry_tenant\`, and \`selected_project_id\`.
+- All 11 are present in the central \`_IDENTITY_BOUND_KEYS\` cleanup tuple in \`core/session_security.py\`.
+- The \`active_identity_subject\` marker is removed separately by \`clear_session_identity\`; it is not omitted from cleanup.
+- No additional literal app session-state key was found outside the cleanup inventory.
+- Added an AST-based regression test that derives literal session-state keys from \`app.py\` and asserts every key is covered by the central cleanup tuple or the separately-cleared identity marker. This will detect future UI state additions that are not added to identity cleanup.
+
+### Exact-head CI verification
+
+Reviewed code head: \`d72238a2483ed19a049337e456406370c9d2355d\`
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | \`43696885991\` | PASS | 385 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | \`43696885984\` | PASS | 385 tests passed; demo output exactly \`Hello TradeLab Pro\` |
+
+Both runs are PR-triggered checks on the exact reviewed head.
+
+### Decision
+
+All current literal Streamlit session-state keys are covered by identity cleanup, and the regression guard passes. No further runtime change was justified by this inventory review. This remains offline code/test evidence only; it does not prove live browser or multi-worker isolation. Full S04 release readiness remains BLOCKED. PR #5 remains open and Draft; do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BM: continue the offline review of state-bearing callbacks and approval/session capability references outside \`app.py\`. Verify that no callback, controller or storage object caches an identity-bound capability beyond the Streamlit session cleanup lifecycle. Add a focused test only if a concrete stale-reference path is demonstrated.
