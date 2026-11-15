@@ -389,3 +389,36 @@ Both workflows ran against the exact final documentation commit. This closes the
 - Both workflow jobs and all steps were re-fetched after completion. Both ran against exact final P09 commit `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`.
 
 **P09 disposition:** HASH-ONLY DURABLE CHALLENGE ISSUE/CONSUME PRIMITIVE AND TESTS COMPLETE; EXACT DUAL-CI PASS. This is not end-to-end challenge verification: no trusted control-plane handler was added. No deployment, firewall modification, worker launch or browser activation. PR #5 remains Open + Draft + unmerged.
+
+
+## P09 disposition — durable inspector challenge replay protection
+
+**Implementation/test commit:** `5c738fd265f508f2d085e45fc884aa30409e314a`  
+**Exact CI commit:** `7534cea8ed3a5d4b3029308f83da7e40286d5fbf`
+
+- [Agent Foundation CI — run 43718083802](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083802): PASS; 665 tests, dependency audit and compile check succeeded.
+- [Python Demo CI — run 43718083789](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43718083789): PASS; 665 tests and demo smoke succeeded.
+- P09 is a persistence primitive only. Trusted verifier → consume control-plane integration remains NOT IMPLEMENTED.
+
+## P10 implementation checkpoint — inspector public-key trust registry
+
+**Checkpoint:** APAA-S07-C01-P10  
+**Implementation:** `core/inspector_key_registry.py`  
+**Tests:** `tests/test_inspector_key_registry.py`  
+**Contract:** `docs/APAA_S07_INSPECTOR_KEY_TRUST_REGISTRY_P10.md`  
+**Implementation commit:** `9489fb897d6f9412beea09be311715c5ce6ceed2`  
+**Test commit:** `1daa7a25d6b7ad37ea745c13dec6606cd1af896f`
+
+| Area | Evidence | Status |
+|---|---|---|
+| Public-key-only records | Typed records contain key ID, 32-byte public key, validity window and explicit revocation | IMPLEMENTED |
+| Active-key selection | Inclusive not-before, exclusive not-after; revoked keys excluded | IMPLEMENTED — TESTS ADDED |
+| Rotation overlap | Old/new keys may coexist for a configured overlap interval | IMPLEMENTED — TESTS ADDED |
+| Duplicate protection | Duplicate IDs and duplicate key material rejected | IMPLEMENTED — TESTS ADDED |
+| Trust source | Registry records must come from authenticated out-of-band configuration | EXTERNAL TRUST GATE |
+| Private-key handling | No key generation, import, storage, signing or secret retrieval | NOT IMPLEMENTED BY DESIGN |
+| Governance | Dual-control approval, custodians, emergency revocation and rollback | OPEN — NOT IMPLEMENTED |
+| P06/P09 integration | Active registry → signature verification → durable challenge consumption | NOT IMPLEMENTED |
+| CI | Both existing workflows on exact P10 implementation/test commit | PENDING |
+
+P10 does not establish its own trust anchor and does not claim key custody is solved. No private key is generated or stored. No deployment, firewall modification, worker launch or browser activation.
