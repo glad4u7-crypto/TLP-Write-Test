@@ -50,7 +50,7 @@ class JsonlAuditLog:
     GENESIS = "0" * 64
 
     def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
+        self.path = Path(path).absolute()
         lock_key = str(self.path.resolve(strict=False))
         with _PATH_LOCKS_GUARD:
             self._lock = _PATH_LOCKS.setdefault(lock_key, threading.Lock())
