@@ -14,6 +14,10 @@ _IDENTITY_BOUND_KEYS = (
     "execution_gateway_owner",
     "free_plan",
     "draft_task",
+    "structured_task_plan",
+    "structured_task_source",
+    "structured_task_clarification",
+    "structured_task_input",
     "approval_session_scope",
     "approval_authority_config_id",
 )
