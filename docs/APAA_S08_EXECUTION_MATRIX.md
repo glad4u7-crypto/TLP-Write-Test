@@ -1,19 +1,19 @@
 # APAA S08 — Task Execution Verification Matrix
 
 **Current subject:** Task Execution Engine
-**Current checkpoint:** APAA-S08-C02-P01
+**Current checkpoint:** APAA-S08-C03-P03 — implementation added; exact-head CI verification pending
 
 | Checkpoint | Scope | Implementation | Tests | Status |
 |---|---|---|---|---|
 | S08-C01-P01 | Task lifecycle | `core/task_lifecycle.py`: transition graph, immutable snapshots/events, versions, approval-state bookkeeping | `tests/test_task_lifecycle.py` | PASS — 709 tests; exact-head CI PASS |
 | S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | PASS — exact code snapshot CI PASS |
 | S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | PASS — exact code snapshot CI PASS |
-| S08-C02-P01 | Sequential execution | Not started | Pending | PENDING |
-| S08-C02-P02 | Conditional execution | Not started | Pending | PENDING |
-| S08-C02-P03 | Multi-step execution | Not started | Pending | PENDING |
-| S08-C03-P01 | Timeout | Not started | Pending | PENDING |
-| S08-C03-P02 | Retry/recovery | Not started | Pending | PENDING |
-| S08-C03-P03 | Completion verification | Not started | Pending | PENDING |
+| S08-C02-P01 | Sequential execution | `core/sequential_executor.py`: one-at-a-time queue/lifecycle/gateway coordination; fresh trusted receipt for approval-required work | `tests/test_sequential_executor.py` | PASS — exact-head Agent Foundation CI + Python Demo CI on `b0389b736bbfdc05941ea597812d0064cc6c5843` |
+| S08-C02-P02 | Conditional execution | `core/execution_control.py`: bounded path lookup and allowlisted typed predicates; no expression evaluation | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
+| S08-C02-P03 | Multi-step execution | `MultiStepExecutor`: bounded linear plan, unique IDs, sequential gateway-adapter callback, fail-stop | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
+| S08-C03-P01 | Timeout | `ExecutionDeadline`: bounded cooperative deadline; distinguishes pre-dispatch timeout from uncertain post-dispatch outcome | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
+| S08-C03-P02 | Retry/recovery | `SafeRetryPolicy`: bounded retry only for explicit pre-dispatch failures; unknown outcomes never retried | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
+| S08-C03-P03 | Completion verification | `CompletionVerifier`: read-only expected/observed verification; mismatch and verifier errors fail closed | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
 | S08-C04-P01 | Pre-execution validation | Not started | Pending | PENDING |
 | S08-C04-P02 | Permission check | Not started; must use trusted approval gateway | Pending | PENDING |
 | S08-C04-P03 | Audit | Not started; must use payload-free durable audit | Pending | PENDING |
@@ -105,3 +105,18 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 - Code-bearing snapshot: `798a955bf1b0290eb59a058965f20baa43d515ef`.
 - Agent Foundation CI run [43728173522](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173522) and Python Demo CI run [43728173537](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43728173537) were observed in progress. C02-P01 remains PENDING until both workflows finish successfully on this exact snapshot.
 - Scope limitation: this is a Python controller-level implementation, not yet wired to the Android client or production runtime. PR #5 remains Draft/Open/Unmerged; no merge or deployment performed.
+
+
+## C02-P02 / C02-P03 and C03-P01 / P02 / P03 implementation review
+
+- Added `core/execution_control.py` with five bounded primitives: condition evaluation, linear multi-step coordination, cooperative deadlines, pre-dispatch-only retry, and read-only completion verification.
+- Conditional evaluation supports only an enum allowlist of operators and bounded mapping paths. It does not call eval/exec or interpret task text as code. Missing paths fail closed.
+- Multi-step plans are limited to 25 steps by default, reject duplicate IDs and invalid payloads, execute serially through a trusted callback, and stop at the first false/exception outcome. The callback is expected to route each action through the existing ExecutionGateway; the primitive does not dispatch handlers itself.
+- Timeout is deliberately cooperative: Python cannot safely kill an in-flight handler thread. If a deadline expires after dispatch starts, the result is explicitly marked as potentially completed/uncertain. Such outcomes must not be retried automatically.
+- Retry is opt-in and bounded to 3 attempts maximum. Only a caller-classified `RetryablePreDispatchError` is retryable. `DispatchOutcomeUnknown` propagates immediately. No blind retry of mutations.
+- Completion verification compares expected and observed evidence through a trusted read-only callback; mismatches and callback errors return unverified.
+- Added `tests/test_execution_control.py` covering conditions, code-like path handling, numeric type checks, multi-step fail-stop, duplicate/oversized plans, timeout uncertainty, safe retry classification, and completion verification.
+- No Auto-Run, paid API, external provider, payment, purchase, trading, or money movement was added.
+- These are controller-level primitives. They are not yet wired into the Android client/dashboard or production runtime. No production-readiness claim is made.
+- Code commit: `a75a9fe03966afd23edd181a4cdd6f866ab81ae0`; test commit: `f7cc31f3ba9a06a91036cfdae58f66673416d820`; test-fixture correction: `357cdf70b7892d7d22c436ad7ce07fe1d9442836`.
+- Final exact-head CI must pass before these five Parts are marked PASS.
