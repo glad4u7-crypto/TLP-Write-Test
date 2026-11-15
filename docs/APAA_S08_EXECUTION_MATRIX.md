@@ -1,7 +1,7 @@
 # APAA S08 — Task Execution Verification Matrix
 
 **Current subject:** Task Execution Engine
-**Current checkpoint:** APAA-S08-C03-P03 — implementation added; exact-head CI verification pending
+**Current checkpoint:** APAA-S08-C03-COMPLETE — implementation and exact-head CI verified; C04-P01 next
 
 | Checkpoint | Scope | Implementation | Tests | Status |
 |---|---|---|---|---|
@@ -9,11 +9,11 @@
 | S08-C01-P02 | Task queue | `core/task_queue.py`: bounded in-memory priority queue, stable FIFO ties, duplicate protection, capacity rejection, immutable snapshots | `tests/test_task_queue.py` | PASS — exact code snapshot CI PASS |
 | S08-C01-P03 | Task state | `core/task_state_store.py`: consent-gated, tenant-scoped SQLite snapshots/events; atomic CAS transitions; recovery and immutable event history | `tests/test_task_state_store.py` | PASS — exact code snapshot CI PASS |
 | S08-C02-P01 | Sequential execution | `core/sequential_executor.py`: one-at-a-time queue/lifecycle/gateway coordination; fresh trusted receipt for approval-required work | `tests/test_sequential_executor.py` | PASS — exact-head Agent Foundation CI + Python Demo CI on `b0389b736bbfdc05941ea597812d0064cc6c5843` |
-| S08-C02-P02 | Conditional execution | `core/execution_control.py`: bounded path lookup and allowlisted typed predicates; no expression evaluation | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
-| S08-C02-P03 | Multi-step execution | `MultiStepExecutor`: bounded linear plan, unique IDs, sequential gateway-adapter callback, fail-stop | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
-| S08-C03-P01 | Timeout | `ExecutionDeadline`: bounded cooperative deadline; distinguishes pre-dispatch timeout from uncertain post-dispatch outcome | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
-| S08-C03-P02 | Retry/recovery | `SafeRetryPolicy`: bounded retry only for explicit pre-dispatch failures; unknown outcomes never retried | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
-| S08-C03-P03 | Completion verification | `CompletionVerifier`: read-only expected/observed verification; mismatch and verifier errors fail closed | `tests/test_execution_control.py` | IMPLEMENTED — CI pending |
+| S08-C02-P02 | Conditional execution | `core/execution_control.py`: bounded path lookup and allowlisted typed predicates; no expression evaluation | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
+| S08-C02-P03 | Multi-step execution | `MultiStepExecutor`: bounded linear plan, unique IDs, sequential gateway-adapter callback, fail-stop | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
+| S08-C03-P01 | Timeout | `ExecutionDeadline`: bounded cooperative deadline; distinguishes pre-dispatch timeout from uncertain post-dispatch outcome | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
+| S08-C03-P02 | Retry/recovery | `SafeRetryPolicy`: bounded retry only for explicit pre-dispatch failures; unknown outcomes never retried | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
+| S08-C03-P03 | Completion verification | `CompletionVerifier`: read-only expected/observed verification; mismatch and verifier errors fail closed | `tests/test_execution_control.py` | PASS — exact-head CI PASS |
 | S08-C04-P01 | Pre-execution validation | Not started | Pending | PENDING |
 | S08-C04-P02 | Permission check | Not started; must use trusted approval gateway | Pending | PENDING |
 | S08-C04-P03 | Audit | Not started; must use payload-free durable audit | Pending | PENDING |
@@ -119,4 +119,17 @@ P03 is verified for the SQLite persistence adapter and its unit-test contract. I
 - No Auto-Run, paid API, external provider, payment, purchase, trading, or money movement was added.
 - These are controller-level primitives. They are not yet wired into the Android client/dashboard or production runtime. No production-readiness claim is made.
 - Code commit: `a75a9fe03966afd23edd181a4cdd6f866ab81ae0`; test commit: `f7cc31f3ba9a06a91036cfdae58f66673416d820`; test-fixture correction: `357cdf70b7892d7d22c436ad7ce07fe1d9442836`.
-- Final exact-head CI must pass before these five Parts are marked PASS.
+- Exact-head verification: Agent Foundation CI run [43732335321](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43732335321) PASS; Python Demo CI run [43732335307](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43732335307) PASS.
+- Verified code-bearing snapshot: `b9d0b08797fba78de97725d98a535132c470542a`. All five Parts are verified at repository CI level; this does not imply Android/runtime integration or production readiness.
+
+
+## C02-C03 exact-head verification
+
+**Verified code-bearing snapshot:** `b9d0b08797fba78de97725d98a535132c470542a`
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [43732335321](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43732335321) | PASS — dependency audit, compile and foundation tests passed |
+| Python Demo CI | [43732335307](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43732335307) | PASS — full test suite and demo smoke passed |
+
+C02-P02, C02-P03, C03-P01, C03-P02 and C03-P03 are verified at repository CI level on the exact code-bearing snapshot. The next chapter is C04 Safety; no merge or deployment was performed.
