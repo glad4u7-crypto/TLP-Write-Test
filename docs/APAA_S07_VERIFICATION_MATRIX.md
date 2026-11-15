@@ -306,7 +306,7 @@ All four workflow jobs and every listed step were re-fetched and reported succes
 **Implementation:** core/linux_host_inspector.py  
 **Tests:** tests/test_linux_host_inspector.py  
 **Detailed contract:** docs/APAA_S07_REAL_HOST_INSPECTOR_P08.md  
-**CI:** PENDING exact final commit verification
+**CI:** PASS on P08 verification-matrix commit `4e9ef613342af52c1df6f04696596cc5532528e1`
 
 | Area | P08 evidence | Status |
 |---|---|---|
@@ -324,7 +324,7 @@ All four workflow jobs and every listed step were re-fetched and reported succes
 | Live host acceptance | Dedicated Linux host + real namespace + unprivileged account | NOT RUN |
 | Packet-level egress/DNS proof | Independent IPv4/IPv6, UDP/QUIC, DNS, routing and forwarding tests | NOT RUN |
 | Deployment/firewall/browser | No deployment, firewall mutation, worker start or browser activation | NOT PERFORMED |
-| Existing CI workflows | Both existing workflows must pass on the exact P08 verification-record commit | PENDING |
+| Existing CI workflows | Agent Foundation CI + Python Demo CI on exact matrix commit `4e9ef613342af52c1df6f04696596cc5532528e1` | PASS — 661 tests each |
 
 ### P08 interpretation and exit gate
 
@@ -333,3 +333,17 @@ P08 adds a concrete Linux adapter, but it does not make the host trustworthy by 
 Unit tests use synthetic procfs and mocked process execution. They do not count as live host evidence. Durable one-time challenge consumption, out-of-band key custody, live host acceptance and packet-level enforcement remain release blockers.
 
 **P08 disposition:** CONCRETE READ-ONLY LINUX ADAPTER + DETERMINISTIC UNIT TESTS ADDED. CI AND INDEPENDENT HOST ACCEPTANCE PENDING. No new workflow; no deployment, firewall changes, worker start or browser activation. PR #5 remains Open + Draft + unmerged.
+
+
+### P08 exact CI verification — PASS
+
+**P08 verification-matrix commit:** `4e9ef613342af52c1df6f04696596cc5532528e1`
+
+| Existing workflow | Run | Result | Exact evidence |
+|---|---:|---|---|
+| Agent Foundation CI | [43716609001](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716609001) | PASS | 661 passed in 18.24s; pip-audit reported no known vulnerabilities; compileall and every job step succeeded |
+| Python Demo CI | [43716609027](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43716609027) | PASS | 661 passed in 16.35s; demo smoke printed `Hello TradeLab Pro`; every job step succeeded |
+
+Both workflow jobs and all listed steps were re-fetched after completion and reported success. The two existing workflows ran on the exact P08 verification-matrix commit above. This verifies repository tests and offline adapter behavior; it is not live host acceptance or packet-level firewall evidence.
+
+**Correction record:** An intermediate P08 implementation commit failed one new test because the test called nftables inspection before capturing namespace identity. The adapter's fail-closed ordering was retained; the test was corrected to capture and pin the namespace first. The subsequent code-bearing commits and exact matrix commit passed both existing workflows. No CI workflow was added or modified.
