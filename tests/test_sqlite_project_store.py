@@ -388,3 +388,18 @@ def test_project_database_path_is_anchored_when_working_directory_changes(tmp_pa
     assert expected_path.is_file()
     assert not (elsewhere / "relative-projects" / "projects.sqlite3").exists()
     assert SQLiteProjectStore(expected_path).get_for_tenant(tenants[0], project.project_id) == project
+
+
+def test_project_store_rejects_database_symlink_replacement_after_initialization(tmp_path):
+    path = tmp_path / "projects.sqlite3"
+    store = SQLiteProjectStore(path)
+    target = tmp_path / "original-projects.sqlite3"
+    path.rename(target)
+    try:
+        path.symlink_to(target)
+    except OSError:
+        target.rename(path)
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        store._connect()
