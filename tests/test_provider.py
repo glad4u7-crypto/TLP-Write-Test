@@ -8,7 +8,9 @@ from core.brain import AIBrain
 from core.providers.openai_responses import OpenAIResponsesProvider, ProviderError
 
 
-def test_provider_requires_api_key():
+def test_provider_requires_api_key(monkeypatch):
+    monkeypatch.setenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PAID_PROVIDER_COST_APPROVED", "true")
     provider = OpenAIResponsesProvider(api_key="")
     with pytest.raises(ProviderError, match="OPENAI_API_KEY"):
         provider.generate("Hello")
@@ -21,6 +23,8 @@ def test_provider_rejects_empty_prompt():
 
 
 def test_provider_extracts_output_text(monkeypatch):
+    monkeypatch.setenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PAID_PROVIDER_COST_APPROVED", "true")
     captured = {}
 
     class FakeResponse:
@@ -49,6 +53,8 @@ def test_provider_extracts_output_text(monkeypatch):
 
 
 def test_provider_extracts_nested_output(monkeypatch):
+    monkeypatch.setenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PAID_PROVIDER_COST_APPROVED", "true")
     class FakeResponse:
         def __enter__(self): return self
         def __exit__(self, *args): return False
@@ -59,6 +65,8 @@ def test_provider_extracts_nested_output(monkeypatch):
 
 
 def test_provider_sanitizes_http_error(monkeypatch):
+    monkeypatch.setenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("AGENT_PAID_PROVIDER_COST_APPROVED", "true")
     def fail(*args, **kwargs):
         raise HTTPError("https://api.openai.com", 401, "Unauthorized", {}, BytesIO(b"secret"))
     monkeypatch.setattr("core.providers.openai_responses.urlopen", fail)
@@ -77,3 +85,30 @@ def test_brain_uses_provider_and_rejects_blank_message():
     assert brain.respond(" Plan this project ") == "A safe plan"
     with pytest.raises(ValueError):
         brain.respond(" ")
+
+
+
+def test_provider_is_disabled_without_both_explicit_opt_ins(monkeypatch):
+    monkeypatch.delenv("AGENT_EXTERNAL_PROVIDER_ENABLED", raising=False)
+    monkeypatch.delenv("AGENT_PAID_PROVIDER_COST_APPROVED", raising=False)
+
+    def unexpected_network_call(*args, **kwargs):
+        pytest.fail("Network call must not happen while provider is disabled.")
+
+    monkeypatch.setattr("core.providers.openai_responses.urlopen", unexpected_network_call)
+    provider = OpenAIResponsesProvider(api_key="test-key")
+    with pytest.raises(ProviderError, match="provider is disabled"):
+        provider.generate("Hello")
+
+
+def test_provider_requires_cost_approval_even_when_enabled(monkeypatch):
+    monkeypatch.setenv("AGENT_EXTERNAL_PROVIDER_ENABLED", "true")
+    monkeypatch.delenv("AGENT_PAID_PROVIDER_COST_APPROVED", raising=False)
+
+    def unexpected_network_call(*args, **kwargs):
+        pytest.fail("Network call must not happen without cost approval.")
+
+    monkeypatch.setattr("core.providers.openai_responses.urlopen", unexpected_network_call)
+    provider = OpenAIResponsesProvider(api_key="test-key")
+    with pytest.raises(ProviderError, match="cost approval"):
+        provider.generate("Hello")
