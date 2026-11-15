@@ -99,3 +99,16 @@ def test_approval_ttl_is_bounded():
         ApprovalManager(build_default_registry(), ttl_minutes=0)
     with pytest.raises(ValueError):
         ApprovalManager(build_default_registry(), ttl_minutes=1441)
+
+
+def test_credentials_are_rejected_from_approval_payload():
+    manager = ApprovalManager(build_default_registry())
+    with pytest.raises(ValueError):
+        manager.request("file.modify", "Do not include secrets", {"api_key": "secret-value"})
+
+
+def test_approval_decision_requires_a_boolean():
+    manager = ApprovalManager(build_default_registry())
+    item = manager.request("file.modify", "Change a file", {})
+    with pytest.raises(ValueError):
+        manager.decide(item.request_id, "yes")
