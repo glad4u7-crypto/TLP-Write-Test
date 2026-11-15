@@ -266,3 +266,46 @@ SQLite connections are operation-scoped and closed; tenant-bound registries and 
 ### Next serial checkpoint
 
 P08-P09-BO: review process-global caches and lock registries for cross-session data retention, unbounded growth and unsafe ownership assumptions. Distinguish harmless process-wide synchronization from identity-bearing state; do not remove shared locks or introduce per-session locks that would weaken concurrent audit append safety.
+
+
+## P08-P09-BO — Process-global cache and lock-registry review
+
+Review date: 2026-11-15  
+Reviewed code head: \`6075f38b825ada059cb477be552bb9736c13c1a5\`
+
+### Process-global objects found
+
+The reviewed core modules define only these mutable/process-global objects relevant to this boundary:
+
+- \`core.audit._PATH_LOCKS\`: a process-local mapping from resolved audit-log path to a shared \`threading.Lock\`. It synchronizes different \`JsonlAuditLog\` instances targeting the same file within one Python process. It does not retain a Principal, TenantKey, approval authority, project registry or task payload.
+- \`core.audit._PATH_LOCKS_GUARD\`: the lock protecting updates to the path-lock mapping; it contains no user identity.
+- \`core.projects._PROJECT_MUTATION_CAPABILITY\`: a module-level sentinel used to distinguish trusted in-process project mutation calls. It is not tenant-specific and is not a security sandbox against hostile Python in the same process.
+- \`core.session_security._IDENTITY_BOUND_KEYS\`: an immutable tuple of session-state key names, not user data or cached capabilities.
+
+No Streamlit cache decorator, module-global Principal, tenant-bound registry, SQLite store, execution gateway or approval authority was found in the reviewed core module set.
+
+### Retention and ownership assessment
+
+- The current app constructs the JSONL audit logger with one fixed configured path (\`.apaa_audit/execution.jsonl\`), so the path-lock map has one production path entry in the current UI flow. If future features allow arbitrary per-user or per-task log paths, the map would need bounded/weak-reference lifecycle handling to avoid retaining one lock per historical path.
+- Do not replace the shared per-path lock with per-instance locks: doing so would weaken same-process concurrent append serialization. The lock is intentionally process-wide for the configured file path and is not a cross-process lock.
+- The project mutation sentinel remains an in-process trust convention only. Python code running with the same interpreter privileges can import private module objects; production isolation requires a separate process/service boundary and is not claimed here.
+- No identity-bearing process-global cache was identified. No change was justified for the current fixed-path prototype.
+
+### Exact-head CI verification
+
+Documentation commit: \`509799b3901d9e25fd539a7ffae507323e0d586c\`
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | \`43697232345\` | PASS | 385 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | \`43697232231\` | PASS | 385 tests passed; demo output exactly \`Hello TradeLab Pro\` |
+
+Both checks completed successfully for the exact documentation commit, whose code tree includes reviewed code head \`6075f38b825ada059cb477be552bb9736c13c1a5\`.
+
+### Decision
+
+No identity-bearing global cache or store was found. The only shared lock registry is path-scoped and required for same-process append serialization; its current app usage is one fixed path. The module-level mutation sentinel remains explicitly non-isolating. Full S04 release readiness remains BLOCKED by live OIDC/browser, deployment, production isolation and repository-administration requirements. PR #5 remains open and Draft; do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BP: inspect the trusted project mutation sentinel and controller registration paths for accidental exposure through planner/task inputs, UI state or public exports. Preserve the documented same-process limitation; do not mistake a module-private object for a hardened sandbox.
