@@ -70,7 +70,7 @@ def test_registry_keeps_projects_isolated():
 def _owned_registry():
     registry = ProjectRegistry()
     project = registry.create(
-        "Alice private", "secret", owner_subject="alice",
+        "Alice private", "secret", owner_subject="alice", owner_issuer=ALICE.issuer,
         _capability=_PROJECT_MUTATION_CAPABILITY,
     )
     return registry, project
@@ -115,3 +115,16 @@ def test_owner_can_update_and_delete_project():
         project.project_id, ALICE, _capability=_PROJECT_MUTATION_CAPABILITY
     )
     assert registry.get(project.project_id) is None
+
+
+
+def test_same_subject_from_different_issuer_cannot_list_or_read_project():
+    registry = ProjectRegistry()
+    project = registry.create(
+        "Issuer scoped", "", owner_subject="alice", owner_issuer=ALICE.issuer,
+        _capability=_PROJECT_MUTATION_CAPABILITY,
+    )
+    other_issuer = Principal("alice", "https://other-issuer.example", True)
+    assert registry.list_projects_for_owner(other_issuer) == []
+    with pytest.raises(AuthorizationDenied):
+        registry.get_for_owner(project.project_id, other_issuer)
