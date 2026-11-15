@@ -64,7 +64,9 @@ def test_authenticated_app_fails_closed_for_short_signing_secret(monkeypatch):
         "Durable security storage is not configured safely" in item.value
         for item in app.error
     )
-    assert not app.button
+    # Logout is rendered before durable-store initialization; no project/task
+    # action may appear after the fail-closed stop.
+    assert [button.label for button in app.button] == ["Log out"]
 
 
 def test_authenticated_app_fails_closed_for_unsafe_security_database_path(
@@ -99,7 +101,7 @@ def test_authenticated_app_fails_closed_for_unsafe_security_database_path(
         "Durable security storage is not configured safely" in item.value
         for item in app.error
     )
-    assert not app.button
+    assert [button.label for button in app.button] == ["Log out"]
     assert outside.read_bytes() == b"must-not-be-opened"
 
 
