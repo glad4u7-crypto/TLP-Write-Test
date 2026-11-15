@@ -1,22 +1,21 @@
-# Verification record — APAA-S08-C02-P01
+# Verification record — APAA-S08-C02-P02
 
-Implementation files are committed on branch `apaa/s08-c02-p01`.
+## Added capabilities
+- Durable FIFO queue queried from SQLite (no volatile in-memory task queue).
+- Atomic task claim with worker ownership and expiry lease.
+- Recovery of expired RUNNING tasks to QUEUED, or FAILED when attempts are exhausted.
+- Idempotency-key uniqueness and duplicate suppression.
+- Bounded retry counter and append-only audit events.
+- Permission and consent are persisted and rechecked before handler invocation.
 
-## Automated checks
-The root-level GitHub Actions workflow `.github/workflows/apaa-s08-c02-p01.yml`
-runs the standard-library unittest suite on pushes affecting this package and on pull requests.
+## Test coverage
+- Successful execution and audit persistence.
+- Duplicate submission suppression.
+- Expired lease recovery after simulated worker loss.
+- Retry exhaustion.
+- Lease ownership enforcement.
+- Atomic single-claim behavior.
+- Missing-consent blocking and FIFO order.
 
-## Test cases
-- Approved task succeeds and persists result.
-- Missing consent blocks execution before handler invocation.
-- Unknown action is blocked.
-- Handler exception is persisted as FAILED.
-- FIFO ordering is preserved.
-- Illegal lifecycle transition is rejected.
-- Concurrent run attempt is rejected while a handler is active.
-
-## Acceptance boundary
-P01 is an isolated execution foundation, not production deployment approval.
-Cross-process locking, crash recovery, signed consent evidence, cancellation,
-and host-specific adapters remain follow-up requirements.
-CI must report success before this checkpoint is marked fully verified.
+## Important guarantee boundary
+This is at-least-once execution. It does not promise exactly-once external side effects. Future side-effecting adapters must use idempotency keys at the destination and require a fresh, verifiable authorization policy. This package is not production deployment approval.
