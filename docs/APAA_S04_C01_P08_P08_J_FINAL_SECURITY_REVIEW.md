@@ -227,3 +227,47 @@ Automated CI and claim-adapter tests do not replace a live OIDC deployment test 
 The local SQLite stores remain single-host-oriented operational components, not a verified multi-host service. Protected backup/retention/monitoring/recovery and independent audit anchoring remain production requirements. In-process Python approval/execution capabilities are not a sandbox against hostile code in the same process. The existing same-account filesystem/TOCTOU limitation remains unchanged.
 
 PR #5 remains open and Draft on `feature/approval-ui-e2e-p06`, targeting `feature/agent-v0.3-zero-cost-core`. No merge, deployment, paid-provider activation, payment, purchase, trading, or real-world handler enablement is authorized. Auto-Run remains disabled. Production remains **NOT APPROVED**.
+
+
+## P08-P09-AL — Live OIDC verification runbook and current-head CI
+
+Verification date: 2026-11-15  
+Reviewed PR head before this documentation-only update: `f340110237674d61f3a769a336379b9e78e62861`
+
+### Current-head CI evidence
+
+Both required workflows completed successfully for the reviewed head:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Python Demo CI | #487 / 43685779467 | PASS |
+| Agent Foundation CI | #397 / 43685779485 | PASS |
+
+The earlier #486/#396 runs were also successful; #487/#397 are the later runs attached to the same reviewed commit.
+
+### Controlled live OIDC verification procedure
+
+This is a manual release-gate procedure, not a claim that live testing has already occurred. Use only a private test deployment, a test OIDC client, two operator-controlled non-production identities (A and B), and two isolated browser profiles. Never place real access tokens, ID tokens, client secrets, signing secrets, or session cookies in screenshots, logs, or this repository.
+
+Preconditions:
+1. Configure the test deployment's Streamlit OIDC provider using the provider's supported secrets format.
+2. Set `[apaa].require_auth = true`; verify the unauthenticated app cannot reach project or approval functionality.
+3. Configure a high-entropy stable `approval_signing_secret_hex` decoding to at least 32 bytes. Store it only in the deployment secret manager.
+4. Configure private writable security/project database paths and verify owner-only filesystem permissions on the supported POSIX test host.
+5. Keep Auto-Run disabled and use only the existing project-create test action. Do not register file, shell, browser, network, email, device, payment, trading, or other real-world handlers.
+
+Execution matrix and evidence to record (redacted, with timestamps and pass/fail only):
+- **Unauthenticated access:** open a fresh private profile; confirm login is required and no project data/actions are exposed.
+- **Identity A login:** sign in as A; create a harmless uniquely named test project after reviewing and explicitly confirming it; verify the project is listed for A.
+- **Identity B isolation:** in a separate private profile, sign in as B; verify A's project is not listed, readable, editable, or deletable by B.
+- **Approval binding:** issue a test approval in A's session; verify a changed payload, different action, expired receipt, replayed receipt, and receipt presented by B are all rejected.
+- **Logout invalidation:** log out A; verify the prior session cannot access authenticated project/approval functions and its pre-logout receipt cannot be reused after a fresh login.
+- **Account switch:** where the provider supports it, switch A to B in the same browser profile; verify old drafts, selected project, approval authority, gateway and session scope are cleared before B's state is initialized.
+- **Session separation:** keep A and B sessions open simultaneously in isolated profiles; verify actions and project lists remain tenant-scoped.
+- **Failure behavior:** in a disposable test deployment only, test missing/invalid OIDC configuration and unavailable/unwritable durable stores; the app must stop rather than fall back to unauthenticated or ephemeral authenticated execution.
+
+Acceptance: every case passes, evidence is redacted, no secrets are committed, and a reviewer independently checks the evidence and deployment configuration. Any failure blocks release and must be fixed and retested. Do not use production customer identities or production data for this matrix.
+
+### Boundaries
+
+This runbook does not prove CSRF/cookie protections, provider configuration correctness, deployment isolation, or multi-host storage behavior until executed against the actual test deployment. Live OIDC/browser verification remains **PENDING** until the operator supplies that deployment and two controlled test identities. PR #5 remains open and Draft; no merge or deployment is authorized. Production remains **NOT APPROVED**.
