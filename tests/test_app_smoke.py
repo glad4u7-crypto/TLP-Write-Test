@@ -133,3 +133,46 @@ def test_project_review_can_be_cancelled_without_side_effect():
     assert not app.exception
     assert len(app.session_state["project_registry"].list_projects()) == 0
     assert "pending_project" not in app.session_state
+
+
+def test_authenticated_app_fails_closed_when_project_database_initialization_fails(
+    tmp_path, monkeypatch
+):
+    security_dir = tmp_path / "private-security"
+    linked_dir = tmp_path / "linked-projects"
+    security_dir.mkdir(mode=0o700)
+    try:
+        linked_dir.symlink_to(tmp_path, target_is_directory=True)
+    except OSError:
+        import pytest
+        pytest.skip("directory symlink creation is unavailable")
+
+    security_db = security_dir / "security.sqlite3"
+    project_db = linked_dir / "projects.sqlite3"
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": "cd" * 32,
+                "security_db_path": str(security_db),
+                "project_db_path": str(project_db),
+            },
+        },
+    )
+    _authenticated_test_user(monkeypatch)
+
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+
+    assert not app.exception
+    assert any(
+        "Durable security storage is not configured safely" in item.value
+        for item in app.error
+    )
+    assert [button.label for button in app.button] == ["Log out"]
+    # The security store initialized first, but a project-store failure must
+    # still stop the app before any authenticated project/task controls render.
+    assert security_db.is_file()
+    assert not project_db.exists()
