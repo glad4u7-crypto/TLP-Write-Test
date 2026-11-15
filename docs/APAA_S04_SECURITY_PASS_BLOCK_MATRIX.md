@@ -192,8 +192,8 @@ Code-level exact-head CI: **PASS**. JSONL crash-tail behavior: **PASS (fail-clos
 
 | Control | Status | Evidence / remaining boundary |
 |---|---|---|
-| SQLite local backup/restore mechanics | PENDING EXACT-HEAD CI | Automated source → backup → restore → verify → append regression test added. |
-| SQLite audit tamper blocks append atomically | PENDING EXACT-HEAD CI | Regression test asserts append failure and no row-count increase after direct tampering. |
+| SQLite local backup/restore mechanics | PASS — automated CI scope | Backup/restore regression test passed in 399-test exact-head suite; local mechanics only, not scheduled/off-site DR. |
+| SQLite audit tamper blocks append atomically | PASS — automated CI scope | Tamper/append atomicity regression test passed in 399-test exact-head suite. |
 | Independent audit hash anchor | BLOCKED | No independent trust boundary or immutable checkpoint service is configured. A same-database hash chain is not independently tamper-proof. |
 | Scheduled/off-site encrypted backup and retention | BLOCKED | Requires operator-controlled storage, schedule, access policy and restore evidence. |
 | Live OIDC and two-user browser isolation | BLOCKED | Requires private non-production deployment, OIDC test client and two controlled identities. |
@@ -213,3 +213,54 @@ These are documented procedures, not fabricated execution results. No external a
 PR #5 remains Open + Draft. No merge/deploy. Auto-Run and real-world handlers remain disabled. Payment, purchase, checkout, trading and money movement remain prohibited. Paid providers/API keys remain disabled. Production remains NOT APPROVED.
 
 Next checkpoint: P08-P09-BX — inspect exact-head CI for the new tests, fix demonstrated failures and publish final evidence.
+
+
+## P08-P09-BX/BY — latest documentation-head CI and S04 closure disposition
+
+Review date: 2026-11-15  
+Latest documentation commit: `cb0664dae5874d15abdf3a3f88ed84c292afdc03`  
+Branch: `feature/approval-ui-e2e-p06`
+
+### Documentation commit exact-commit CI
+
+Both existing PR workflows completed successfully for the matrix-addendum commit:
+
+| Workflow | Run ID | Run number | Result |
+|---|---:|---:|---|
+| Agent Foundation CI | 43700453545 | 604 | PASS |
+| Python Demo CI | 43700453429 | 695 | PASS |
+
+- Agent Foundation CI: dependency audit reported no known vulnerabilities at run time; compileall passed; **399 tests passed in 15.37s**.
+- Python Demo CI: **399 tests passed in 13.47s**; demo output matched exactly `Hello TradeLab Pro`.
+- All reported steps in both jobs completed successfully.
+- This closes the previous note that the documentation commit's own CI was unverified.
+
+### Current consolidated matrix delta
+
+- SQLite local backup/restore mechanics: **PASS — automated CI scope** (399-test suite).
+- SQLite tamper blocks append atomically: **PASS — automated CI scope** (399-test suite).
+- Dependency audit: **PASS — point-in-time**.
+- Compile and full automated suite: **PASS — 399 tests**.
+- Demo smoke test: **PASS**.
+- All earlier PASS statuses remain scoped to their documented offline/automated evidence; they do not imply live provider or production validation.
+
+### Final S04 disposition
+
+**S04 code-level/CI verification: PASS. S04 production/release readiness: BLOCKED.**
+
+Remaining external/operational blockers (not repository-only tasks):
+1. Private non-production live OIDC verification with two controlled identities and isolated browser profiles.
+2. Real-browser verification of cookie flags, CSRF, redirect allowlist, callback errors and reverse-proxy/TLS trust.
+3. Repository-admin evidence for branch protection and required checks.
+4. Independently administered immutable/append-only audit checkpointing and rollback/missed-checkpoint tests.
+5. Encrypted off-site backup, retention policy, monitoring and recurring restore evidence.
+6. Dedicated unprivileged OS identity, private non-writable data paths, single-writer topology, and host/container isolation; same-UID TOCTOU and hostile-code boundaries remain.
+7. Named operational owner, evidence capture, incident/restore procedure and independent review before any production approval.
+
+No external anchor, OIDC deployment, production host, credentials or paid service has been provisioned in this work. No such work is represented as complete.
+
+### Safety and branch disposition
+
+PR #5 remains Open + Draft; no merge, deployment or base-branch change. Auto-Run and real-world browser/email/shell/network/filesystem/device handlers remain disabled. Payment, purchase, checkout, trading and money movement remain prohibited. Paid providers, API keys and billable services remain disabled; current build remains zero-cost. Production remains **NOT APPROVED**.
+
+Next checkpoint: `APAA-S04-C01-P08-P09-BZ` — verify the post-BY matrix/closure-plan commits on the exact PR head, confirm both CI workflows, then decide whether S04 can be marked code-complete while retaining the external release blockers.
