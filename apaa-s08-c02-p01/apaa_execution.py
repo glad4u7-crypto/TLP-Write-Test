@@ -5,6 +5,7 @@ from enum import Enum
 import hashlib, json, sqlite3, threading, time, uuid
 from typing import Any, Callable
 from apaa_security import validate_task_input, PolicyRegistry, ConsentRegistry
+from apaa_reliability import ExecutionBudget, validate_result_size
 
 class TaskStatus(str, Enum):
     QUEUED="queued"; RUNNING="running"; SUCCEEDED="succeeded"; FAILED="failed"
@@ -105,14 +106,24 @@ class StateStore:
     def claim_next(self,worker_id:str,lease_seconds:float)->dict[str,Any]|None:
         if not worker_id or lease_seconds<=0:raise ValueError("worker_id and positive lease required")
         now=time.time()
-        with self._lock,self._db:
-            row=self._db.execute("SELECT * FROM tasks WHERE status=? ORDER BY created_at,task_id LIMIT 1",
-                                 (TaskStatus.QUEUED.value,)).fetchone()
-            if row is None:return None
-            self._transition(row["task_id"],TaskStatus.RUNNING,lease_owner=worker_id,lease_expires_at=now+lease_seconds)
-            self._db.execute("UPDATE tasks SET attempts=attempts+1 WHERE task_id=?",(row["task_id"],))
-            self._audit(row["task_id"],"lease_claimed",worker_id)
-            return dict(self._db.execute("SELECT * FROM tasks WHERE task_id=?",(row["task_id"],)).fetchone())
+        # Serialize claims across threads and independent SQLite connections.
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                row=self._db.execute("SELECT * FROM tasks WHERE status=? ORDER BY created_at,task_id LIMIT 1",
+                                     (TaskStatus.QUEUED.value,)).fetchone()
+                if row is None:
+                    self._db.commit()
+                    return None
+                self._transition(row["task_id"],TaskStatus.RUNNING,lease_owner=worker_id,lease_expires_at=now+lease_seconds)
+                self._db.execute("UPDATE tasks SET attempts=attempts+1 WHERE task_id=?",(row["task_id"],))
+                self._audit(row["task_id"],"lease_claimed",worker_id)
+                claimed=dict(self._db.execute("SELECT * FROM tasks WHERE task_id=?",(row["task_id"],)).fetchone())
+                self._db.commit()
+                return claimed
+            except Exception:
+                self._db.rollback()
+                raise
     def finish(self,task_id:str,worker_id:str,target:TaskStatus,*,result:Any=None,error:str|None=None)->None:
         with self._lock,self._db:
             row=self._db.execute("SELECT status,lease_owner,attempts,max_attempts FROM tasks WHERE task_id=?",(task_id,)).fetchone()
@@ -189,10 +200,13 @@ class ExecutionEngine:
     """Explicitly consent-gated worker; no implicit external adapters."""
     def __init__(self,store:StateStore|None=None,*,worker_id:str|None=None,lease_seconds:float=30,
                  policy_registry:PolicyRegistry|None=None,consent_registry:ConsentRegistry|None=None,
-                 consent_ttl_seconds:float=900)->None:
-        if lease_seconds<=0 or consent_ttl_seconds<=0:raise ValueError("lease and consent TTL must be positive")
+                 consent_ttl_seconds:float=900,execution_timeout_seconds:float=30,
+                 max_execution_steps:int=10000,max_result_bytes:int=65536)->None:
+        if lease_seconds<=0 or consent_ttl_seconds<=0 or execution_timeout_seconds<=0 or max_execution_steps<1 or max_result_bytes<1:raise ValueError("invalid runtime limits")
         self.store=store or StateStore();self.worker_id=worker_id or str(uuid.uuid4())
-        self.lease_seconds=lease_seconds;self._handlers:dict[str,Callable[[dict[str,Any]],Any]]={}
+        self.lease_seconds=lease_seconds;self.execution_timeout_seconds=execution_timeout_seconds
+        self.max_execution_steps=max_execution_steps;self.max_result_bytes=max_result_bytes
+        self._handlers:dict[str,tuple[Callable[...,Any],bool]]={}
         self.policy_registry=policy_registry or PolicyRegistry()
         self.consent_registry=consent_registry or ConsentRegistry()
         self.consent_ttl_seconds=consent_ttl_seconds
@@ -203,10 +217,10 @@ class ExecutionEngine:
         self.consent_registry.grant(task_id,scope,expires_at=expires_at)
     def revoke_consent(self,task_id:str)->bool:
         return self.consent_registry.revoke(task_id)
-    def register(self,action:str,handler:Callable[[dict[str,Any]],Any])->None:
+    def register(self,action:str,handler:Callable[...,Any],*,cooperative:bool=False)->None:
         if not action or not callable(handler):raise ValueError("named callable handler required")
         if action in self._handlers:raise ValueError(f"handler already registered: {action}")
-        self._handlers[action]=handler
+        self._handlers[action]=(handler,cooperative)
     def submit(self,task:Task)->str:
         if not isinstance(task,Task):raise TypeError("submit requires a Task instance")
         # Revalidate at the trust boundary; direct dataclass construction cannot bypass validation.
@@ -226,7 +240,8 @@ class ExecutionEngine:
         try:
             row=self.store.claim_next(self.worker_id,self.lease_seconds)
             if row is None:return None
-            tid=row["task_id"];action=row["action"];handler=self._handlers.get(action)
+            tid=row["task_id"];action=row["action"];registered=self._handlers.get(action)
+            handler,cooperative=registered if registered else (None,False)
             # Re-check live policy and consent immediately before invoking a handler.
             policy_ok=self.policy_registry.allows(action,row["policy_version"])
             consent_ok=self.consent_registry.is_valid(tid,action)
@@ -238,7 +253,14 @@ class ExecutionEngine:
                 if handler is None:reasons.append("handler not registered")
                 self.store.finish(tid,self.worker_id,TaskStatus.BLOCKED,error="; ".join(reasons))
                 return tid
-            try:output=handler(validate_task_input(action,json.loads(row["payload"])))
+            try:
+                budget=ExecutionBudget(self.execution_timeout_seconds,max_steps=self.max_execution_steps)
+                payload=validate_task_input(action,json.loads(row["payload"]))
+                output=handler(payload,budget) if cooperative else handler(payload)
+                # Cooperative handlers can check deadlines during long work; this final check
+                # catches overruns after return. Non-cooperative code cannot be forcibly killed.
+                budget.check()
+                validate_result_size(output,self.max_result_bytes)
             except Exception as exc:self.store.retry_or_fail(tid,self.worker_id,f"{type(exc).__name__}: {exc}")
             else:self.store.finish(tid,self.worker_id,TaskStatus.SUCCEEDED,result=output)
             return tid
