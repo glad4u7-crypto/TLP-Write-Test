@@ -124,7 +124,7 @@ class PlaywrightBrowserLauncher:
                 timeout=self.policy.launch_timeout_ms,
             )
             # A fresh incognito-like context: no user profile or stored cookies.
-            context = browser.new_context(accept_downloads=False)
+            context = browser.new_context(accept_downloads=False, service_workers="block")
             page = context.new_page()
             return BrowserSession(browser, context, page, manager)
         except Exception as exc:
