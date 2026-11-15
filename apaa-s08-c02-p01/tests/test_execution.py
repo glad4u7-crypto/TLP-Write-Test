@@ -96,7 +96,7 @@ class DurableQueueTests(unittest.TestCase):
         self.engine.set_policy("echo4","v1",True)
         t=Task.create("echo4",{},permission_granted=True,user_consented=True)
         self.engine.submit(t)
-        self.engine.consent_registry.grant(t.task_id,t.action,expires_at=time.time()-1)
+        self.engine.consent_registry.grant(t.task_id,t.action,expires_at=time.time()-1,now=time.time()-2)
         self.engine.run_next()
         self.assertEqual(self.store.get(t.task_id)["status"],"blocked")
         self.assertEqual(called,[])
