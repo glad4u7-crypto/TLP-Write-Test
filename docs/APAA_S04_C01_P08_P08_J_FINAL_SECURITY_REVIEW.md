@@ -132,3 +132,36 @@ The offline-verifiable authentication startup/failure paths and collision-safe s
 ### Next serial checkpoint
 
 P08-P09-BK: continue the offline review of logout callback behavior, login callback/session renewal and identity-bound capability invalidation after re-authentication. Add tests only for demonstrated gaps; keep live browser/OIDC verification as an explicit external blocker.
+
+
+## P08-P09-BK — Explicit logout callback and re-authentication boundary
+
+Review date: 2026-11-15  
+Reviewed code head: \`c66be606644f7ce703fb8cae98f4736f77674b24\`
+
+### Findings
+
+- The explicit Log out callback calls \`clear_session_identity\` before invoking Streamlit's \`st.logout()\`. The identity-bound state is therefore cleared before the provider logout transition is requested.
+- When the next rerun observes \`st.user.is_logged_in == False\`, the authentication-required branch clears identity-bound state again, renders only the login path and stops before private project/task controls.
+- Re-authentication with a different identity is bound through the structured issuer/subject key. \`bind_session_identity\` clears identity-bound capabilities whenever the marker changes; existing session-security tests cover identity switching and stale approval invalidation.
+- Added an AppTest integration regression test that starts an authenticated session with durable stores, invokes the actual Log out button, simulates provider logout, and asserts that approval authority, execution gateway, tenant registry, drafts and private task state do not survive.
+- The login button delegates to Streamlit's OIDC login callback. Its actual redirect/provider round trip cannot be established by AppTest and remains part of the live browser/OIDC test matrix.
+
+### Exact-head CI verification
+
+Reviewed code head: \`c66be606644f7ce703fb8cae98f4736f77674b24\`
+
+| Workflow | Run | Result | Evidence |
+|---|---:|---|---|
+| Agent Foundation CI | \`43696768949\` | PASS | 384 tests passed; compile passed; dependency audit reported no known vulnerabilities |
+| Python Demo CI | \`43696768938\` | PASS | 384 tests passed; demo output exactly \`Hello TradeLab Pro\` |
+
+Both results are PR-triggered runs on the exact reviewed head. Superseded push-triggered runs were cancelled by the configured concurrency policy and are not treated as failures.
+
+### Decision
+
+The explicit logout cleanup callback and the identity transition invalidation path pass automated tests at this exact head. Live OIDC redirects, browser cookie/session behavior, CSRF, reverse proxy and multi-worker isolation remain externally blocked. Full S04 security/release readiness remains BLOCKED. PR #5 stays open and Draft; do not merge, deploy, enable Auto-Run, activate paid/external providers, or register real-world execution handlers. Payment, purchase, checkout, trading and money movement remain prohibited. Production remains **NOT APPROVED**.
+
+### Next serial checkpoint
+
+P08-P09-BL: inspect whether all session-state keys that carry user-specific or approval-related information are included in the central identity cleanup list, including any future UI state introduced by later modules. Check for stale references outside the current list and add a focused regression test only if a concrete omission is found.
