@@ -232,3 +232,44 @@ def test_collector_rejects_invalid_challenge_key_and_source():
         collect_signed_inspector_evidence(
             FakeHostSource(spec), challenge="not-a-challenge", **args,
         )
+
+
+def test_collector_rejects_signer_with_invalid_public_key_or_signature():
+    spec = build_worker_launch_spec(profile())
+    source = FakeHostSource(spec)
+
+    class BadPublicKey:
+        def public_key_bytes(self):
+            return b"short"
+        def sign(self, message):
+            return b"x" * 64
+
+    class BadSignature:
+        def public_key_bytes(self):
+            return Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+        def sign(self, message):
+            return b"x" * 64
+
+    for signer in (BadPublicKey(), BadSignature()):
+        with pytest.raises(HostCollectionError):
+            collect_signed_inspector_evidence(
+                source, spec, challenge="d" * 64, key_id="host-inspector-prod",
+                signer=signer, expected_proxy_addresses=[PROXY_IP], now=NOW,
+            )
+
+
+def test_collector_rejects_signer_failure_without_emitting_evidence():
+    spec = build_worker_launch_spec(profile())
+    source = FakeHostSource(spec)
+
+    class FailingSigner:
+        def public_key_bytes(self):
+            return Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+        def sign(self, message):
+            raise RuntimeError("simulated protected signer outage")
+
+    with pytest.raises(HostCollectionError, match="signing operation failed"):
+        collect_signed_inspector_evidence(
+            source, spec, challenge="d" * 64, key_id="host-inspector-prod",
+            signer=FailingSigner(), expected_proxy_addresses=[PROXY_IP], now=NOW,
+        )
