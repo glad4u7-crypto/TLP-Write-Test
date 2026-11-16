@@ -112,18 +112,25 @@ The positive integration case exercises:
 - Live `CapInh`, `CapPrm`, `CapEff` and `CapBnd` masks all equal zero.
 - Handle-bound STOP and force-REMOVE by immutable ID, followed by an absent-container check.
 
-The negative integration case supplies a corrupted signature and verifies that START is not called and the real created Podman container is removed. A final workflow cleanup checks that no APAA-managed container remains.
+The negative integration cases exercise the real created Podman container and verify START is blocked and cleanup succeeds for:
+- Corrupted Ed25519 signature.
+- Revoked inspector key.
+- Firewall evidence bound to the wrong worker identity.
+- Replayed challenge from a previous real worker launch.
+- Interrupted INSPECT command and interrupted START command.
+
+The replay case launches a real worker, stops/removes it, then attempts a second launch with the first launch's challenge; only the first START is allowed. A final workflow cleanup checks that no APAA-managed container remains.
 
 P23 also fixes two real Podman 4.9.3 inspect mismatches:
 - A named bridge is represented as generic `HostConfig.NetworkMode=bridge`; APAA now accepts it only when `NetworkSettings.Networks` contains exactly the one approved named network and no additional attachment.
 - Podman's `CapDrop` inspect field lists its exact 11 default capabilities for `--cap-drop=ALL`; APAA accepts only that exact Podman set, rejects partial/unknown sets and rejects any `CapAdd`.
 
-**Exact-head P23 verification:** `ebd2d8e46f6ca1b2d82f64d68d8d189d28c0b113` (2026-11-16):
-- [Agent Foundation CI #903](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208788): **PASS** — dependency audit found no known vulnerabilities, Python compile passed, **1013 tests passed / 2 skipped**, disposable Linux egress namespace qualification passed.
-- [Python Demo CI #978](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208755): **PASS**.
-- [Rootless Podman Runtime Qualification #32](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208806): **PASS**.
-- [P23 Rootless Podman Executor Integration #14](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208763): **PASS** — real executor lifecycle, valid evidence gate, bad-signature rejection, zero live capability masks, cleanup and no-orphan check.
-- [P23 sanitized Podman evidence artifact](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208763/artifacts/14198142305).
+**Exact-head P23 verification:** `cc7390fd003db3cff780470f1c519dc14234ac23` (2026-11-16):
+- [Agent Foundation CI #906](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806544199): **PASS** — dependency audit found no known vulnerabilities, Python compile passed, **1013 tests passed / 7 skipped**, disposable Linux egress namespace qualification passed.
+- [Python Demo CI #981](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806544247): **PASS**.
+- [Rootless Podman Runtime Qualification #35](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806544193): **PASS**.
+- [P23 Rootless Podman Executor Integration #17](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806544215): **PASS** — real executor lifecycle, valid evidence gate, corrupted-signature/revoked-key/wrong-worker/replayed-challenge rejection, inspect/start interruption cleanup, zero live capability masks, and no-orphan check.
+- [P23 sanitized Podman evidence artifact](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806544215/artifacts/14198776596).
 
 **Critical trust boundary:** the P23 Ed25519 signer is generated inside disposable CI solely to exercise executor/control-plane wiring. The signed firewall/runtime evidence is synthetic test data, not a trusted host observation. P23 therefore qualifies real Podman lifecycle integration and the software attestation gate, but does NOT qualify a production trusted host collector, out-of-band key provisioning, firewall truth, proxy-only egress, or production worker enablement. Browser/worker remains disabled.
 
