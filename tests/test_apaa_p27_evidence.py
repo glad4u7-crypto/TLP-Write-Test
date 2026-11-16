@@ -2,7 +2,10 @@ import hashlib
 import json
 from pathlib import Path
 
+import base64
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from scripts.validate_apaa_p27_evidence import (
     EvidenceValidationError,
@@ -138,3 +141,60 @@ def test_rejects_duplicate_json_object_keys(tmp_path):
     (root / "manifest.json").write_text(original[:-1] + ', "schema_version": 1}')
     with pytest.raises(EvidenceValidationError, match="duplicate JSON object keys"):
         validate_evidence_directory(root)
+
+
+def _signed_pack(root: Path, tmp_path: Path):
+    make_pack(root)
+    raw = (root / "manifest.json").read_bytes()
+    private = Ed25519PrivateKey.generate()
+    public = private.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
+    pub_path, sig_path = tmp_path / "trusted.pub", tmp_path / "manifest.sig"
+    pub_path.write_bytes(public)
+    sig_path.write_text(base64.b64encode(private.sign(raw)).decode("ascii"), encoding="ascii")
+    return pub_path, sig_path, hashlib.sha256(public).hexdigest()
+
+
+def test_detached_ed25519_manifest_signature_verifies(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir()
+    pub, sig, fp = _signed_pack(root, tmp_path)
+    result = validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256=fp)
+    assert result["authenticity"] == "VERIFIED_ED25519"
+    assert result["signer_key_sha256"] == fp
+
+
+def test_rejects_manifest_changed_after_signing(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir()
+    pub, sig, fp = _signed_pack(root, tmp_path)
+    (root / "manifest.json").write_bytes((root / "manifest.json").read_bytes() + b" ")
+    with pytest.raises(EvidenceValidationError):
+        validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256=fp)
+
+
+def test_rejects_wrong_pinned_key_fingerprint(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir()
+    pub, sig, _ = _signed_pack(root, tmp_path)
+    with pytest.raises(EvidenceValidationError, match="fingerprint"):
+        validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256="0" * 64)
+
+
+def test_rejects_signature_from_another_key(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir()
+    pub, sig, fp = _signed_pack(root, tmp_path)
+    wrong = Ed25519PrivateKey.generate()
+    sig.write_text(base64.b64encode(wrong.sign((root / "manifest.json").read_bytes())).decode("ascii"))
+    with pytest.raises(EvidenceValidationError, match="signature verification"):
+        validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256=fp)
+
+
+def test_rejects_signature_inside_evidence_directory(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir(); make_pack(root)
+    sig = root / "manifest.sig"; sig.write_text("invalid")
+    pub = tmp_path / "trusted.pub"; pub.write_bytes(b"x" * 32)
+    with pytest.raises(EvidenceValidationError, match="outside the evidence directory"):
+        validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256="0" * 64)
+
+
+def test_requires_signature_and_key_together(tmp_path):
+    root = tmp_path / "evidence"; root.mkdir(); make_pack(root)
+    with pytest.raises(EvidenceValidationError, match="supplied together"):
+        validate_evidence_directory(root, signature_path=tmp_path / "manifest.sig")

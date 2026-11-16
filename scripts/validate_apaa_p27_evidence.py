@@ -8,6 +8,8 @@ Those checks require the independent reviewer and trusted evidence verifier.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import re
@@ -15,6 +17,9 @@ import stat
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -79,7 +84,7 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
+def validate_evidence_directory(directory: str | Path, *, signature_path: str | Path | None = None, public_key_path: str | Path | None = None, expected_key_sha256: str | None = None) -> dict[str, Any]:
     root = Path(directory)
     if root.is_symlink() or not root.is_dir():
         raise EvidenceValidationError("evidence directory must be a real directory")
@@ -89,8 +94,9 @@ def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
     try:
         if manifest_path.stat().st_size > 1024 * 1024:
             raise EvidenceValidationError("manifest exceeds the 1 MiB size limit")
+        manifest_bytes = manifest_path.read_bytes()
         manifest = json.loads(
-            manifest_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
+            manifest_bytes.decode("utf-8"), object_pairs_hook=_unique_object
         )
     except EvidenceValidationError:
         raise
@@ -166,13 +172,50 @@ def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
         if observed != expected:
             raise EvidenceValidationError(f"SHA-256 mismatch for {name}")
 
+    if (signature_path is None) != (public_key_path is None):
+        raise EvidenceValidationError("signature and public-key paths must be supplied together")
+    authenticity = "NOT_CHECKED"
+    signer_fingerprint = None
+    if signature_path is not None and public_key_path is not None:
+        signature_file, public_key_file = Path(signature_path), Path(public_key_path)
+        for label, candidate in (("signature", signature_file), ("public key", public_key_file)):
+            if candidate.is_symlink() or not candidate.is_file():
+                raise EvidenceValidationError(f"{label} must be a regular non-symlink file")
+            try:
+                candidate.resolve().relative_to(root.resolve())
+            except ValueError:
+                pass
+            else:
+                raise EvidenceValidationError(f"{label} must be stored outside the evidence directory")
+        if not isinstance(expected_key_sha256, str) or not _SHA256.fullmatch(expected_key_sha256):
+            raise EvidenceValidationError("expected trusted public-key SHA-256 fingerprint is required")
+        try:
+            public_key_bytes = public_key_file.read_bytes()
+            signature_text = signature_file.read_text(encoding="ascii").strip()
+            signature = base64.b64decode(signature_text, validate=True)
+        except (OSError, UnicodeError, ValueError, binascii.Error) as exc:
+            raise EvidenceValidationError("signature or trusted public-key file is unreadable/invalid") from exc
+        if len(public_key_bytes) != 32 or len(signature) != 64:
+            raise EvidenceValidationError("Ed25519 public key/signature has an invalid length")
+        if base64.b64encode(signature).decode("ascii") != signature_text:
+            raise EvidenceValidationError("detached signature must use canonical base64 encoding")
+        signer_fingerprint = hashlib.sha256(public_key_bytes).hexdigest()
+        if signer_fingerprint != expected_key_sha256:
+            raise EvidenceValidationError("trusted public-key fingerprint does not match the pinned value")
+        try:
+            Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(signature, manifest_bytes)
+        except (ValueError, InvalidSignature) as exc:
+            raise EvidenceValidationError("detached manifest signature verification failed") from exc
+        authenticity = "VERIFIED_ED25519"
+
     return {
         "valid": True,
         "schema_version": 1,
         "run_id": manifest["run_id"],
         "artifact_count": len(normalized),
         "integrity": "PASS",
-        "authenticity": "NOT_CHECKED",
+        "authenticity": authenticity,
+        "signer_key_sha256": signer_fingerprint,
         "host_qualification": "NOT_ASSESSED",
     }
 
@@ -180,9 +223,15 @@ def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate an APAA P27 evidence pack")
     parser.add_argument("evidence_directory", type=Path)
+    parser.add_argument("--signature", type=Path)
+    parser.add_argument("--public-key", type=Path)
+    parser.add_argument("--expected-key-sha256")
     args = parser.parse_args(argv)
     try:
-        result = validate_evidence_directory(args.evidence_directory)
+        result = validate_evidence_directory(
+            args.evidence_directory, signature_path=args.signature,
+            public_key_path=args.public_key, expected_key_sha256=args.expected_key_sha256,
+        )
     except EvidenceValidationError as exc:
         print(json.dumps({"valid": False, "error": str(exc)}, sort_keys=True))
         return 2
