@@ -76,3 +76,19 @@ No mock, local-only, documentation-only or ordinary CI result may be promoted to
 **P59: COMPLETE** for the defined scope: exact P58 commit CI was checked and all four returned workflows succeeded; remaining tests and external dependencies are consolidated above.
 
 **S09/C01: OPEN / NOT COMPLETE. C02: NOT STARTED.**
+
+
+## 6. Latest owner-only CI regression verification (2026-11-16)
+
+After the owner-only runtime guard test-fixture corrections, the current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb` completed all four PR workflows successfully:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | #1214 | PASS |
+| Python Demo CI | #1303 | PASS |
+| P20 Rootless Podman Runtime Qualification | #343 | PASS |
+| P23 Rootless Podman Executor Integration | #325 | PASS |
+
+Both pytest jobs reported **1,348 passed, 9 skipped**. The skip count remains explicitly separate from passed tests. This current-head regression verification supplements, and does not replace, the exact P58 commit verification in Section 1. It also does not establish physical HSM, independent production anchor, owner-host or physical Android qualification.
+
+**Updated P59 disposition:** P58 exact-commit CI verified 4/4; current branch regression CI verified 4/4; remaining external qualification matrix finalized. P59 repository scope COMPLETE; C01 remains OPEN and C02 NOT STARTED.
