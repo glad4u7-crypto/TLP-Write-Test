@@ -13,20 +13,10 @@ def _click_button_by_label(app: AppTest, label: str) -> None:
 
 
 def _authenticated_test_user(monkeypatch, *, configure_owner=True):
-    # Authenticated UI tests default to the exact synthetic owner identity.
-    # Negative owner-gate tests opt out explicitly.
-    if configure_owner:
-        secrets_config = dict(st.secrets)
-        apaa = dict(secrets_config.get("apaa", {}))
-        apaa.setdefault(
-            "global_owner",
-            {
-                "issuer": "https://accounts.example.test",
-                "subject": "app-smoke-test-user",
-            },
-        )
-        secrets_config["apaa"] = apaa
-        monkeypatch.setattr(st, "secrets", secrets_config)
+    # The fixture must provision its own owner + trusted issuer configuration.
+    # This helper only supplies the authenticated OIDC principal; it must not
+    # read Streamlit's Secrets proxy (which raises when CI has no secrets.toml).
+    del configure_owner
     claims = {
         "is_logged_in": True,
         "iss": "https://accounts.example.test",
