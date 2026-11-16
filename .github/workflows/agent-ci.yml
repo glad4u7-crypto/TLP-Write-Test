@@ -60,3 +60,21 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Run Android and desktop browser smoke tests
         run: python -m pytest -q tests/test_android_viewport_smoke.py tests/test_pc_browser_smoke.py
+
+  linux-host-inspector-live:
+    name: Disposable Linux live host-inspector qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Install application dependencies and host inspection tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install --yes util-linux nftables
+      - name: Inspect a disposable child process using live procfs and nftables
+        run: sudo -n python scripts/qualify_linux_host_inspector.py
