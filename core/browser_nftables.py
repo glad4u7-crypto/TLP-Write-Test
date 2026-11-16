@@ -114,11 +114,16 @@ def parse_nftables_egress(
         raise HostCollectionError("Approved proxy port is invalid.")
 
     output_chains: list[dict] = []
+    tables: list[dict] = []
     for item in document["nftables"]:
         if not isinstance(item, dict) or len(item) != 1:
             raise HostCollectionError("Malformed nftables object.")
         kind, value = next(iter(item.items()))
-        if kind == "chain":
+        if kind == "table":
+            if not isinstance(value, dict):
+                raise HostCollectionError("Malformed nftables table.")
+            tables.append(value)
+        elif kind == "chain":
             if not isinstance(value, dict):
                 raise HostCollectionError("Malformed nftables chain.")
             if value.get("hook") == "output":
@@ -126,14 +131,19 @@ def parse_nftables_egress(
         elif kind == "rule":
             if not isinstance(value, dict):
                 raise HostCollectionError("Malformed nftables rule.")
-        elif kind not in {"metainfo", "table", "set", "element", "counter"}:
+        elif kind != "metainfo":
+            # Sets, maps, counters and elements complicate effective-rule
+            # interpretation. Reject rather than silently omit their semantics.
             raise HostCollectionError("Unsupported nftables object type.")
 
+    if len(tables) != 1 or tables[0].get("family") != "inet":
+        raise HostCollectionError("Exactly one inet table is required for the isolated worker ruleset.")
     if len(output_chains) != 1:
         raise HostCollectionError("Exactly one nftables base output chain is required.")
     chain = output_chains[0]
-    if (chain.get("family") != "inet" or chain.get("type") != "filter"
-            or chain.get("policy") != "drop" or type(chain.get("name")) is not str):
+    if (chain.get("family") != "inet" or chain.get("table") != tables[0].get("name")
+            or chain.get("type") != "filter" or chain.get("policy") != "drop"
+            or type(chain.get("name")) is not str):
         raise HostCollectionError("Output base chain must be inet/filter with default DROP.")
     chain_name = chain["name"]
     rules: list[tuple[str, str, int]] = []
