@@ -43,10 +43,13 @@ class ProxyWorkerTopology:
             raise ProxyWorkerTopologyError("Only IPv4 proxy/worker endpoints are supported.")
         if proxy not in network or worker not in network or proxy == worker:
             raise ProxyWorkerTopologyError("Proxy and worker need distinct addresses in the exact subnet.")
-        if proxy in (network.network_address, network.broadcast_address) or worker in (
-            network.network_address, network.broadcast_address
-        ):
-            raise ProxyWorkerTopologyError("Network and broadcast addresses cannot be endpoints.")
+        reserved = {network.network_address, network.broadcast_address}
+        # Reserve the first usable address for the network gateway; the
+        # topology contract never assigns it to a worker or proxy endpoint.
+        if network.num_addresses > 2:
+            reserved.add(network.network_address + 1)
+        if proxy in reserved or worker in reserved:
+            raise ProxyWorkerTopologyError("Network, gateway and broadcast addresses cannot be endpoints.")
         if type(proxy_port) is not int or not 1024 <= proxy_port <= 65535:
             raise ProxyWorkerTopologyError("Proxy port must be an unprivileged TCP port.")
         return cls(network_name, str(network), proxy.compressed, worker.compressed, proxy_port)
