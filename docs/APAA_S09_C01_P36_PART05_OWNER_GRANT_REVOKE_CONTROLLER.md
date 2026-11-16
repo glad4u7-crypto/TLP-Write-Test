@@ -91,3 +91,10 @@ Added:
 The directory primitive is not wired into the Streamlit app. There is no OIDC sign-in hook, owner UI/API, grant confirmation screen or invitation endpoint. The trusted OIDC adapter must supply the Principal; owner resolution must still be followed by explicit owner confirmation and the existing `OwnerProjectAccessController`. Turning off discoverability prevents new selections but does not silently revoke existing ACL grants; those require explicit owner revocation.
 
 The new backend work is subject to the latest exact-head CI and has not yet been marked PASS.
+
+
+### Trusted identity directory sign-in hook and private storage hardening
+
+On the current branch, the optional OIDC sign-in hook is wired into the Streamlit app behind the explicit `[apaa].trusted_identity_issuers` allowlist. When unset, no directory is created. When set, only the server-validated Streamlit OIDC Principal with an exact allowlisted issuer is enrolled; first enrollment is private by default. Directory storage now enforces a private 0700 parent and 0600 database, rejects symlink/non-regular targets and unsafe parent permissions, and revalidates before database opens. Added POSIX permission regression tests.
+
+This is enrollment plumbing only. No discoverability consent UI, owner grant/revoke UI, invitation/API endpoint or reader resource ACL integration has been enabled. Do not grant collaborators until every project read route checks the ACL. The latest implementation commit requires exact-head CI validation before it is considered verified.
