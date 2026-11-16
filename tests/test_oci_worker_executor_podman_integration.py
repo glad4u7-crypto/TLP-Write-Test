@@ -55,7 +55,11 @@ def _executor_runner(calls):
     return run
 
 
-def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
+def _executor(
+    tmp_path, *, plan, spec, corrupt_signature=False, revoked_key=False,
+    wrong_worker=False, replay_challenge=False, inspect_interruption=False,
+    start_interruption=False,
+):
     now = int(time.time())
     private = Ed25519PrivateKey.generate()
     public = private.public_key().public_bytes(
@@ -69,6 +73,7 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
             public_key=public,
             not_before=now - 5,
             not_after=now + 120,
+            revoked=revoked_key,
         )
     ])
     control = InspectorEvidenceControlPlane(
@@ -77,7 +82,14 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
     )
     proxy_ip = "172.20.0.2"
 
+    first_challenge = None
+
     def evidence_supplier(challenge, snapshot):
+        nonlocal first_challenge
+        if replay_challenge:
+            if first_challenge is None:
+                first_challenge = challenge
+            challenge = first_challenge
         envelope, _ = signed_envelope(spec, private)
         envelope["key_id"] = key_id
         payload = envelope["payload"]
@@ -93,7 +105,10 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
         firewall = firewall_evidence()
         firewall.update({
             "runtime_id": snapshot["container_id"],
-            "worker_id": snapshot["container_name"],
+            "worker_id": (
+                "apaa-worker-wrong-tenant" if wrong_worker
+                else snapshot["container_name"]
+            ),
             "observed_at": now,
         })
         payload["runtime_attestation"] = attestation
@@ -104,8 +119,17 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
         return envelope
 
     calls = []
+    base_runner = _executor_runner(calls)
+
+    def controlled_runner(argv, timeout):
+        if inspect_interruption and len(argv) > 1 and argv[1] == "inspect":
+            return CommandResult(1, "", "synthetic inspect interruption")
+        if start_interruption and len(argv) > 1 and argv[1] == "start":
+            return CommandResult(1, "", "synthetic start interruption")
+        return base_runner(argv, timeout)
+
     executor = OCIWorkerExecutor(
-        runner=_executor_runner(calls),
+        runner=controlled_runner,
         evidence_supplier=evidence_supplier,
         trusted_public_keys={key_id: public},
         expected_proxy_addresses=[proxy_ip],
@@ -213,3 +237,65 @@ def test_executor_rejects_bad_signature_and_cleans_real_created_container(tmp_pa
     absent = _runner(("podman", "ps", "--all", "--filter", f"name={plan.container_name}", "--format", "{{.ID}}"), 10)
     assert absent.returncode == 0
     assert not absent.stdout.strip()
+
+
+def test_executor_rejects_revoked_key_and_cleans_real_created_container(tmp_path):
+    spec, plan = _build_plan()
+    executor, calls = _executor(
+        tmp_path, plan=plan, spec=spec, revoked_key=True
+    )
+    report = executor.launch(plan, spec)
+    assert report.started is False
+    assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
+    assert [argv[1] for argv, *_ in calls] == ["create", "inspect", "rm"]
+
+
+def test_executor_rejects_wrong_worker_evidence_and_cleans_real_container(tmp_path):
+    spec, plan = _build_plan()
+    executor, calls = _executor(
+        tmp_path, plan=plan, spec=spec, wrong_worker=True
+    )
+    report = executor.launch(plan, spec)
+    assert report.started is False
+    assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
+    assert [argv[1] for argv, *_ in calls] == ["create", "inspect", "rm"]
+
+
+def test_executor_rejects_replayed_challenge_across_real_container_launches(tmp_path):
+    spec, plan = _build_plan()
+    executor, calls = _executor(
+        tmp_path, plan=plan, spec=spec, replay_challenge=True
+    )
+    first = executor.launch(plan, spec)
+    assert first.started is True
+    assert first.handle is not None
+    assert executor.stop(first.handle, plan).cleaned is True
+
+    second = executor.launch(plan, spec)
+    assert second.started is False
+    assert second.cleaned is True
+    assert [argv[1] for argv, *_ in calls].count("start") == 1
+
+
+def test_executor_cleans_real_container_when_inspect_command_is_interrupted(tmp_path):
+    spec, plan = _build_plan()
+    executor, calls = _executor(
+        tmp_path, plan=plan, spec=spec, inspect_interruption=True
+    )
+    report = executor.launch(plan, spec)
+    assert report.started is False
+    assert report.cleaned is True
+    assert [argv[1] for argv, *_ in calls] == ["create", "inspect", "rm"]
+
+
+def test_executor_cleans_real_created_container_when_start_is_interrupted(tmp_path):
+    spec, plan = _build_plan()
+    executor, calls = _executor(
+        tmp_path, plan=plan, spec=spec, start_interruption=True
+    )
+    report = executor.launch(plan, spec)
+    assert report.started is False
+    assert report.cleaned is True
+    assert [argv[1] for argv, *_ in calls] == ["create", "inspect", "start", "rm"]
