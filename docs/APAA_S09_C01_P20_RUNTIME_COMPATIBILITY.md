@@ -54,3 +54,17 @@ The version above is an example only. Use the exact version separately approved 
 ## Safety
 
 Free-only. No API keys, paid providers, payments, purchases, checkout, trading or money movement. Auto-Run remains disabled. Browser/worker stays disabled. This PR remains draft; no merge or deployment is authorized.
+
+
+## P21 follow-on — inspect capability normalization (CI pending)
+
+During the P20 follow-on integration review, the APAA inspect normalizer was found to require the literal `CapDrop: ["ALL"]`. The qualified Podman runtime expands `--cap-drop=ALL` into the complete explicit Linux capability-name list. This mismatch could reject a correctly hardened Podman worker before the attestation stage.
+
+P21 updates `core/oci_inspect_normalizer.py` to accept either the literal `ALL` marker or the complete recognized Linux capability set (including newer kernel capabilities such as PERFMON, BPF and CHECKPOINT_RESTORE), while rejecting empty, incomplete or unknown lists. It also rejects any non-empty `CapAdd`. Regression tests cover the Podman-expanded representation, missing/unknown capabilities, and capability additions.
+
+P21 commits currently on the PR branch:
+- `2be42d8496469928f99a442fd3cb69dbe798aa90` — normalizer capability expansion support.
+- `9e41b198e512d1850f768f0a444ebbc44316f530` — capability allowlist correction.
+- `b61ec319fe36894440527679ba83d99eaa230808` — regression fixture update.
+
+**Verification status:** P21 is implementation-pushed but CI is not yet confirmed for this exact head. The P20 three-workflow PASS applies only to its recorded P20 commit and must not be carried forward to P21. No integrated signed-attestation runtime qualification is claimed. Keep the worker disabled until P21 CI passes and the remaining host-trust, signed-attestation, egress and real-runtime rejection drills are completed.
