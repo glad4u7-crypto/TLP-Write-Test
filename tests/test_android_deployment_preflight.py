@@ -118,9 +118,14 @@ def _write_secrets_file(tmp_path, data_dir):
         '[apaa]\\n'
         'require_auth = true\\n'
         'approval_signing_secret_hex = "' + ("ab" * 32) + '"\\n'
+        'trusted_identity_issuers = ["https://identity.example.test"]\\n'
+        '[apaa.global_owner]\\n'
+        'issuer = "https://identity.example.test"\\n'
+        'subject = "owner-subject-test"\\n'
         f'security_db_path = "{data_dir / "security.sqlite3"}"\\n'
         f'project_db_path = "{data_dir / "projects.sqlite3"}"\\n'
-        f'memory_db_path = "{data_dir / "memory.sqlite3"}"\\n',
+        f'memory_db_path = "{data_dir / "memory.sqlite3"}"\\n'
+        f'trusted_identity_directory_db_path = "{data_dir / "identities.sqlite3"}"\\n',
         encoding="utf-8",
     )
     return secrets_file
