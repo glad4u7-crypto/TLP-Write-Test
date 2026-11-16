@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None, *, pkcs11_api_loader=None, pin_reader=No
         )
         print(json.dumps({"schema_version": 1, **result}, sort_keys=True, indent=2))
         return 0
-    except (PKCS11ProvisionError, ValueError, TypeError):
+    except Exception:
         print("PKCS#11 provisioning failed closed; no private key was exported.", file=sys.stderr)
         return 2
 
