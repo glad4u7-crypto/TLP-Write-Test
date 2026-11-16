@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 # Executing a file under scripts/ puts that directory, not the repository
 # root, at sys.path[0]. Add the project root so the core package is importable
@@ -39,6 +40,25 @@ def main() -> int:
         close_fds=True,
     )
     try:
+        # Wait until the namespace setup has completed before inspecting it.
+        # Popen returns as soon as unshare starts, not when the dummy interface
+        # has been created; inspecting immediately introduces a startup race.
+        deadline = time.monotonic() + 5
+        proc_net_dev = Path("/proc") / str(worker.pid) / "net" / "dev"
+        while time.monotonic() < deadline:
+            if worker.poll() is not None:
+                raise SystemExit("FAIL: disposable worker exited before namespace setup completed")
+            try:
+                lines = proc_net_dev.read_text(encoding="ascii").splitlines()[2:]
+            except (OSError, UnicodeError):
+                lines = []
+            interfaces = [line.split(":", 1)[0].strip() for line in lines if ":" in line]
+            if "apaa0" in interfaces:
+                break
+            time.sleep(0.05)
+        else:
+            raise SystemExit("FAIL: disposable worker namespace did not expose apaa0 before timeout")
+
         adapter = LinuxHostInspectorAdapter(
             runtime_attestation_reader=lambda: {
                 "schema_version": 1,
