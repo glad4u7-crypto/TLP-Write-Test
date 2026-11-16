@@ -90,7 +90,7 @@ P22 code commits:
 - `ea2c9c199ea31250c97bb2058970f0d80af84bd4` — syntax correction after the first CI run exposed malformed test source.
 - `defed5766c5b9e557916aa740e66b9509300b142` — replay and inspector-interruption cleanup cases.
 
-**Exact-head P22 CI PASS:** `defed5766c5b9e557916aa740e66b9500b142`
+**Exact-head P22 CI PASS:** `defed5766c5b9e557916aa740e66b9509300b142`
 - [Agent Foundation CI #887](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779558): **PASS** — dependency audit found no known vulnerabilities, compile passed, **1009 tests passed**, disposable Linux egress namespace qualification passed.
 - [Python Demo CI #962](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779535): **PASS** — **1009 tests passed** and demo step passed.
 - [Rootless Podman Runtime Qualification #16](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779519): **PASS** — rootless Podman, cgroup v2, local image build, hardened inspect, immutable-ID lifecycle, no-orphan check and evidence upload passed.
