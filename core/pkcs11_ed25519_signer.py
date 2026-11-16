@@ -14,8 +14,6 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from core.software_inspector_signer import SoftwareSignerError
-
 _KEY_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _MAX_MESSAGE_BYTES = 1_048_576
 _ED25519_OID = bytes.fromhex("06032b6570")
