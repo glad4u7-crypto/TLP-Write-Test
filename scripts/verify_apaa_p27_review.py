@@ -82,6 +82,17 @@ def verify_review_attestation(
     expected_reviewer_key_sha256: str,
 ) -> dict[str, Any]:
     root = Path(evidence_directory)
+    # Check detached review material locations before walking the evidence tree.
+    # This gives a clear fail-closed error even when a misplaced sidecar is unlisted.
+    attestation_bytes = _read_external_file(
+        review_attestation_path, root, "review attestation"
+    )
+    signature_bytes = _read_external_file(
+        review_signature_path, root, "review signature"
+    )
+    reviewer_key = _read_external_file(
+        reviewer_public_key_path, root, "reviewer public key"
+    )
     try:
         evidence = validate_evidence_directory(
             root,
@@ -98,16 +109,6 @@ def verify_review_attestation(
     manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
     if type(expected_reviewer_key_sha256) is not str or not _SHA256.fullmatch(expected_reviewer_key_sha256):
         raise ReviewAttestationError("pinned reviewer public-key fingerprint is invalid")
-
-    attestation_bytes = _read_external_file(
-        review_attestation_path, root, "review attestation"
-    )
-    signature_bytes = _read_external_file(
-        review_signature_path, root, "review signature"
-    )
-    reviewer_key = _read_external_file(
-        reviewer_public_key_path, root, "reviewer public key"
-    )
     if len(attestation_bytes) > 64 * 1024:
         raise ReviewAttestationError("review attestation exceeds 64 KiB")
     if len(reviewer_key) != 32 or hashlib.sha256(reviewer_key).hexdigest() != expected_reviewer_key_sha256:
