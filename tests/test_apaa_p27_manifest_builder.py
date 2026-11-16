@@ -37,6 +37,18 @@ def _evidence(root: Path):
         (root / name).write_text(json.dumps({"gate": name, "result": "BLOCKED"}), encoding="utf-8")
 
 
+
+def _multiprocess_manifest_attempt(root, metadata, barrier, queue):
+    try:
+        barrier.wait(timeout=10)
+        build_manifest(Path(root), metadata)
+        queue.put("created")
+    except ManifestBuildError:
+        queue.put("rejected")
+    except BaseException as exc:
+        queue.put("error:" + repr(exc))
+
+
 def test_builds_manifest_that_integrity_validator_accepts(tmp_path):
     root = tmp_path / "evidence"
     _evidence(root)
@@ -214,6 +226,33 @@ def test_concurrent_builders_publish_exactly_one_complete_manifest(tmp_path, mon
         outcomes = list(pool.map(lambda _: attempt(), range(2)))
 
     assert sorted(item[0] for item in outcomes) == ["created", "rejected"]
+    published = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    assert set(published["files"]) == set(FILES)
+    assert not list(root.glob(".manifest-*.tmp"))
+
+
+
+def test_multiprocess_builders_publish_exactly_one_manifest(tmp_path):
+    import multiprocessing
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("process-level race test requires fork support")
+    context = multiprocessing.get_context("fork")
+    root = tmp_path / "evidence"
+    _evidence(root)
+    barrier = context.Barrier(2)
+    queue = context.Queue()
+    processes = [
+        context.Process(target=_multiprocess_manifest_attempt, args=(str(root), METADATA, barrier, queue))
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    outcomes = [queue.get(timeout=20) for _ in processes]
+    for process in processes:
+        process.join(timeout=20)
+        assert process.exitcode == 0
+    assert sorted(outcomes) == ["created", "rejected"]
     published = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     assert set(published["files"]) == set(FILES)
     assert not list(root.glob(".manifest-*.tmp"))
