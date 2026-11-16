@@ -38,9 +38,22 @@ def _evidence(root: Path):
 
 
 
-def _multiprocess_manifest_attempt(root, metadata, barrier, queue):
+def _multiprocess_manifest_attempt(root, metadata, start_barrier, read_barrier, queue):
     try:
-        barrier.wait(timeout=10)
+        import scripts.build_apaa_p27_manifest as builder
+
+        real_read = builder._read_artifact
+
+        def synchronized_read(root_fd, name):
+            raw = real_read(root_fd, name)
+            if name == "review.json":
+                # Both processes have passed the manifest-exists check and read
+                # every artifact before either is allowed to publish.
+                read_barrier.wait(timeout=10)
+            return raw
+
+        builder._read_artifact = synchronized_read
+        start_barrier.wait(timeout=10)
         build_manifest(Path(root), metadata)
         queue.put("created")
     except ManifestBuildError:
@@ -240,10 +253,14 @@ def test_multiprocess_builders_publish_exactly_one_manifest(tmp_path):
     context = multiprocessing.get_context("fork")
     root = tmp_path / "evidence"
     _evidence(root)
-    barrier = context.Barrier(2)
+    start_barrier = context.Barrier(2)
+    read_barrier = context.Barrier(2)
     queue = context.Queue()
     processes = [
-        context.Process(target=_multiprocess_manifest_attempt, args=(str(root), METADATA, barrier, queue))
+        context.Process(
+            target=_multiprocess_manifest_attempt,
+            args=(str(root), METADATA, start_barrier, read_barrier, queue),
+        )
         for _ in range(2)
     ]
     for process in processes:
