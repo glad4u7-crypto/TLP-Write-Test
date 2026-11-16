@@ -1,6 +1,6 @@
 # APAA S09 C01 P32 — Android-First Bulk Qualification
 
-**Status:** Android automated viewport matrix added; exact-head CI pending; physical Android qualification remains owner-operated and pending.  
+**Status:** Android automated viewport matrix added; all four required workflows PASS on exact head `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4`; physical Android qualification remains owner-operated and pending.  
 **PC:** Optional. No physical PC test is required for Android-only qualification.  
 **Checkpoint:** `APAA-S09-C01-P32-ANDROID-FIRST-BULK-QUALIFICATION`
 
@@ -40,7 +40,7 @@ The repository already contains deterministic tests for:
 - append-only grant/revoke audit event ordering;
 - checkpoint owner/tenant authorization and resource-boundary audits.
 
-These are code-level regression tests. They are not live OIDC tests with two real accounts, nor physical browser cookie/storage/revocation evidence.
+These are code-level regression tests. Review of `app.py`, `core/session_security.py`, `core/streamlit_auth.py`, `tests/test_session_security.py`, `tests/test_streamlit_auth.py` and `tests/test_project_access_session_regression.py` confirms the current implementation has an optional OIDC enforcement switch, fails closed when authentication is required but configuration is missing, clears identity-bound state at logout/identity transitions, and invalidates stale session approval receipts. The ACL regression tests exercise grant/revoke against both an existing reader and a reconstructed reader. They are not live OIDC tests with two real accounts, nor physical browser cookie/storage/revocation evidence.
 
 ## 4. Physical Android operator checklist
 
@@ -64,9 +64,9 @@ If no authenticated test deployment or two controlled OIDC accounts are availabl
 
 | Area | Evidence now available | Honest status |
 |---|---|---|
-| Android narrow-screen layout | Pixel profile smoke test plus new 5-viewport matrix | CI PENDING on new exact head |
-| Plan review without execution | Existing Playwright Android-emulation test | Prior implementation exists; exact-head CI pending |
-| Owner/session identity isolation | Deterministic unit/regression tests | Code coverage exists; live OIDC pending |
+| Android narrow-screen layout | Pixel profile smoke test plus new 5-viewport matrix | CI PASS on exact head; physical device pending |
+| Plan review without execution | Existing Playwright Android-emulation test | CI PASS on exact head; physical device pending |
+| Owner/session identity isolation | Deterministic unit/regression tests and app integration review | Code coverage exists; live OIDC pending |
 | Grant/revoke enforcement | Existing ACL and reconstructed-reader tests | Code coverage exists; live two-account Android E2E pending |
 | Android keyboard, lifecycle and reconnect | Operator checklist only | Physical phone test pending |
 | Native Android APK / PWA | Architecture plan only | Not implemented/qualified |
@@ -86,6 +86,12 @@ These remain separate external gates. Do not mark them PASS based on Android, mo
 
 ## 7. Exact verification rule
 
-After this commit, inspect GitHub Actions on the exact resulting branch head. Android automated coverage is PASS only if the Android/PC browser verification job and all required CI workflows succeed on that exact head. Physical Android remains pending until the owner-run checklist is completed and reviewed. PC physical testing remains optional.
+Exact-head verification completed for `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4`. All four required workflows completed successfully:
+- [Agent Foundation CI #1019](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566848) — PASS.
+- [Python Demo CI #1094](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566820) — PASS.
+- [P20 Rootless Podman Runtime Qualification #148](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566908) — PASS.
+- [P23 Rootless Podman Executor Integration #130](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566850) — PASS.
+
+The combined commit status endpoint returned no separate status entries; the four PR-triggered workflow runs above are the available exact-head evidence. These CI runs do not prove physical Android behavior or external real-host qualification. Physical Android remains pending until the owner-run checklist is completed and reviewed. PC physical testing remains optional.
 
 **C01 stays OPEN / NOT COMPLETE. C02 must not start.**
