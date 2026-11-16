@@ -51,7 +51,7 @@ docker version
 
 Do not paste secrets, registry credentials, environment variables or unrelated host inventory into issue comments.
 
-## Step 3 — Remaining lifecycle gate
+## Step 3 — Real daemon lifecycle gate (still pending)
 
 The read-only preflight is not the real daemon lifecycle qualification. Before any worker can be enabled, a separate disposable-host harness must demonstrate:
 
@@ -67,10 +67,10 @@ Do not fabricate evidence or use test keys as production trust roots. Out-of-ban
 
 ## Step 4 — Live egress isolation gate
 
-Run `scripts/qualify_linux_egress_namespace.sh` only on a disposable Linux runner that supports network namespaces, veth, namespace-local nftables with CAP_NET_ADMIN, and usable IPv6 sockets/addresses. The current GitHub-hosted runner attempt failed because its IPv6/network capabilities were insufficient; the script now fails early with an actionable capability diagnostic. It creates a temporary namespace and veth pair and deletes them on exit. It must not change host firewall chains.
+**Latest observed result: PASS** in [Agent Foundation CI run 43796026613](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43796026613). The job executed `sudo -n bash scripts/qualify_linux_egress_namespace.sh` on a disposable GitHub-hosted Linux runner. It created a temporary network namespace and veth pair, applied namespace-local nftables policy, allowed only the exact IPv4 TCP proxy destination, and verified that direct TCP, DNS TCP/UDP, UDP/443 and IPv6 probes did not reach the host-side sink. The script cleans up its namespace and veth on exit and does not edit host firewall chains.
 
-The current script validates an exact IPv4 TCP proxy destination and blocked direct IPv4 TCP, DNS TCP/UDP, UDP/443 and IPv6 TCP probes. It does **not** prove alternate-interface bypass resistance, external DNS resolution policy, IPv6 UDP, host firewall hook precedence, or the full production topology. Those remain separate acceptance tests.
+This is a successful isolated namespace test, **not** proof of the complete OCI worker/proxy topology. Separate tests remain required for alternate-interface bypass resistance, external DNS policy, IPv6 UDP, host firewall hook precedence and daemon-integrated network configuration.
 
 ## Exit criteria
 
-P20 remains **DAEMON QUALIFICATION PENDING** until real daemon lifecycle, signed attestation, bounded cleanup and live egress evidence are reviewed and recorded. A green unit-test job, mocked command runner or skipped hosted-runner job is not operational qualification.
+P20 remains **DAEMON QUALIFICATION PENDING** until real rootless daemon lifecycle, signed attestation, bounded cleanup and full worker-topology egress evidence are reviewed and recorded. A green unit-test job, mocked command runner or namespace-only egress test is not operational qualification.
