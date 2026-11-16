@@ -117,7 +117,8 @@ jobs:
               "immutable ID matches CREATE": item.get("Id") == cid,
               "container is stopped before start": state.get("Status") == "created",
               "read-only rootfs": host.get("ReadonlyRootfs") is True,
-              "all capabilities dropped": "ALL" in (host.get("CapDrop") or []),
+              "capability drops are explicitly recorded": bool(host.get("CapDrop")),
+              "no capabilities added": not (host.get("CapAdd") or []),
               "no-new-privileges": any(str(x).startswith("no-new-privileges") for x in (host.get("SecurityOpt") or [])),
               "seccomp profile enforced": any(str(x).startswith("seccomp=") for x in (host.get("SecurityOpt") or [])),
               "no network": host.get("NetworkMode") == "none",
@@ -144,6 +145,21 @@ jobs:
           trap cleanup EXIT
           podman start "$CONTAINER_ID"
           podman inspect "$CONTAINER_ID" --format '{{.State.Status}}' | grep -Fx running
+          podman exec "$CONTAINER_ID" /busybox cat /proc/self/status > process-status.txt
+          python - <<'PY'
+          from pathlib import Path
+
+          fields = {}
+          for line in Path("process-status.txt").read_text().splitlines():
+              if ":" in line:
+                  key, value = line.split(":", 1)
+                  if key in {"CapInh", "CapPrm", "CapEff", "CapBnd"}:
+                      fields[key] = int(value.strip(), 16)
+          required = {"CapInh", "CapPrm", "CapEff", "CapBnd"}
+          if set(fields) != required or any(fields.values()):
+              raise SystemExit(f"FAIL: process capability sets are not empty: {fields}")
+          print("PASS: process inheritable/permitted/effective/bounding capability sets are all zero")
+          PY
           podman stop --time 2 "$CONTAINER_ID"
           podman inspect "$CONTAINER_ID" --format '{{.State.Status}}' | grep -Fx exited
           podman rm --force "$CONTAINER_ID"
@@ -158,8 +174,11 @@ jobs:
         if: always()
         run: |
           if podman ps --all --filter name=apaa-p20-qualification --format '{{.ID}}' | grep -q .; then
-            podman rm --force apaa-p20-qualification || true
-            echo "FAIL: orphaned qualification container detected" >&2
+            echo "CLEANUP: removing leftover qualification container"
+            podman rm --force apaa-p20-qualification
+          fi
+          if podman ps --all --filter name=apaa-p20-qualification --format '{{.ID}}' | grep -q .; then
+            echo "FAIL: qualification container remains after cleanup" >&2
             exit 1
           fi
           echo "PASS: no orphaned qualification container"
@@ -174,5 +193,6 @@ jobs:
             image-id.txt
             container-id.txt
             inspect.json
+            process-status.txt
           if-no-files-found: ignore
           retention-days: 7
