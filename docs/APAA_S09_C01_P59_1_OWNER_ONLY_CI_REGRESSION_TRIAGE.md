@@ -38,3 +38,10 @@ CI for the latest corrective commit `bf745a7ccc3eca1de33e6742f115bc9f36b5f9aa` m
 - No deployment, merge, production activation, host mutation, key operation, paid provider, billing, or purchase.
 - Auto-Run OFF; Worker and Browser DISABLED.
 - P59–P63 remain the only active C01 sequence. C01 stays OPEN until every mandatory external gate is genuinely qualified. C02 is NOT STARTED.
+
+
+## 5. Final corrective verification (2026-11-16)
+
+Further exact-head CI diagnosis found two residual fixture omissions: authenticated tests needed the configured trusted OIDC issuer allowlist, and the storage-failure retry path needed to retain the synthetic owner mapping while changing only the failing storage path. These fixtures were corrected in commits `be82cdf719769c0422093023c303ad459c96a82f` and `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`.
+
+The latest exact branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb` completed Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 successfully (4/4 PASS). Both pytest jobs reported 1,348 passed, 9 skipped. The earlier failures remain historical failures; they are superseded by this verified head. No runtime owner-gate bypass was introduced. Physical Android, HSM, independent anchor and production host gates remain separate and unqualified.
