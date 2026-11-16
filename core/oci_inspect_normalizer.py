@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.oci_worker_plan import OCIWorkerPlan
-from core.oci_worker_executor import OCIExecutionError
+from core.oci_errors import OCIExecutionError
 
 
 @dataclass(frozen=True)
