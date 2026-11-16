@@ -64,6 +64,12 @@ The repository now contains [apaa-p20-rootless-podman-qualification.yml](../.git
 
 A green workflow is evidence for a real **rootless Podman runtime smoke lifecycle** on that disposable runner. It is not proof of APAA's signed-attestation integration, Docker compatibility, the production worker/proxy topology, alternate-interface egress resistance or Android support. Review the actual run and artifact before recording PASS. Do not describe an unobserved or failed run as qualified.
 
+### Latest disposable rootless Podman run (2026-11-16)
+
+[Workflow run #43808654979](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43808654979) completed **PASS** on documentation/code head `e590c46bb0e0fffcfa9abe6edf8e5043844b693c`. Every lifecycle step passed: rootless setup, local digest-addressed image build without a pull, hardened stopped-container CREATE/INSPECT, START and running-state verification, STOP, immutable-ID REMOVE, no-leftover-container check and sanitized evidence upload.
+
+This closes the disposable rootless Podman CI smoke portion of P20. It does **not** close real APAA host qualification, trusted collector/key provisioning, durable monotonic anchor, Docker lifecycle, full worker/proxy topology, or Android/Termux gates.
+
 ## Step 4 — Full APAA runtime lifecycle gate (still pending)
 
 Before any worker can be enabled, a separate integrated disposable-host harness must demonstrate:
