@@ -72,7 +72,23 @@ def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
         raise OCIExecutionError("inspect: effective host configuration is missing.")
     network = host.get("NetworkMode")
     if network != plan.network_name:
-        raise OCIExecutionError("inspect: effective network differs from the approved APAA network.")
+        # Podman 4.9 reports the generic HostConfig.NetworkMode ("bridge")
+        # for a user-defined bridge, while NetworkSettings.Networks records
+        # the actual attached network name. Accept only the exact, sole
+        # requested attachment; extra or missing networks remain fail-closed.
+        network_settings = item.get("NetworkSettings")
+        attached = (
+            network_settings.get("Networks")
+            if isinstance(network_settings, dict) else None
+        )
+        if (
+            plan.runtime != "podman"
+            or network not in {"bridge", "private"}
+            or not isinstance(attached, dict)
+            or set(attached) != {plan.network_name}
+        ):
+            raise OCIExecutionError("inspect: effective network differs from the approved APAA network.")
+        network = plan.network_name
     if host.get("ReadonlyRootfs") is not True:
         raise OCIExecutionError("inspect: read-only root filesystem is not enforced.")
     if host.get("Privileged") is True or host.get("PidMode") == "host" or host.get("IpcMode") == "host":
