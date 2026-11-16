@@ -164,3 +164,12 @@ P27 review-verifier tests cover digest binding, pinned reviewer key, tampering, 
 - The builder is a local file utility, not a host collector. It explicitly reports authenticity NOT_CHECKED and host qualification NOT_ASSESSED. No host tests or security gates are marked PASS by this increment.
 - Documentation added to the P27 evidence pack with operator command example.
 - C01 remains OPEN; real-host prerequisites, trust custody, independent durable anchor, full proxy topology, cleanup drills and independent review remain mandatory. C02 remains NOT STARTED.
+
+
+## P27 evidence privacy preflight — P29 (2026-11-16)
+
+- Added `scripts/check_apaa_p27_evidence_privacy.py`, a read-only scan of the manifest and nine required JSON artifacts for common credential/private-key field names and token patterns.
+- Findings report file paths and pattern classes only; matched values are never printed. The scanner does not redact or mutate evidence.
+- Added tests for clean-scan assurance wording, common secret indicators, symlink refusal and CLI exit status.
+- Documented that a clean scan is not DLP and does not authorize publication; human review and restricted evidence storage remain mandatory.
+- P29 does not collect real-host evidence or close any qualification gate. C01 remains OPEN; C02 NOT STARTED.
