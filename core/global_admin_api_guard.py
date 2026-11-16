@@ -43,7 +43,7 @@ class GlobalAdminRequestAuthorizer:
         """
         try:
             config = self._config_loader()
-        except (GlobalOwnerConfigurationError, OSError, RuntimeError, ValueError):
+        except Exception:
             raise AuthorizationDenied("Global Admin authorization is unavailable.") from None
         if not isinstance(config, GlobalOwnerConfig):
             raise AuthorizationDenied("Global Admin authorization is unavailable.")
