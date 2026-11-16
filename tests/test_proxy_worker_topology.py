@@ -30,6 +30,9 @@ def test_rejects_non_private_or_ambiguous_topology(overrides):
     "http://172.30.0.4:3128", "https://172.30.0.2:3128",
     "http://172.30.0.2:8080", "http://user@172.30.0.2:3128",
     "http://172.30.0.2:3128/path",
+    "http://172.30.0.2:03128", "http://172.30.0.2:3128?",
+    "http://172.30.0.2:3128#", "http://172.30.0.2:3128/",
+    " http://172.30.0.2:3128", "http://172.30.0.2:3128 ",
 ])
 def test_rejects_proxy_url_not_equal_to_private_proxy_endpoint(endpoint):
     with pytest.raises(ProxyWorkerTopologyError):
