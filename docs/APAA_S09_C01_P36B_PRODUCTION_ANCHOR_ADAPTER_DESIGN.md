@@ -78,3 +78,12 @@ The fake backend is not durable hardware, a remote service, a production securit
 ## 7. Safety locks
 
 No production credentials, cloud account, paid service, HSM/TPM, production endpoint, owner key or live identity is used here. No deployment, merge, Global Owner activation, Worker/browser activation, host mutation or firewall change is authorized. PR #11 remains Draft/Open/Unmerged; Auto-Run OFF.
+
+
+## 8. Implemented local fallback adapter (P47)
+
+Added `core/local_owner_anchor.py` with `LocalSQLiteOwnerAnchor`. This concrete adapter supports local development, integration testing and single-host crash/restart exercises. It uses a separate SQLite file, mode 0600 on POSIX, rejects symlinks and broad permissions, refuses to silently initialize an existing empty/corrupt file, and uses `BEGIN IMMEDIATE` with `synchronous=FULL` for cross-process compare-and-advance.
+
+Automated tests in `tests/test_local_owner_anchor.py` cover one-time bootstrap, corruption/missing-row fail-closed behavior, symlink and permission rejection, stale/jump rejection, and an eight-process CAS race where exactly one writer may advance.
+
+**Explicit limit:** this local adapter is not independently administered and is vulnerable to privileged host rollback or restoration of an older file. It does not satisfy the production anti-rollback gate and must not be substituted for an external monotonic anchor in a production owner-recovery policy. It is a safe development fallback, not an automatic production fallback.
