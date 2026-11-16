@@ -95,6 +95,19 @@ def nftables():
     }
 
 
+class TestSigningProvider:
+    """Ephemeral software signer used only by offline tests."""
+
+    def __init__(self, private_key):
+        self._private_key = private_key
+
+    def public_key_bytes(self):
+        return self._private_key.public_key().public_bytes_raw()
+
+    def sign(self, message):
+        return self._private_key.sign(message)
+
+
 class FakeHostSource:
     def __init__(self, spec, rules=None):
         self.runtime = runtime_attestation(spec)
@@ -167,10 +180,10 @@ def test_parser_rejects_wrong_proxy_ip_or_port():
 def test_collector_emits_p06_compatible_signed_evidence():
     spec = build_worker_launch_spec(profile())
     source = FakeHostSource(spec)
-    key = Ed25519PrivateKey.generate()
+    key = Ed25519PrivateKey.generate()\n    signer = TestSigningProvider(key)
     envelope = collect_signed_inspector_evidence(
         source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-        signing_key=key, expected_proxy_addresses=[PROXY_IP], now=NOW,
+        signer=signer, expected_proxy_addresses=[PROXY_IP], now=NOW,
     )
     assert source.calls == ["runtime", "namespace", "nftables"]
     public = key.public_key().public_bytes_raw()
@@ -189,7 +202,7 @@ def test_collector_fails_closed_when_runtime_identity_or_firewall_is_unsafe():
     with pytest.raises(HostCollectionError):
         collect_signed_inspector_evidence(
             source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-            signing_key=Ed25519PrivateKey.generate(),
+            signer=TestSigningProvider(Ed25519PrivateKey.generate()),
             expected_proxy_addresses=[PROXY_IP], now=NOW,
         )
     source = FakeHostSource(spec, rules={"nftables": [
@@ -199,7 +212,7 @@ def test_collector_fails_closed_when_runtime_identity_or_firewall_is_unsafe():
     with pytest.raises(HostCollectionError):
         collect_signed_inspector_evidence(
             source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-            signing_key=Ed25519PrivateKey.generate(),
+            signer=TestSigningProvider(Ed25519PrivateKey.generate()),
             expected_proxy_addresses=[PROXY_IP], now=NOW,
         )
 
