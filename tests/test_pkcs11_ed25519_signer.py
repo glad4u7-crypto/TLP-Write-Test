@@ -18,6 +18,11 @@ class FakePKCS11:
     class Attribute:
         EC_PARAMS = "params"
         EC_POINT = "point"
+        SENSITIVE = "sensitive"
+        EXTRACTABLE = "extractable"
+        ALWAYS_SENSITIVE = "always_sensitive"
+        NEVER_EXTRACTABLE = "never_extractable"
+        SIGN = "sign"
 
     class Mechanism:
         EDDSA = "eddsa"
@@ -60,6 +65,16 @@ class FakeKey:
                 serialization.Encoding.Raw, serialization.PublicFormat.Raw,
             )
             return b"\x04\x22\x04\x20" + raw
+        if attr == FakePKCS11.Attribute.SENSITIVE:
+            return True
+        if attr == FakePKCS11.Attribute.EXTRACTABLE:
+            return False
+        if attr == FakePKCS11.Attribute.ALWAYS_SENSITIVE:
+            return True
+        if attr == FakePKCS11.Attribute.NEVER_EXTRACTABLE:
+            return True
+        if attr == FakePKCS11.Attribute.SIGN:
+            return True
         raise KeyError(attr)
 
     def sign(self, message, *, mechanism):
@@ -116,3 +131,24 @@ def test_pkcs11_provider_fails_closed_for_missing_token_key(tmp_path):
     )
     with pytest.raises(PKCS11SignerError, match="session"):
         signer.sign(b"message")
+
+def test_pkcs11_provider_rejects_extractable_private_key(tmp_path):
+    module = tmp_path / "pkcs11.so"
+    module.write_bytes(b"test")
+    class ExtractableKey(FakeKey):
+        def __getitem__(self, attr):
+            if attr == FakePKCS11.Attribute.EXTRACTABLE:
+                return True
+            return super().__getitem__(attr)
+    class ExtractableLibrary(FakePKCS11):
+        def get_key(self, *, object_class, key_type, id):
+            if object_class == self.ObjectClass.PRIVATE_KEY:
+                return ExtractableKey(self.key, False)
+            return super().get_key(object_class=object_class, key_type=key_type, id=id)
+    fake = ExtractableLibrary(Ed25519PrivateKey.generate())
+    signer = PKCS11Ed25519InspectorSigner(
+        module_path=module, token_label="APAA-TEST", key_id="inspector-01",
+        user_pin="test-pin-1234", pkcs11_loader=lambda _path: fake,
+    )
+    with pytest.raises(PKCS11SignerError, match="non-extractable"):
+        signer.sign(b"evidence")
