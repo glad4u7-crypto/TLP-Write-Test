@@ -99,3 +99,18 @@ def test_project_owner_or_grantee_is_not_global_owner_by_default():
     read_grantee = Principal("project-reader", ISSUER, True)
     assert not is_global_owner(project_owner, config)
     assert not is_global_owner(read_grantee, config)
+
+
+def test_trusted_issuer_allowlist_cannot_be_passed_as_a_string():
+    with pytest.raises(GlobalOwnerConfigurationError, match="trusted issuer"):
+        load_global_owner_config(
+            {"issuer": ISSUER, "subject": OWNER.subject},
+            trusted_issuers=ISSUER,
+        )
+
+
+def test_direct_config_construction_still_validates_identity_shape():
+    with pytest.raises(GlobalOwnerConfigurationError):
+        GlobalOwnerConfig("http://not-https.example", "owner")
+    with pytest.raises(GlobalOwnerConfigurationError):
+        GlobalOwnerConfig(ISSUER, "bad subject")
