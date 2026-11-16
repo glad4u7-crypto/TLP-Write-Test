@@ -75,6 +75,20 @@ See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md
 The active APAA security-hardening work is tracked in [Pull Request #5](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/5), on branch `feature/approval-ui-e2e-p06` targeting `feature/agent-v0.3-zero-cost-core`. It remains Open + Draft and is not merged or deployed.
 
 
+## Cross-platform product commitment: Android + PC
+
+APAA is a cross-platform product, not an Android-only project. Android-first describes the current development and hands-on test priority; it does not remove PC support from the product target.
+
+- **Android:** mobile browser-first experience, with responsive touch UI. Native Android packaging may be considered after the shared web experience and security boundaries are stable.
+- **PC:** desktop browser experience for Windows and Linux, with keyboard/mouse-friendly responsive layouts. A desktop wrapper is optional future work, not a prerequisite for using APAA on PC.
+- **Shared core:** identity, owner-controlled access, project/task models, approval gateway, policy engine, audit trail and provider interfaces must remain platform-neutral.
+- **Platform adapters:** device/browser capabilities must be isolated behind explicit adapters and permission checks. A feature available on one platform must not silently become available on another.
+- **Consistent security:** same owner-first access model, Ask First default, Auto-Run OFF, no payment/purchase actions, no paid providers by default, and no browser/worker/device-control activation without separate authorization.
+- **Data portability:** use documented, versioned data formats and a migration/export plan so a user can move between Android and PC without losing project records.
+- **Verification:** test responsive layouts at Android-sized and desktop-sized viewports in CI; separately require real Android-device and real PC-browser verification before platform-specific release claims.
+
+The current Streamlit implementation is a prototype foundation. It is not yet a completed Android app, PWA package, Windows application, Linux desktop application, or verified cross-device sync product. Do not describe those deliverables as complete until built and tested.
+
 ## Android-first responsive interface (in progress)
 
 - The Streamlit workspace now uses a centered, narrow-friendly page layout and starts with the sidebar collapsed for small-screen usability.
