@@ -25,10 +25,10 @@ The current Part 04 implementation has advanced through immutable-event enforcem
 
 ## Remaining C01 gates
 
-- Wire a carefully scoped owner-only grant/revoke controller only after UI/API threat review.
-- Audit every project action, file/resource, memory and checkpoint route; do not expose unscoped internal helpers.
-- Implement project-specific ownership checks for checkpoint association and retrieval.
-- Add two-user OIDC, immediate revocation across sessions/devices and Android + PC browser E2E.
+- P36 Part 05 now adds a narrow owner-only read-grant/revoke controller; no UI/API exposure or privilege beyond read is enabled.
+- P36 Part 06 records the project/action/file/memory/checkpoint authorization audit. Collaborator access remains disabled; project checkpoint association still needs an independent project-owner guard before any future collaborator/API exposure.
+- P36 Part 07 adds deterministic two-principal, immediate revocation, immutable event sequence and session-transition regression tests. Live two-user OIDC and cross-device invalidation remain external.
+- P36 Part 08 adds Android Pixel viewport and PC desktop Chromium smoke coverage to Agent Foundation CI. Physical Android/PC browser testing remains external.
 - Complete owner-approved real-host OCI/network qualification and independent review required by the existing P31 closure inventory.
 
 PR #11 remains Draft/Open/Unmerged. C01 remains OPEN / NOT COMPLETE. Android-first plus PC support remains a product requirement. Ask First stays enabled, Auto-Run OFF, payments and paid providers prohibited, browser/worker disabled; no host mutation, firewall change, deployment, merge or C02 start is authorized.
