@@ -80,3 +80,37 @@ def test_constructor_rejects_missing_trusted_readers():
         GlobalAdminRequestAuthorizer(None, lambda: None)
     with pytest.raises(TypeError):
         GlobalAdminRequestAuthorizer(lambda: None, None)
+
+
+def test_api_guard_reads_shared_sqlite_generation_for_rekey_and_revocation(tmp_path):
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    store_path = tmp_path / "guard-shared-state.sqlite3"
+    store = SQLiteSecurityStore(store_path)
+    owner_config = GlobalOwnerConfig(ISSUER, OWNER.subject)
+    guard = GlobalAdminRequestAuthorizer(
+        lambda: owner_config,
+        lambda: SQLiteSecurityStore(store_path).read_global_owner_state().generation,
+    )
+
+    # An otherwise exact owner cannot pass before the durable state is
+    # explicitly provisioned by the separate operator CAS path.
+    with pytest.raises(AuthorizationDenied):
+        guard.authorize(OWNER)
+
+    first = store.compare_and_set_global_owner_generation(
+        expected_revision=0,
+        generation=owner_config.generation,
+        change_id="guard-provision-001",
+    )
+    assert first.revision == 1
+    assert guard.authorize(OWNER) is OWNER
+
+    revoked = store.compare_and_set_global_owner_generation(
+        expected_revision=first.revision,
+        generation=None,
+        change_id="guard-revoke-002",
+    )
+    assert revoked.revision == 2
+    with pytest.raises(AuthorizationDenied):
+        guard.authorize(OWNER)
