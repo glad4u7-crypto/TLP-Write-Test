@@ -121,3 +121,16 @@ Not implemented/enabled:
 - live OIDC and physical Android qualification.
 
 The caller must pass only a Principal produced by the trusted OIDC adapter. The resulting Principal must still pass through `OwnerProjectAccessController`; resolving a directory identity does not itself grant access. Existing grants are not revoked when discoverability is turned off; owner revocation remains an explicit separate action.
+
+
+## 11. OIDC sign-in hook and storage hardening (2026-11-16)
+
+The Streamlit application now has an explicit, opt-in configuration hook for this directory:
+
+- Set `[apaa].trusted_identity_issuers` to a non-empty list of exact HTTPS issuer strings to enable enrollment. With the setting absent/empty, the directory is inert and no directory database is created.
+- Enrollment uses only the `Principal` created from Streamlit's validated OIDC claims; no form, URL, email, task text or client-supplied identity fields are accepted.
+- Only a principal whose exact issuer is in the configured allowlist is enrolled. First enrollment remains private (`discoverable=0`).
+- The optional database defaults to `.apaa_identity/identity.sqlite3` and can be moved with `[apaa].trusted_identity_directory_db_path`.
+- The directory database now rejects symlinked/non-regular targets and group/world-accessible parent directories, creates a private parent (0700) and database (0600), and revalidates before SQLite opens.
+
+This hook does not enable owner discovery, grants, reader access, UI, invitation, or API routes. A separate explicit user-consent interaction is still required before discoverability can be turned on; all shared-resource read paths must be ACL-enforced before any owner grant UI is enabled. Live OIDC and physical Android qualification remain outstanding.
