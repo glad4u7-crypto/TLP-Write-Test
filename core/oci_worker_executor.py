@@ -231,7 +231,7 @@ class OCIWorkerExecutor:
                 raise OCIExecutionError("attestation: signed evidence is not bound to this exact OCI worker.")
             events.append(LifecycleEvent("ATTEST", "PASS", "signed evidence, exact OCI identity and single-use challenge verified"))
 
-            self._run(plan.start_argv, "start")
+            self._run((plan.runtime, "start", container_id), "start")
             started = True
             events.append(LifecycleEvent("START", "PASS", "worker start authorized after attestation"))
             handle = OCIWorkerHandle(container_id, plan.container_name, plan.launch_spec_digest, plan.runtime)
