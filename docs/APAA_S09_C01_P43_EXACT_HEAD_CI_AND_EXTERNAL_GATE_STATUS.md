@@ -69,3 +69,19 @@ If these prerequisites are not available, the gates remain BLOCKED. No simulatio
 - Android remains the primary client direction; Android/Termux is not a hostile-code sandbox.
 
 This document is a CI status reconciliation only. It does not grant qualification approval or authorize a release-state transition.
+
+
+## 6. P43 exact-head CI result
+
+P43 implementation commit: `5e6c2bd2990b8d96afc2284a4c6d318f9682c53c`.
+
+GitHub Actions returned four PR-triggered workflow runs for that exact commit. All four completed successfully:
+
+| Workflow | Run ID | Conclusion |
+|---|---:|---|
+| APAA P20 Rootless Podman Runtime Qualification | 43862973655 | PASS |
+| APAA P23 Rootless Podman Executor Integration | 43862973730 | PASS |
+| Python Demo CI | 43862973662 | PASS |
+| Agent Foundation CI | 43862973656 | PASS |
+
+This closes the P43 **repository CI verification** item only. P20/P23 remain disposable rootless Podman CI evidence. It does not close any external G1–G10 qualification gate and does not authorize C01 completion, worker activation, deployment or C02.
