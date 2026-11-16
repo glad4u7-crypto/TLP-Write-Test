@@ -200,3 +200,8 @@ The separate design is recorded in [P35-A Global Owner Bootstrap and Recovery De
 This closes the **design/documentation** portion of P35-A only. It does not implement a loader, global-owner guard, recovery command, protected configuration, monotonic revision control or live identity verification. Those remain explicit future implementation and external qualification work. No owner identity or secret was requested, stored, or added to the repository.
 
 Current P35-A: DESIGN RECORDED / IMPLEMENTATION NOT IMPLEMENTED / QUALIFICATION BLOCKED. P35-B/C/D: narrow read-only sharing implemented in repository; live qualification blocked. P35-E/F: blocked.
+
+
+## 10. P35-A implementation progress — isolated guard
+
+Following the P35-A design, the branch now includes `core/global_owner.py` and focused tests in `tests/test_global_owner.py`. The primitive validates server-supplied config against the trusted HTTPS issuer allowlist and authorizes only an authenticated exact issuer + subject match. Missing/invalid config and identity mismatches fail closed. This closes the isolated guard portion only; secure config loading/custody, strict raw config parser, startup wiring, global-admin API integration, cache/session invalidation, durable audit and recovery/re-key remain unimplemented. It is not activated by the app and no owner identity or secret is configured. Exact-head CI is pending.
