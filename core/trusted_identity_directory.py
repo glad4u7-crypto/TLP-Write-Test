@@ -6,7 +6,9 @@ by the trusted OIDC adapter, never values assembled from client input.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,11 +44,12 @@ class SQLiteTrustedIdentityDirectory:
         issuers = frozenset(allowed_issuers)
         if any(not isinstance(item, str) or not item.strip() for item in issuers):
             raise ValueError("OIDC issuer allowlist entries must be non-empty strings.")
-        self._path = str(database_path)
-        if self._path == ":memory:":
+        raw_path = str(database_path)
+        if raw_path == ":memory:":
             raise ValueError("An in-memory directory is not durable and is not supported.")
+        self._path = str(Path(raw_path).expanduser().absolute())
         self._allowed_issuers = issuers
-        Path(self._path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+        self._secure_database_file(create_parent=True)
         with self._connect() as connection:
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS trusted_identity_directory (
@@ -65,7 +68,38 @@ class SQLiteTrustedIdentityDirectory:
                    ON trusted_identity_directory(issuer, discoverable, last_seen_at)"""
             )
 
+    def _secure_database_file(self, *, create_parent: bool) -> None:
+        path = Path(self._path)
+        for parent in path.parents:
+            try:
+                if stat.S_ISLNK(parent.lstat().st_mode):
+                    raise ValueError("Identity directory database parent must not contain symlinks.")
+            except FileNotFoundError:
+                continue
+        if create_parent:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        parent_mode = path.parent.stat().st_mode
+        if not stat.S_ISDIR(parent_mode):
+            raise ValueError("Identity directory database parent must be a directory.")
+        if os.name == "posix" and parent_mode & 0o077:
+            raise ValueError("Identity directory database parent must be owner-only.")
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(path, flags, 0o600)
+            except FileExistsError:
+                metadata = path.lstat()
+            else:
+                os.close(descriptor)
+                metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("Identity directory database must be a regular, non-symlink file.")
+        os.chmod(path, 0o600)
+
     def _connect(self) -> sqlite3.Connection:
+        self._secure_database_file(create_parent=False)
         connection = sqlite3.connect(self._path, timeout=10)
         connection.row_factory = sqlite3.Row
         return connection
