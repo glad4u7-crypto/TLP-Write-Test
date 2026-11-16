@@ -143,6 +143,41 @@ class OCIWorkerExecutor:
         }
         return normalized.container_id, snapshot
 
+    def _cleanup(self, plan: OCIWorkerPlan, events: list[LifecycleEvent], *, started: bool) -> bool:
+        """Always attempt force-remove, even if graceful stop fails."""
+        stop_ok = True
+        if started:
+            try:
+                self._run(plan.stop_argv, "cleanup-stop")
+                events.append(LifecycleEvent("STOP", "PASS", "graceful stop completed"))
+            except Exception as exc:
+                stop_ok = False
+                events.append(LifecycleEvent("STOP", "FAIL", type(exc).__name__))
+        try:
+            self._run(plan.remove_argv, "cleanup-remove")
+            events.append(LifecycleEvent("CLEANUP", "PASS", "force-remove completed"))
+            # A successful force-remove is the authoritative no-container result.
+            return True
+        except Exception as exc:
+            events.append(LifecycleEvent("CLEANUP", "FAIL", type(exc).__name__))
+            return False
+
+    def stop(self, handle: OCIWorkerHandle, plan: OCIWorkerPlan) -> OCIExecutionReport:
+        """Stop and remove only the exact worker represented by a validated plan/handle."""
+        if not isinstance(handle, OCIWorkerHandle) or not isinstance(plan, OCIWorkerPlan):
+            raise TypeError("A worker handle and its validated OCIWorkerPlan are required.")
+        if (
+            handle.runtime != plan.runtime
+            or handle.container_name != plan.container_name
+            or handle.launch_spec_digest != plan.launch_spec_digest
+            or type(handle.container_id) is not str
+            or len(handle.container_id) < 12
+        ):
+            raise OCIExecutionError("Worker handle does not match the supplied immutable OCI plan.")
+        events: list[LifecycleEvent] = [LifecycleEvent("STOP_REQUEST", "PASS", "exact plan/handle binding validated")]
+        cleaned = self._cleanup(plan, events, started=True)
+        return OCIExecutionReport(None, tuple(events), False, cleaned)
+
     def launch(self, plan: OCIWorkerPlan, spec: WorkerLaunchSpec) -> OCIExecutionReport:
         if not isinstance(plan, OCIWorkerPlan) or type(spec) is not WorkerLaunchSpec:
             raise TypeError("A validated OCIWorkerPlan and WorkerLaunchSpec are required.")
@@ -192,16 +227,7 @@ class OCIWorkerExecutor:
         except Exception as exc:
             events.append(LifecycleEvent("BLOCK", "PASS", type(exc).__name__))
             if created:
-                try:
-                    cleanup = plan.stop_argv if started else plan.remove_argv
-                    self._run(cleanup, "cleanup")
-                    if started:
-                        self._run(plan.remove_argv, "cleanup-remove")
-                    events.append(LifecycleEvent("CLEANUP", "PASS", "worker cleanup completed"))
-                    cleaned = True
-                except Exception:
-                    events.append(LifecycleEvent("CLEANUP", "FAIL", "manual host cleanup required"))
-                    cleaned = False
+                cleaned = self._cleanup(plan, events, started=started)
             else:
                 cleaned = True
             return OCIExecutionReport(None, tuple(events), False, cleaned)
