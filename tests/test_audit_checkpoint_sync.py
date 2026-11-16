@@ -167,9 +167,12 @@ def test_concurrent_reconciliation_of_same_pending_event_is_idempotent(tmp_path)
             with read_lock:
                 read_count += 1
                 should_wait = read_count <= 2
+            # Capture the provider value before releasing the barrier so
+            # both workers are guaranteed to act on the same stale snapshot.
+            observed = provider.read()
             if should_wait:
                 first_two_reads.wait(timeout=5)
-            return provider.read()
+            return observed
 
         def compare_and_advance(self, *, expected, target):
             return provider.compare_and_advance(expected=expected, target=target)
