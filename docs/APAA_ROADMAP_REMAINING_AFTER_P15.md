@@ -111,3 +111,11 @@ This is stronger than a unit-test-only result: CI exercised a real disposable ro
 - P27 added `docs/APAA_S09_C01_P27_REAL_HOST_QUALIFICATION_EVIDENCE_PACK.md`, defining hard prerequisites, evidence manifest, trust/signer checks, real-daemon attestation lifecycle, egress probes, cleanup, integrity and independent review.
 - P27 is an operator evidence specification, not a claim that real-host tests have run. Real-host security qualification remains BLOCKED pending owner-approved infrastructure and independently reviewed evidence.
 - PR #11 remains Draft/Open/Unmerged. No deployment, host mutation, firewall change, worker/browser activation, paid service, API key or Auto-Run.
+
+
+## P27 manifest validator implementation — 2026-11-16
+
+- Added `scripts/validate_apaa_p27_evidence.py` using only the Python standard library. It validates the closed manifest fields, UTC timestamps, immutable SHA-256 image reference, safe relative artifact paths, exact artifact inventory and per-file SHA-256 digests.
+- Added `tests/test_apaa_p27_evidence.py` covering valid packs, tampering, unlisted/missing artifacts, path traversal, non-UTC timestamps, mutable image references and CLI exit behavior.
+- The validator explicitly reports authenticity as NOT_CHECKED and host qualification as NOT_ASSESSED. It cannot approve a host, verify a detached signature or convert test outcomes to PASS.
+- CI for the implementation commit must pass before this code is treated as verified. Real-host key custody, independent monotonic anchor, actual worker/proxy topology and independent review remain BLOCKED.

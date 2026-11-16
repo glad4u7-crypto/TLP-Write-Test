@@ -124,3 +124,16 @@ These are disposable CI checks. They do not satisfy any real-host, production ke
 P27 documentation is ready for operator use when the pack is reviewed for completeness. P27 does not close C01. C01 remains OPEN until the owner-approved real-host evidence package is collected, independently reviewed and linked from a restricted qualification record. Keep browser and worker execution disabled until all preceding operational gates pass.
 
 No host is provisioned by this document. No firewall mutation, deployment, live browsing, worker activation, paid provider, API key, merge or Auto-Run is authorized.
+
+
+## P27 manifest integrity validator
+
+The repository now includes a standard-library-only validator:
+
+```bash
+python -m scripts.validate_apaa_p27_evidence <EVIDENCE_DIRECTORY>
+```
+
+The directory must contain `manifest.json` and all nine required artifacts listed above. The manifest uses schema version 1, UTC start/end timestamps, a SHA-256 digest-pinned test image, and a path-to-SHA-256 map for every artifact except the manifest itself. The validator rejects missing/unlisted files, symlinks, path traversal, mutable image tags, invalid timestamps and digest mismatches.
+
+A successful result means **artifact integrity only**. It explicitly reports `authenticity=NOT_CHECKED` and `host_qualification=NOT_ASSESSED`; it does not verify the detached signature, prove host identity, or turn BLOCKED/SKIPPED observations into PASS. Independent signature verification and review remain mandatory.
