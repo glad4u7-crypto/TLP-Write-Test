@@ -32,10 +32,10 @@ sudo ip netns add "${NS}"
 sudo ip link add "${HOST_VETH}" type veth peer name "${WORKER_VETH}"
 sudo ip link set "${WORKER_VETH}" netns "${NS}"
 sudo ip addr add "${HOST_IP}/30" dev "${HOST_VETH}"
-sudo ip -6 addr add "${HOST_V6}/64" dev "${HOST_VETH}"
+sudo ip -6 addr add "${HOST_V6}/64" dev "${HOST_VETH}" nodad
 sudo ip link set "${HOST_VETH}" up
 sudo ip -n "${NS}" addr add "${WORKER_IP}/30" dev "${WORKER_VETH}"
-sudo ip -n "${NS}" -6 addr add "${WORKER_V6}/64" dev "${WORKER_VETH}"
+sudo ip -n "${NS}" -6 addr add "${WORKER_V6}/64" dev "${WORKER_VETH}" nodad
 sudo ip -n "${NS}" link set lo up
 sudo ip -n "${NS}" link set "${WORKER_VETH}" up
 sudo ip -n "${NS}" route add default via "${HOST_IP}"
