@@ -51,7 +51,7 @@ class FakePage:
         handler = owner.handlers["**/*"]
         for target in (url, *self.redirect_urls):
             route = FakeRoute(target)
-            self.routes_seen.append(route)
+            owner.routes_seen.append(route)
             handler(route)
             if route.aborted:
                 raise RuntimeError("request blocked")
