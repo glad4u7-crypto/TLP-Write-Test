@@ -140,3 +140,18 @@ This addendum supersedes the older “latest verified exact head” pointer abov
 Do not expose an unauthenticated prototype publicly or improvise OIDC credentials. If no secured test deployment and two controlled accounts exist, preserve the live-auth gates as BLOCKED. No secrets or raw device/session data belong in the repository.
 
 **C01 remains OPEN / NOT COMPLETE; C02 remains NOT STARTED.** PR #11 must remain Draft/Open/Unmerged. Auto-Run OFF; browser/worker disabled; no paid services, host/firewall mutation, merge or deployment.
+
+## 10. Exact-head CI verification for P32 reconciliation (2026-11-16)
+
+Documentation reconciliation commit `11ca4bb0c4ef95f3cb5eba525c470d3aa31df26a` was verified on the exact PR head. All four required PR-triggered workflows and every returned job completed successfully:
+
+- [Agent Foundation CI](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835418424) — **PASS**. Jobs: foundation test, Android/PC Chromium browser verification, disposable Linux egress namespace qualification.
+- [Python Demo CI](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835418476) — **PASS**. Job: test-demo.
+- [P20 Rootless Podman Runtime Qualification](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835418599) — **PASS**. Job: disposable rootless Podman runtime lifecycle.
+- [P23 Rootless Podman Executor Integration](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835418453) — **PASS**. Job: real Podman executor and durable attestation-gate plumbing.
+
+**Evidence boundary:** Android/PC browser verification is Playwright Chromium emulation, not physical handset or PC evidence. Disposable Linux namespace and Podman CI are not owner-host qualification and do not prove production key custody, independent anti-rollback or sink-side enforcement. These CI results do not clear live OIDC, physical Android, G1–G10 or independent review.
+
+The above CI evidence applies to the exact code/documentation commit named above. Any later commit requires its own exact-head verification.
+
+**C01 remains OPEN / NOT COMPLETE. C02 remains NOT STARTED.** PR #11 remains Draft/Open/Unmerged; Auto-Run OFF; browser/worker disabled; no paid services, host/firewall mutation, merge or deployment.
