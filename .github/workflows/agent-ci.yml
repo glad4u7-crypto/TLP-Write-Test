@@ -27,7 +27,7 @@ jobs:
       - name: Audit Python dependencies
         run: python -m pip install pip-audit && pip-audit -r requirements.txt
       - name: Compile application modules
-        run: python -m compileall -q app.py core tests
+        run: python -m compileall -q app.py core tests scripts
       - name: Run foundation tests
         run: python -m pytest -q
 
@@ -41,7 +41,5 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes iproute2 nftables
-      - name: Report hosted-runner qualification limitation
-        run: |
-          echo "::notice::SKIPPED: this hosted runner cannot provide the required network namespace, veth, nftables and IPv6 kernel capabilities."
-          echo "No operational egress qualification result is claimed. Run scripts/qualify_linux_egress_namespace.sh only on a disposable Linux runner with the required capabilities."
+      - name: Run disposable namespace egress qualification
+        run: sudo -n bash scripts/qualify_linux_egress_namespace.sh
