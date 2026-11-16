@@ -16,8 +16,8 @@ from core.sqlite_project_store import SQLiteProjectStore
 @dataclass(frozen=True)
 class ProjectAccessGrant:
     project_id: str
-    issuer: str
-    subject: str
+    grantee_issuer: str
+    grantee_subject: str
     granted_by_issuer: str
     granted_by_subject: str
     granted_at: str
