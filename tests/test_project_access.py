@@ -23,6 +23,8 @@ def setup_access(tmp_path):
 
 def test_access_is_owner_only_until_explicit_grant(tmp_path):
     _, project, access = setup_access(tmp_path)
+    assert access.is_owner(project.project_id, OWNER)
+    assert not access.is_owner(project.project_id, READER)
     assert access.has_access(project.project_id, OWNER)
     assert not access.has_access(project.project_id, READER)
 
