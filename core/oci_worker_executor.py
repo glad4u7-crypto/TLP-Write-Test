@@ -145,13 +145,11 @@ class OCIWorkerExecutor:
 
     def _cleanup(self, plan: OCIWorkerPlan, events: list[LifecycleEvent], *, started: bool) -> bool:
         """Always attempt force-remove, even if graceful stop fails."""
-        stop_ok = True
         if started:
             try:
                 self._run(plan.stop_argv, "cleanup-stop")
                 events.append(LifecycleEvent("STOP", "PASS", "graceful stop completed"))
             except Exception as exc:
-                stop_ok = False
                 events.append(LifecycleEvent("STOP", "FAIL", type(exc).__name__))
         try:
             self._run(plan.remove_argv, "cleanup-remove")
