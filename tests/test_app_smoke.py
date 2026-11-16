@@ -13,10 +13,10 @@ def _click_button_by_label(app: AppTest, label: str) -> None:
 
 
 def _authenticated_test_user(monkeypatch, *, configure_owner=True):
-    # The fixture must provision its own owner + trusted issuer configuration.
-    # This helper only supplies the authenticated OIDC principal; it must not
-    # read Streamlit's Secrets proxy (which raises when CI has no secrets.toml).
-    del configure_owner
+    # Supply a deterministic OIDC principal. Authenticated tests that exercise
+    # the application behind the private-owner gate must provision that exact
+    # principal as the server-side owner. Negative tests pass False explicitly.
+    # AppTest fixtures use a monkeypatched plain dict, never the Secrets proxy.
     claims = {
         "is_logged_in": True,
         "iss": "https://accounts.example.test",
@@ -24,6 +24,15 @@ def _authenticated_test_user(monkeypatch, *, configure_owner=True):
         "iat": 1_000,
         "exp": 4_000_000_000,
     }
+    if configure_owner:
+        settings = getattr(st, "secrets", None)
+        if isinstance(settings, dict):
+            apaa = settings.setdefault("apaa", {})
+            if isinstance(apaa, dict):
+                apaa.setdefault(
+                    "global_owner",
+                    {"issuer": claims["iss"], "subject": claims["sub"]},
+                )
     monkeypatch.setattr(
         st,
         "user",
