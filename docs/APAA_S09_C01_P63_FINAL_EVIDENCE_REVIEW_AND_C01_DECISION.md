@@ -56,7 +56,7 @@ These results establish repository code/test behavior and disposable CI runner b
 | G6 Real OCI lifecycle and attestation binding | BLOCKED externally | Owner-host daemon lifecycle and real host/worker/container-bound attestation |
 | G7 Sink-side egress enforcement | BLOCKED externally | Owner-approved topology and independent sink observations for all required bypass paths |
 | G8 Failure handling and bounded cleanup | BLOCKED externally | Real daemon/collector/signer interruption and cleanup evidence on disposable owner host |
-| G9 Physical Android and two-account verification | BLOCKED | Owner-approved physical Android device, secured environment and two controlled OIDC identities |
+| G9 Android primary-device and two-account verification | BLOCKED — Android owner-device run pending | Owner-approved physical Android device, secured environment and two controlled OIDC identities; physical PC testing is NOT required for Android-only qualification |
 | G10 Independent review and owner acceptance | BLOCKED | Complete signed evidence pack, independently verified reviewer identity/independence and explicit owner acceptance |
 
 Some related repository and disposable-CI checks pass. They are not substitutes for the specific owner-host, physical-device, separate-administration or independent-review evidence above.
@@ -97,3 +97,19 @@ The P63 evidence-review commit `7e040d95c5ffa1e7a1d309c627baede2659a8bc8` has no
 This closes the P63 repository-CI verification item. The CI host and browser checks are disposable automation evidence, not owner-host, physical Android, physical HSM, independent-anchor, sink-side production network, live OIDC or independent-review evidence. Therefore the G1–G10 external blockers and C01 NO-GO decision remain unchanged.
 
 **Current state:** P59–P63 repository checkpoints and exact-head CI: COMPLETE / PASS; external qualification G1–G10: BLOCKED; C01: OPEN / NOT COMPLETE; C02: NOT STARTED. PR #11 remains Draft/Open/Unmerged.
+
+
+## 7. Android-only owner workflow decision (2026-11-16)
+
+The owner has confirmed that Android is the available primary device. APAA qualification and usage must therefore be Android-first:
+
+- Android is the required owner interface for this delivery path. A physical PC/Windows device, PC setup, and PC-specific acceptance test are not prerequisites.
+- Desktop browser CI remains a supplemental regression only; it is not a release gate for Android-only delivery.
+- Android viewport/browser emulation in CI is useful software evidence but does not replace the owner's physical Android test.
+- Do not require Termux or treat Android/Termux as the isolated Linux worker. Android is the owner control plane; untrusted task execution remains disabled until a separately qualified worker boundary exists.
+- The remaining owner-operated mobile acceptance checks are specified in `docs/APAA_S09_C01_P64_ANDROID_ONLY_OWNER_ACCEPTANCE.md`.
+- The two-account OIDC/revocation test still requires two controlled identities. Do not use credentials, PINs, recovery codes or private tokens in chat or repository issues.
+
+This decision removes PC hardware availability as a blocker; it does not waive physical Android, live identity/revocation, protected-key, independent-anchor, real-host or independent-review gates.
+
+**Android-only delivery status:** PC device prerequisite = NOT REQUIRED; physical Android owner acceptance = PENDING; C01 = OPEN / NOT COMPLETE; C02 = NOT STARTED.
