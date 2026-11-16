@@ -123,8 +123,10 @@ def _executor(
 
     def controlled_runner(argv, timeout):
         if inspect_interruption and len(argv) > 1 and argv[1] == "inspect":
+            calls.append((tuple(argv), 1, "", "synthetic inspect interruption"))
             return CommandResult(1, "", "synthetic inspect interruption")
         if start_interruption and len(argv) > 1 and argv[1] == "start":
+            calls.append((tuple(argv), 1, "", "synthetic start interruption"))
             return CommandResult(1, "", "synthetic start interruption")
         return base_runner(argv, timeout)
 
