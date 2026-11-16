@@ -176,6 +176,7 @@ def test_audit_field_hash_or_deletion_tampering_blocks_recovery(tmp_path, tamper
         db.commit()
 
     assert store.verify_audit_chain() is False
+    assert service.inspect().disposition == "AUDIT_INTEGRITY_BLOCKED"
     next_request = RecoveryRequest(
         change_id="p62-change-next",
         action="rekey",
@@ -228,6 +229,6 @@ def test_audit_reordering_is_detected(tmp_path):
         db.execute("UPDATE durable_audit_events SET sequence=99 WHERE sequence=1")
         db.commit()
     assert store.verify_audit_chain() is False
-    assert service.inspect().disposition == "CONSISTENT"
+    assert service.inspect().disposition == "AUDIT_INTEGRITY_BLOCKED"
     with pytest.raises(RecoveryDenied, match="audit integrity"):
         service.apply(_signed(operator, approver, change_id="p62-stale-003", nonce="d" * 64), now=1100)
