@@ -328,5 +328,5 @@ def test_audit_commit_failure_rolls_back_owner_state_and_audit_atomically(tmp_pa
     monkeypatch.setattr(store, "_verify_audit_connection", original)
     assert store.read_global_owner_state().revision == 0
     assert store.verify_audit_chain()
-    assert anchor.read().revision == 1
-    assert service.inspect().disposition == "ANCHOR_AHEAD_RESUMABLE"
+    assert anchor.read().revision == 0
+    assert service.inspect().disposition == "CONSISTENT"
