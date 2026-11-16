@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import stat
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -108,7 +109,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="Path to the private Streamlit secrets TOML file.")
     args = parser.parse_args(argv)
     try:
-        with args.secrets.open("rb") as handle:
+        secret_path = args.secrets
+        secret_info = secret_path.lstat()
+        if secret_path.is_symlink() or not stat.S_ISREG(secret_info.st_mode):
+            raise PreflightError("Secrets path must be a regular, non-symlink file.")
+        if os.name == "posix" and stat.S_IMODE(secret_info.st_mode) & 0o077:
+            raise PreflightError("Secrets file permissions must be owner-only (0600 or stricter).")
+        with secret_path.open("rb") as handle:
             settings = tomllib.load(handle)
         results = validate_settings(settings)
     except (OSError, tomllib.TOMLDecodeError, PreflightError) as exc:
