@@ -19,10 +19,10 @@ P15 added immutable OCI command-plan construction. It is not an operational work
 
 | Checkpoint | Work | Acceptance evidence | Current state |
 |---|---|---|---|
-| P16 | OCI lifecycle executor | fake-runner tests prove CREATE → INSPECT → ATTEST → START; failures never start; cleanup attempted | Implemented in draft PR; exact-head CI pending |
-| P17 | Proxy–Worker topology (P12 reconciliation) | explicit network diagram and contract; proxy reachable only from worker network; no loopback assumption; tests for endpoint/config mismatch | Not started |
-| P18 | Post-create signed attestation binding | signed challenge binds runtime ID, worker ID, launch-spec digest, network namespace inode, seccomp, mounts, limits and firewall ruleset; replay/expiry/tamper tests | Existing verifier is present; end-to-end host collector and one-time challenge lifecycle incomplete |
-| P19 | Egress isolation proof | host-enforced default DROP; allow only TCP to exact proxy IP:port; deny direct DNS, arbitrary TCP, UDP, QUIC and IPv6 bypass; real namespace tests on disposable Linux | Not started; no firewall changes permitted in this phase |
+| P16 | OCI lifecycle executor | fake-runner tests prove CREATE → INSPECT → ATTEST → START; failures never start; cleanup attempted | Implemented; P18 durable identity-bound gate integrated; exact-head CI pending |
+| P17 | Proxy–Worker topology (P12 reconciliation) | explicit RFC1918 network contract, topology-scoped proxy bind and endpoint tests | Implementation/tests committed; real OCI network not created or qualified |
+| P18 | Post-create signed attestation binding | durable tenant-bound single-use challenge; exact inspected container ID + worker name + launch digest; signature/freshness/firewall checks | Control-plane integration committed; key provisioning and trusted host collector qualification pending |
+| P19 | Egress isolation proof | strict nftables evidence parser and negative tests for direct TCP/DNS, UDP, QUIC, IPv6 and unknown ruleset objects | Parser/tests committed; actual kernel/namespace bypass tests pending |
 | P20 | Runtime compatibility | pinned Podman and Docker versions; rootless disposable Linux integration; verify inspect-schema compatibility and cleanup after timeout/cancel | Not started |
 | P21 | Browser integration | isolated ephemeral browser only after P16–P20 gates; request/redirect/DNS rebinding policy enforced at network boundary; downloads/profile/CDP blocked | Not started; browsing disabled |
 | P22 | Android / Termux qualification | device capability matrix; OCI availability, storage, process, network and browser constraints; no claim until tested | Not started |
