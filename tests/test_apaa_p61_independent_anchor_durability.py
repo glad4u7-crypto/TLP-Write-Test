@@ -32,7 +32,11 @@ class DurableReferenceAnchor:
 
     def read_sequence(self, issuer_key_id):
         with self.lock:
-            return self.store.get(issuer_key_id, 0)
+            current = self.store.get(issuer_key_id, 0)
+            floor = self.protected_floor.get(issuer_key_id, 0)
+            if current < floor:
+                raise RuntimeError("anchor state is below protected monotonic floor")
+            return current
 
     def advance_sequence(self, issuer_key_id, *, expected_current, new_sequence):
         with self.lock:
@@ -275,6 +279,5 @@ def test_rolling_back_data_store_alone_does_not_roll_back_protected_floor():
     durable_store.clear()
     durable_store.update(old_backup)
     restarted = DurableReferenceAnchor(durable_store, independently_protected_floor)
-    assert restarted.read_sequence(ISSUER) == 0
-    with pytest.raises(InspectorTrustSequenceError, match="rejected"):
+    with pytest.raises(InspectorTrustSequenceError, match="Could not read"):
         _accept(public, raw, restarted)
