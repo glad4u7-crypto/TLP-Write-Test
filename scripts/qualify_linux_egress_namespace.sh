@@ -40,6 +40,30 @@ sudo ip -n "${NS}" link set lo up
 sudo ip -n "${NS}" link set "${WORKER_VETH}" up
 sudo ip -n "${NS}" route add default via "${HOST_IP}"
 
+# Fail early with an actionable diagnostic if this runner cannot provide IPv6
+# sockets/addresses or namespace-local nftables. No host firewall is touched.
+if ! ip -6 addr show dev "${HOST_VETH}" | grep -Fq "${HOST_V6}"; then
+  echo "FAIL: host veth IPv6 address is unavailable; runner cannot qualify IPv6 egress." >&2
+  exit 2
+fi
+if ! sudo ip -n "${NS}" -6 addr show dev "${WORKER_VETH}" | grep -Fq "${WORKER_V6}"; then
+  echo "FAIL: worker namespace IPv6 address is unavailable; runner cannot qualify IPv6 egress." >&2
+  exit 2
+fi
+if ! python3 -c 'import socket; socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()'; then
+  echo "FAIL: host Python runtime cannot create IPv6 sockets." >&2
+  exit 2
+fi
+if ! sudo ip netns exec "${NS}" python3 -c 'import socket; socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()'; then
+  echo "FAIL: worker namespace cannot create IPv6 sockets." >&2
+  exit 2
+fi
+if ! sudo ip netns exec "${NS}" nft add table inet apaa_preflight; then
+  echo "FAIL: runner lacks permission to create a namespace-local nftables table." >&2
+  exit 2
+fi
+sudo ip netns exec "${NS}" nft delete table inet apaa_preflight
+
 # Host-side sink detects any prohibited TCP connection or UDP datagram.
 sudo python3 - <<'PY' &
 import selectors, socket, sys, time
@@ -81,6 +105,12 @@ finally:
 PY
 SINK_PID=$!
 sleep 0.3
+if ! kill -0 "${SINK_PID}" 2>/dev/null; then
+  wait "${SINK_PID}" || true
+  SINK_PID=""
+  echo "FAIL: host-side sink could not bind all IPv4/IPv6 test endpoints." >&2
+  exit 2
+fi
 
 # The only accepted worker output is TCP to the exact proxy endpoint.
 sudo ip netns exec "${NS}" nft -f - <<NFT
@@ -120,7 +150,10 @@ probes = [
     (socket.AF_INET6, socket.SOCK_STREAM, "fd42:aa:19::1", 3128),
 ]
 for family, kind, host, port in probes:
-    s = socket.socket(family, kind)
+    try:
+        s = socket.socket(family, kind)
+    except OSError as exc:
+        raise SystemExit(f"FAIL: required socket family unavailable for {host}:{port}: {exc}")
     s.settimeout(0.5)
     try:
         if kind == socket.SOCK_STREAM:
