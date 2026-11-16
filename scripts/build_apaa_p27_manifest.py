@@ -147,7 +147,6 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         if hasattr(os, "O_CLOEXEC"):
             flags |= os.O_CLOEXEC
-        published = False
         try:
             fd = os.open(temp_name, flags, 0o600, dir_fd=root_fd)
             with os.fdopen(fd, "wb") as stream:
@@ -162,7 +161,6 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
                 )
             except FileExistsError as exc:
                 raise ManifestBuildError("manifest.json already exists; refusing to overwrite") from exc
-            published = True
             os.fsync(root_fd)
         finally:
             try:
