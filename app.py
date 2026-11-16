@@ -25,7 +25,7 @@ from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAudit
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
 from core.trusted_identity_directory import SQLiteTrustedIdentityDirectory
-from core.global_owner import GlobalOwnerConfigurationError
+from core.global_owner import GlobalOwnerConfigurationError, is_global_owner
 from core.global_owner_config import (
     invalidate_owner_bound_session_state,
     load_global_owner_from_settings,
@@ -109,6 +109,22 @@ if principal is not None:
             "Global Owner configuration is invalid. Global administration is "
             "disabled; ordinary project access remains subject to existing ACLs."
         )
+
+# Authenticated deployments are private owner-only instances, not open
+# multi-user OIDC applications. A missing or invalid owner binding must stop
+# the entire app before any project, memory, or task surface is rendered.
+if auth_required:
+    if global_owner_config_invalid or global_owner_config is None:
+        clear_session_identity(st.session_state)
+        st.error(
+            "This private APAA instance has no valid owner identity configured. "
+            "Access is blocked until the owner issuer and subject are provisioned."
+        )
+        st.stop()
+    if not is_global_owner(principal, global_owner_config):
+        clear_session_identity(st.session_state)
+        st.error("This APAA instance is private and is available only to its configured owner.")
+        st.stop()
 
 # A provisioning change (including removal or invalidation) drops any cached
 # owner-only capabilities. The raw owner subject is never stored in session.
