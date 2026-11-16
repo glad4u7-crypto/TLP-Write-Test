@@ -154,3 +154,57 @@ def test_android_user_can_prepare_and_review_plan_without_execution(streamlit_se
 
         context.close()
         browser.close()
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [
+        (320, 720),
+        (360, 800),
+        (393, 852),
+        (412, 915),
+        (915, 412),  # landscape handset viewport
+    ],
+)
+def test_android_responsive_viewport_matrix_has_usable_controls(
+    streamlit_server, width, height
+):
+    """Check common narrow Android widths and landscape without claiming device proof."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(
+            viewport={"width": width, "height": height},
+            device_scale_factor=2,
+            is_mobile=True,
+            has_touch=True,
+        )
+        page = context.new_page()
+        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
+        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        page.get_by_label("Describe a task").wait_for(timeout=30000)
+        page.wait_for_timeout(800)
+
+        metrics = page.evaluate("""() => ({
+          viewport: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          bodyWidth: document.body.scrollWidth,
+          inputSizes: Array.from(document.querySelectorAll("input, textarea"))
+            .map(node => parseFloat(getComputedStyle(node).fontSize)),
+          primaryTargets: Array.from(document.querySelectorAll(
+            ".stButton > button, .stFormSubmitButton > button"
+          )).map(node => {
+            const rect = node.getBoundingClientRect();
+            return {width: rect.width, height: rect.height};
+          })
+        })""")
+        assert metrics["documentWidth"] <= metrics["viewport"] + 2, metrics
+        assert metrics["bodyWidth"] <= metrics["viewport"] + 2, metrics
+        assert metrics["inputSizes"], metrics
+        assert all(size >= 16 for size in metrics["inputSizes"]), metrics
+        assert metrics["primaryTargets"], metrics
+        assert all(
+            target["width"] >= 44 and target["height"] >= 44
+            for target in metrics["primaryTargets"]
+        ), metrics
+
+        context.close()
+        browser.close()
