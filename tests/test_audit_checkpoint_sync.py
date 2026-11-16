@@ -212,3 +212,42 @@ def test_competing_external_checkpoint_winner_is_never_overwritten(tmp_path):
     with pytest.raises(AuditCheckpointDenied):
         reconcile_audit_checkpoint(store, provider)
     assert provider.read() == foreign
+
+
+def test_revoked_provider_identity_fails_closed_without_advancing(tmp_path):
+    store, provider, state = _setup(tmp_path)
+    _append(store, 1)
+
+    class RevokedIdentityProvider:
+        def read(self):
+            return provider.read()
+
+        def compare_and_advance(self, *, expected, target):
+            raise PermissionError("synthetic provider identity revoked")
+
+    with pytest.raises(AuditCheckpointDenied):
+        reconcile_audit_checkpoint(store, RevokedIdentityProvider())
+    assert provider.read().sequence == 0
+
+
+def test_stale_provider_replica_cannot_create_false_success(tmp_path):
+    store, provider, _ = _setup(tmp_path)
+    _append(store, 1)
+    target = store.read_audit_checkpoint()
+    stale = AuditCheckpoint(0, GENESIS_HASH)
+
+    class StaleReplicaProvider:
+        def read(self):
+            return stale
+
+        def compare_and_advance(self, *, expected, target):
+            # Model a conditional write reaching the authoritative primary
+            # while subsequent reads are pinned to a stale replica.
+            return provider.compare_and_advance(expected=expected, target=target)
+
+    with pytest.raises(AuditCheckpointDenied):
+        reconcile_audit_checkpoint(store, StaleReplicaProvider())
+    # The primary may have committed, but stale read-back is not accepted as
+    # proof. A fresh authoritative read can safely reconcile the state.
+    assert provider.read() == target
+    assert reconcile_audit_checkpoint(store, provider).disposition == "CONSISTENT"
