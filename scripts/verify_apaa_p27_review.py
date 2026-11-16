@@ -96,7 +96,7 @@ def verify_review_attestation(
 
     manifest_bytes = (root / "manifest.json").read_bytes()
     manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
-    if not _SHA256.fullmatch(expected_reviewer_key_sha256):
+    if type(expected_reviewer_key_sha256) is not str or not _SHA256.fullmatch(expected_reviewer_key_sha256):
         raise ReviewAttestationError("pinned reviewer public-key fingerprint is invalid")
 
     attestation_bytes = _read_external_file(
@@ -138,7 +138,7 @@ def verify_review_attestation(
     if attestation["reviewer_key_sha256"] != expected_reviewer_key_sha256:
         raise ReviewAttestationError("attestation reviewer fingerprint does not match pinned key")
     disposition = attestation["disposition"]
-    if disposition not in {"PASS", "FAIL", "BLOCKED"}:
+    if type(disposition) is not str or disposition not in {"PASS", "FAIL", "BLOCKED"}:
         raise ReviewAttestationError("review disposition must be PASS, FAIL or BLOCKED")
     findings = attestation["findings"]
     if not isinstance(findings, list) or len(findings) > 100 or any(

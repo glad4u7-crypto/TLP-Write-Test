@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -54,7 +55,7 @@ def _pack(root: Path, tmp_path: Path):
     attestation = {
         "schema_version": 1,
         "reviewer_id": "independent-reviewer-01",
-        "reviewed_at_utc": "2026-11-16T10:02:00Z",
+        "reviewed_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "manifest_sha256": hashlib.sha256(raw).hexdigest(),
         "reviewer_key_sha256": hashlib.sha256(reviewer_public).hexdigest(),
         "disposition": "PASS",
