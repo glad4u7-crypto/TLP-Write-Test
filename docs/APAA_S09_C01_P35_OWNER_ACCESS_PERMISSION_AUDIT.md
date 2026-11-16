@@ -191,3 +191,12 @@ The current branch now implements the narrow owner-controlled workflow:
 - P35-F independent review: BLOCKED.
 
 No deployment, merge, Auto-Run, worker activation, paid service, host/firewall mutation, payment or C02 start is authorized.
+
+
+## 9. P35-A global owner bootstrap/recovery design recorded
+
+The separate design is recorded in [P35-A Global Owner Bootstrap and Recovery Design](APAA_S09_C01_P35A_GLOBAL_OWNER_BOOTSTRAP_AND_RECOVERY_DESIGN.md). It defines an out-of-band, server-configured exact OIDC issuer + subject owner; rejects first-login-wins, browser/task-supplied identity, email/display-name matching and project-owner-to-global-admin promotion; and specifies fail-closed startup, immutable runtime checks, operator-controlled recovery/re-key, audit constraints, threats and mandatory test/release gates.
+
+This closes the **design/documentation** portion of P35-A only. It does not implement a loader, global-owner guard, recovery command, protected configuration, monotonic revision control or live identity verification. Those remain explicit future implementation and external qualification work. No owner identity or secret was requested, stored, or added to the repository.
+
+Current P35-A: DESIGN RECORDED / IMPLEMENTATION NOT IMPLEMENTED / QUALIFICATION BLOCKED. P35-B/C/D: narrow read-only sharing implemented in repository; live qualification blocked. P35-E/F: blocked.
