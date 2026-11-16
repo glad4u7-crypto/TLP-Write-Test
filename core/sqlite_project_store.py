@@ -228,6 +228,22 @@ class SQLiteProjectStore:
                 connection.rollback()
                 raise
 
+    def list_all_for_access_filter(self) -> list[StoredProject]:
+        """Return candidate rows for server-side ACL filtering; never expose directly to UI."""
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM projects ORDER BY created_at, project_id"
+            ).fetchall()
+        return [self._project(row) for row in rows]
+
+    def get_by_id_for_access_filter(self, project_id: str) -> StoredProject | None:
+        """Unscoped candidate lookup; caller MUST enforce ProjectAccessControl first."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT * FROM projects WHERE project_id = ?", (project_id,)
+            ).fetchone()
+        return self._project(row) if row else None
+
     def get_by_id_for_internal_use(self, project_id: str) -> StoredProject | None:
         """Trusted UI helper; never expose this unscoped lookup as an authorization boundary."""
         with closing(self._connect()) as connection:
