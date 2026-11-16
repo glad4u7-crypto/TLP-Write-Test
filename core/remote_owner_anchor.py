@@ -92,6 +92,7 @@ class HTTPSMonotonicAnchor:
         self, *, endpoint: str, ca_file: str, client_cert: str,
         client_key: str, anchor_id: str, timeout_seconds: float = 5.0,
         server_cert_sha256: str | None = None, connection_factory=None,
+        ssl_context_factory=None,
     ) -> None:
         parsed = urlsplit(endpoint)
         if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
@@ -115,7 +116,10 @@ class HTTPSMonotonicAnchor:
             ca = _secure_file(ca_file, private=False)
             cert = _secure_file(client_cert, private=False)
             key = _secure_file(client_key, private=True)
-            context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=ca)
+            context = (
+                ssl_context_factory(ca) if ssl_context_factory is not None
+                else ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=ca)
+            )
             context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.check_hostname = True
             context.verify_mode = ssl.CERT_REQUIRED
