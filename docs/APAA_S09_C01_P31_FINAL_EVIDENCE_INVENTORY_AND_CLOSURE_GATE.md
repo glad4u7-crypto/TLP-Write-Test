@@ -338,3 +338,8 @@ All locks remain unchanged: PR #11 Draft/Open/Unmerged; Auto-Run OFF; browser/wo
 A follow-up review found that the reserved global-owner session keys also needed to be included in the central identity-transition/logout cleanup inventory. Added the owner configuration generation and owner-bound capability keys to `core/session_security.py`, plus a regression test proving account switch and logout clear them. The existing AST-based test that requires every literal app session-state key to be covered remains in place.
 
 This correction is part of the same P35-A startup/configuration task. Exact latest-head CI remains PENDING; do not claim this correction verified until all required workflows complete successfully on the final branch SHA.
+
+
+### Startup ordering review
+
+A subsequent control-flow review moved owner-config generation handling after the central authenticated-session identity binding. This ensures account-switch/logout cleanup runs first, then the current server-side owner configuration generation is recorded for that authenticated session. Added an AppTest regression that switches between two authenticated subjects and verifies owner authorization/context/receipt keys do not survive. Exact-head CI remains pending.
