@@ -140,6 +140,11 @@ def validate_evidence_directory(directory: str | Path, *, signature_path: str | 
         raise EvidenceValidationError(
             "required evidence artifacts missing: " + ", ".join(missing_required)
         )
+    unexpected_manifest_files = sorted(set(normalized) - _REQUIRED_FILES)
+    if unexpected_manifest_files:
+        raise EvidenceValidationError(
+            "manifest must list exactly the nine required evidence artifacts"
+        )
 
     actual: set[str] = set()
     for current, dirs, names in __import__("os").walk(root, followlinks=False):
@@ -168,7 +173,10 @@ def validate_evidence_directory(directory: str | Path, *, signature_path: str | 
         raise EvidenceValidationError("artifact inventory mismatch (" + "; ".join(details) + ")")
 
     for name, expected in normalized.items():
-        observed = _sha256_file(root.joinpath(*PurePosixPath(name).parts))
+        artifact_path = root.joinpath(*PurePosixPath(name).parts)
+        if artifact_path.stat().st_size > 16 * 1024 * 1024:
+            raise EvidenceValidationError(f"{name} exceeds the 16 MiB size limit")
+        observed = _sha256_file(artifact_path)
         if observed != expected:
             raise EvidenceValidationError(f"SHA-256 mismatch for {name}")
 
