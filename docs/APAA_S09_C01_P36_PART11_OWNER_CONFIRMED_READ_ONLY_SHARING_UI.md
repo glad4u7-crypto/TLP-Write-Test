@@ -38,7 +38,9 @@ Checkpoint project selection and checkpoint save/recovery remain owner-only. Per
 ## Verification
 - Added owner-only display-label behavior tests, including the case where a grantee opts out after an existing grant.
 - Added application wiring regression checks for explicit grant/revoke confirmation and opaque directory selection.
-- Full CI for the resulting exact head is pending; no pass claim is made until all configured checks complete.
+- At implementation code head `43c05132a3ba23253d514f8363533a826bdde21c`, all six configured GitHub Actions checks completed successfully: foundation tests, demo, Android/PC Chromium browser verification, disposable Linux egress namespace qualification, real Podman executor/attestation-gate plumbing, and disposable rootless Podman lifecycle.
+- The foundation suite reported `1,135 passed, 9 skipped`; the Android/PC Chromium smoke suite reported `9 passed`.
+- These are CI and automated browser viewport results, not physical Android-device, live OIDC, or production-host qualification.
 - Automated browser viewport verification does not substitute for a physical Android-device test.
 - Live OIDC/two-user qualification, physical Android testing, owner-host worker qualification, and independent security review remain outstanding.
 
