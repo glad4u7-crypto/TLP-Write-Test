@@ -92,7 +92,12 @@ def check_evidence_privacy(directory: str | Path) -> dict[str, Any]:
             raise
         except (OSError, UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
             raise PrivacyCheckError(f"{name} must contain valid UTF-8 JSON") from exc
-        _walk(payload, name, findings)
+        try:
+            _walk(payload, name, findings)
+        except RecursionError as exc:
+            # Parsing can succeed while the recursive privacy walk still exceeds
+            # Python's stack limit. Treat that input as unsafe and fail closed.
+            raise PrivacyCheckError(f"{name} must contain valid UTF-8 JSON") from exc
     # Deduplicate stable path/code pairs while retaining deterministic order.
     unique = sorted({(item["code"], item["path"]) for item in findings})
     return {
