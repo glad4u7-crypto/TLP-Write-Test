@@ -49,6 +49,12 @@ def provision_and_self_test(
     try:
         library = pkcs11_api.lib(str(module))
         token = library.get_token(token_label=token_label)
+        mechanism_info = token.slot.get_mechanism_info(pkcs11_api.Mechanism.EDDSA)
+        if not (mechanism_info.flags & pkcs11_api.MechanismFlag.HW):
+            raise PKCS11ProvisionError(
+                "Token does not report hardware-backed EdDSA; refusing protected-key provisioning."
+            )
+        hardware_slot_flag = bool(token.slot.flags & pkcs11_api.SlotFlag.HW_SLOT)
         with token.open(rw=True, user_pin=pin.encode("utf-8")) as session:
             existing = list(session.get_objects({pkcs11_api.Attribute.ID: key_id_bytes}))
             if existing:
@@ -87,6 +93,8 @@ def provision_and_self_test(
             "key_id": key_id,
             "public_key_sha256": hashlib.sha256(public).hexdigest(),
             "private_key_export": "NOT_REQUESTED",
+            "eddsa_mechanism_hardware_flag": True,
+            "hardware_slot_flag": hardware_slot_flag,
             "token_hardware_identity": "NOT_INDEPENDENTLY_VERIFIED",
             "rotation_or_revocation": "NOT_PERFORMED",
             "backup_restore_qualification": "NOT_ASSESSED",
