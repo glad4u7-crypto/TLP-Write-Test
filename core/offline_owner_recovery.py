@@ -154,7 +154,13 @@ class OfflineOwnerRecoveryService:
         local = self._store.read_global_owner_state()
         anchor = self._read_anchor()
         local_state = AnchorState(local.revision, local.generation, local.change_id)
-        if anchor == local_state:
+        try:
+            audit_valid = self._store.verify_audit_chain()
+        except Exception:
+            audit_valid = False
+        if audit_valid is not True:
+            disposition = "AUDIT_INTEGRITY_BLOCKED"
+        elif anchor == local_state:
             disposition = "CONSISTENT"
         elif (anchor.revision == local.revision + 1 and anchor.change_id is not None
               and anchor.generation != local.generation):
