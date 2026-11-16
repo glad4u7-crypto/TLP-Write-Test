@@ -127,6 +127,18 @@ class PKCS11Ed25519InspectorSigner:
                     key_type=pkcs11.KeyType.EC_EDWARDS,
                     id=self._key_id,
                 )
+                required_attributes = {
+                    pkcs11.Attribute.SENSITIVE: True,
+                    pkcs11.Attribute.EXTRACTABLE: False,
+                    pkcs11.Attribute.ALWAYS_SENSITIVE: True,
+                    pkcs11.Attribute.NEVER_EXTRACTABLE: True,
+                    pkcs11.Attribute.SIGN: True,
+                }
+                for attribute, expected in required_attributes.items():
+                    if key[attribute] is not expected:
+                        raise PKCS11SignerError(
+                            "PKCS#11 private key is not marked sensitive, non-extractable and signing-enabled."
+                        )
                 signature = bytes(key.sign(message, mechanism=pkcs11.Mechanism.EDDSA))
                 if len(signature) != 64:
                     raise PKCS11SignerError("PKCS#11 returned an invalid Ed25519 signature length.")
