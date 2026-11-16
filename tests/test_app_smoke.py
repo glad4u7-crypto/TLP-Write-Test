@@ -339,6 +339,11 @@ def test_authenticated_store_failure_clears_capabilities_and_same_session_can_re
             "auth": {"redirect_uri": "https://example.test/oauth2callback"},
             "apaa": {
                 "require_auth": True,
+                "trusted_identity_issuers": ["https://accounts.example.test"],
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
                 "approval_signing_secret_hex": secret,
                 "security_db_path": str(security_db),
                 "project_db_path": str(linked_dir / "projects.sqlite3"),
