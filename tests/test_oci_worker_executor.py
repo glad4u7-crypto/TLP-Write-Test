@@ -28,6 +28,8 @@ def setup_runner(inspect=None, fail_at=None, fail_commands=()):
         calls.append(tuple(argv))
         if argv[1] == fail_at or argv[1] in fail_commands:
             return CommandResult(1, "", "failure")
+        if argv[1] == "create":
+            return CommandResult(0, "a" * 64, "")
         if argv[1] == "inspect":
             return CommandResult(0, json.dumps([inspect or {
                 "Id": "a" * 64,
@@ -69,6 +71,8 @@ def test_create_inspect_then_attestation_failure_never_starts_and_cleans():
     calls, runner = setup_runner()
     report = make_executor(runner).launch(plan, spec)
     assert [call[1] for call in calls] == ["create", "inspect", "rm"]
+    assert calls[1][-1] == "a" * 64
+    assert calls[2][-1] == "a" * 64
     assert not report.started
     assert report.cleaned
     assert [event.stage for event in report.events] == ["CREATE", "INSPECT", "BLOCK", "CLEANUP"]
@@ -111,6 +115,8 @@ def test_stop_always_attempts_force_remove_when_graceful_stop_fails():
     handle = OCIWorkerHandle("a" * 64, plan.container_name, plan.launch_spec_digest, plan.runtime)
     report = executor.stop(handle, plan)
     assert [call[1] for call in calls] == ["stop", "rm"]
+    assert calls[0][-1] == "a" * 64
+    assert calls[1][-1] == "a" * 64
     assert report.cleaned is True
     assert report.started is False
     assert [(event.stage, event.outcome) for event in report.events] == [
@@ -136,3 +142,46 @@ def test_stop_reports_cleanup_failure_when_force_remove_fails():
     report = executor.stop(handle, plan)
     assert [call[1] for call in calls] == ["stop", "rm"]
     assert report.cleaned is False
+
+
+def test_create_id_is_used_for_inspect_and_mismatched_inspect_id_blocks_start():
+    spec, plan = make_plan()
+    calls = []
+    def runner(argv, timeout):
+        calls.append(tuple(argv))
+        if argv[1] == "create":
+            return CommandResult(0, "a" * 64, "")
+        if argv[1] == "inspect":
+            return CommandResult(0, json.dumps([{
+                "Id": "b" * 64,
+                "State": {"Status": "created"},
+                "Config": {"Image": IMAGE},
+                "HostConfig": {
+                    "NetworkMode": "apaa-egress-prod", "ReadonlyRootfs": True,
+                    "Privileged": False, "PidMode": "private", "IpcMode": "private",
+                    "CapDrop": ["ALL"],
+                    "SecurityOpt": ["no-new-privileges:true", "seccomp=/etc/apaa/seccomp.json"],
+                },
+            }]), "")
+        return CommandResult(0, "", "")
+    report = make_executor(runner).launch(plan, spec)
+    assert calls[1] == ("podman", "inspect", "a" * 64)
+    assert calls[-1] == ("podman", "rm", "--force", "a" * 64)
+    assert not report.started
+    assert report.cleaned
+    assert "start" not in [call[1] for call in calls]
+
+
+def test_invalid_create_id_fails_closed_and_removes_by_unique_plan_name():
+    spec, plan = make_plan()
+    calls = []
+    def runner(argv, timeout):
+        calls.append(tuple(argv))
+        if argv[1] == "create":
+            return CommandResult(0, "not-an-id", "")
+        return CommandResult(0, "", "")
+    report = make_executor(runner).launch(plan, spec)
+    assert [call[1] for call in calls] == ["create", "rm"]
+    assert calls[-1][-1] == plan.container_name
+    assert not report.started
+    assert report.cleaned
