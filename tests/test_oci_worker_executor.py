@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_isolation import validate_worker_profile
@@ -97,6 +98,6 @@ def test_plan_spec_digest_mismatch_is_rejected_before_command():
     spec, plan = make_plan()
     calls, runner = setup_runner()
     other = build_worker_launch_spec(validate_worker_profile({**PROFILE, "job_timeout_seconds": 29}))
-    report = make_executor(runner).launch(plan, other)
+    with pytest.raises(Exception, match="digest do not match"):
+        make_executor(runner).launch(plan, other)
     assert calls == []
-    assert not report.started
