@@ -110,6 +110,9 @@ def validate_settings(settings: dict, *, cwd: Path | None = None) -> list[str]:
         if not path.is_absolute():
             raise PreflightError(f"[apaa].{key} must be an absolute path on the deployment host.")
         lexical = path.absolute()
+        resolved = lexical.resolve()
+        if resolved == cwd or cwd in resolved.parents:
+            raise PreflightError(f"[apaa].{key} must be outside the application checkout.")
         for parent in lexical.parents:
             try:
                 if stat.S_ISLNK(parent.lstat().st_mode):
@@ -132,9 +135,6 @@ def validate_settings(settings: dict, *, cwd: Path | None = None) -> list[str]:
                 raise PreflightError(f"[apaa].{key} must target a regular non-symlink file.")
             if os.name == "posix" and stat.S_IMODE(target.st_mode) & 0o077:
                 raise PreflightError(f"Existing [apaa].{key} must be owner-only (0600 or stricter).")
-        resolved = lexical.resolve()
-        if resolved == cwd or cwd in resolved.parents:
-            raise PreflightError(f"[apaa].{key} must be outside the application checkout.")
         db_paths.append(resolved)
 
     if len(set(db_paths)) != len(db_paths):
