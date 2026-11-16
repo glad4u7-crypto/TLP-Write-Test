@@ -66,3 +66,40 @@ def test_cli_exit_code_is_nonzero_on_findings(tmp_path, capsys):
     assert main([str(root)]) == 1
     output = json.loads(capsys.readouterr().out)
     assert output["finding_count"] == 1
+
+
+def test_duplicate_json_keys_are_rejected_without_exposing_values(tmp_path):
+    root = tmp_path / "evidence"
+    _pack(root)
+    (root / "trust.json").write_text(
+        '{"safe":"first","safe":"second","private_key":"DO_NOT_PRINT"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(PrivacyCheckError, match="duplicate JSON object keys"):
+        check_evidence_privacy(root)
+
+
+def test_nested_duplicate_json_keys_are_rejected(tmp_path):
+    root = tmp_path / "evidence"
+    _pack(root)
+    (root / "trust.json").write_text(
+        '{"outer":{"value":1,"value":2}}', encoding="utf-8"
+    )
+    with pytest.raises(PrivacyCheckError, match="duplicate JSON object keys"):
+        check_evidence_privacy(root)
+
+
+def test_nonstandard_json_constants_are_rejected(tmp_path):
+    root = tmp_path / "evidence"
+    _pack(root)
+    (root / "trust.json").write_text('{"measurement":NaN}', encoding="utf-8")
+    with pytest.raises(PrivacyCheckError, match="non-standard JSON constants"):
+        check_evidence_privacy(root)
+
+
+def test_excessive_json_nesting_fails_closed(tmp_path):
+    root = tmp_path / "evidence"
+    _pack(root)
+    (root / "trust.json").write_text("[" * 1200 + "0" + "]" * 1200, encoding="utf-8")
+    with pytest.raises(PrivacyCheckError, match="valid UTF-8 JSON"):
+        check_evidence_privacy(root)
