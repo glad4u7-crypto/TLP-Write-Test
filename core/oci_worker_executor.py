@@ -17,14 +17,12 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol
 
 from core.browser_inspector import verify_signed_inspector_evidence
+from core.oci_errors import OCIExecutionError
+from core.oci_inspect_normalizer import normalize_oci_inspect
 from core.browser_runtime import WorkerLaunchSpec
 from core.oci_worker_plan import OCIWorkerPlan
 from core.inspector_control_plane import InspectorEvidenceControlPlane
 from core.storage import TenantKey
-
-
-class OCIExecutionError(RuntimeError):
-    """Raised when an OCI lifecycle stage fails closed."""
 
 
 @dataclass(frozen=True)
@@ -131,52 +129,19 @@ class OCIWorkerExecutor:
 
     @staticmethod
     def _inspect_snapshot(raw: str, plan: OCIWorkerPlan) -> tuple[str, dict[str, object]]:
-        try:
-            decoded = json.loads(raw)
-        except (TypeError, ValueError) as exc:
-            raise OCIExecutionError("inspect: runtime returned invalid JSON.") from exc
-        if not isinstance(decoded, list) or len(decoded) != 1 or not isinstance(decoded[0], dict):
-            raise OCIExecutionError("inspect: expected exactly one container object.")
-        item = decoded[0]
-        state = item.get("State")
-        config = item.get("Config")
-        host = item.get("HostConfig")
-        network = host.get("NetworkMode") if isinstance(host, dict) else None
-        if not isinstance(state, dict) or state.get("Status") != "created":
-            raise OCIExecutionError("inspect: worker is not confirmed stopped in created state.")
-        container_id = item.get("Id")
-        if type(container_id) is not str or len(container_id) < 12:
-            raise OCIExecutionError("inspect: runtime did not return a valid immutable container ID.")
-        if not isinstance(config, dict) or config.get("Image") != plan.image:
-            raise OCIExecutionError("inspect: effective image differs from the digest-pinned plan.")
-        if not isinstance(host, dict):
-            raise OCIExecutionError("inspect: effective host configuration is missing.")
-        if host.get("ReadonlyRootfs") is not True:
-            raise OCIExecutionError("inspect: read-only root filesystem is not enforced.")
-        if network != plan.network_name:
-            raise OCIExecutionError("inspect: effective network differs from the approved APAA network.")
-        if host.get("Privileged") is True or host.get("PidMode") == "host" or host.get("IpcMode") == "host":
-            raise OCIExecutionError("inspect: privileged or host namespace mode detected.")
-        caps = host.get("CapDrop")
-        if not isinstance(caps, list) or "ALL" not in caps:
-            raise OCIExecutionError("inspect: Linux capabilities are not fully dropped.")
-        security = host.get("SecurityOpt")
-        if not isinstance(security, list) or not any(
-            isinstance(x, str) and x.startswith("no-new-privileges") for x in security
-        ) or not any(isinstance(x, str) and x.startswith("seccomp=") for x in security):
-            raise OCIExecutionError("inspect: no-new-privileges/seccomp are not both enforced.")
+        normalized = normalize_oci_inspect(raw, plan)
         snapshot = {
-            "container_id": container_id,
-            "container_name": plan.container_name,
-            "image": config.get("Image"),
-            "state": state.get("Status"),
-            "network": network,
-            "readonly_rootfs": host.get("ReadonlyRootfs"),
-            "cap_drop": tuple(caps),
-            "security_options": tuple(security),
-            "launch_spec_digest": plan.launch_spec_digest,
+            "container_id": normalized.container_id,
+            "container_name": normalized.container_name,
+            "image": normalized.image,
+            "state": normalized.state,
+            "network": normalized.network,
+            "readonly_rootfs": normalized.readonly_rootfs,
+            "cap_drop": normalized.cap_drop,
+            "security_options": normalized.security_options,
+            "launch_spec_digest": normalized.launch_spec_digest,
         }
-        return container_id, snapshot
+        return normalized.container_id, snapshot
 
     def launch(self, plan: OCIWorkerPlan, spec: WorkerLaunchSpec) -> OCIExecutionReport:
         if not isinstance(plan, OCIWorkerPlan) or type(spec) is not WorkerLaunchSpec:
