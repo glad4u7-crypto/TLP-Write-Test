@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-16  
 **Scope:** Restart persistence, monotonic high-water mark, concurrent compare-and-swap, backup/restore rollback resistance.  
-**Status:** Reference-model tests committed; exact-head CI pending.  
+**Status:** Reference-model tests and fail-closed adapter-path tests committed; latest exact-head CI pending.  
 **Production anchor status:** NOT QUALIFIED. No independent remote anchor service or production credentials were accessed.
 
 ## Implemented tests
@@ -17,6 +17,10 @@ The tests exercise the existing `MonotonicSequenceBackend` protocol and signed-b
 4. **Concurrent CAS:** race two writers from the same expected sequence and require exactly one successful advance.
 5. **Stale/non-increasing writes:** reject a stale expected value and reject a non-increasing sequence.
 6. **Newer-backup rollback:** reject restoring an earlier snapshot after a later sequence has been committed.
+7. **Anchor read outage:** reject bundle acceptance when the anchor cannot be read; do not attempt an advance.
+8. **Invalid anchor values:** reject negative, boolean, null, and non-integer high-water marks.
+9. **Anchor update exception:** reject bundle acceptance when the compare-and-advance operation raises an error.
+10. **CAS rejection:** reject bundle acceptance when the backend reports a concurrent sequence change.
 
 ## Critical qualification boundary
 
@@ -43,4 +47,4 @@ PR #11 remains Draft/Open/Unmerged. Auto-Run OFF. Worker OFF. C02 NOT STARTED. C
 
 ## Acceptance
 
-P61 reference-model software tests may be accepted only after exact-head CI passes. Production independent-anchor qualification remains BLOCKED until a real independently administered adapter and its restart/backup/restore evidence are available.
+P61 reference-model and fail-closed software tests may be accepted only after exact-head CI passes for the latest test commit. Production independent-anchor qualification remains BLOCKED until a real independently administered adapter and its restart/backup/restore evidence are available.
