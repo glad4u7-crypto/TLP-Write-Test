@@ -152,3 +152,62 @@ Agent Foundation CI additionally completed its Android/desktop Chromium viewport
 - S09-C02: **NOT STARTED**.
 
 This section closes the repository-side P31 evidence refresh only. It does not close S09-C01 or authorize collaborator access in any deployment, merge, release, worker activation, paid API, payment, Auto-Run, or production action. Recheck CI on any subsequent commit SHA before treating this evidence as current.
+
+## 11. P32 Android-first reconciliation and latest exact-head CI (2026-11-16)
+
+This section supersedes older CI-head pointers in this inventory. It records the P32 Android-first qualification documentation and its exact-head verification without upgrading any external qualification gate.
+
+### P32 documentation disposition
+
+- P32 Android-first bulk qualification document: updated and reconciled with P42 owner-controlled read-only grant/revoke implementation and the outstanding physical-device/live-auth boundaries.
+- Android viewport automation: repository CI coverage only; Chromium/Playwright emulation, not a physical Android handset.
+- Physical Android: BLOCKED pending owner-operated handset evidence for browser login/logout, session changes, storage/lifecycle, and two-real-account grant/revoke.
+- Native Android APK/PWA: not implemented/qualified.
+- PC physical-device testing: optional and not a prerequisite for Android-first qualification.
+- Real-host Linux worker qualification: separate mandatory C01 blocker; Android/Termux is not a hostile-code isolation boundary.
+
+### Latest exact-head evidence
+
+P32 evidence reconciliation commit `7af3f6de5d435f6b3a489dabf3a29705a27ef712` completed all four required PR-triggered workflows successfully, with every returned job successful:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [#43835713964](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835713964) | PASS |
+| Python Demo CI | [#43835713847](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835713847) | PASS |
+| P20 Rootless Podman Runtime Qualification | [#43835713859](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835713859) | PASS |
+| P23 Rootless Podman Executor Integration | [#43835713968](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43835713968) | PASS |
+
+Agent Foundation's foundation test, Android/PC Chromium browser verification and disposable Linux egress namespace jobs passed. Python Demo's test job passed. P20's disposable rootless Podman lifecycle job passed. P23's disposable Podman executor/attestation integration job passed.
+
+**Evidence boundary:** These results establish tests on GitHub-hosted disposable CI infrastructure for the exact commit above. They do not establish a physical Android device, live OIDC with two real identities, production Linux host, protected production signer/key custody, separately administered durable anti-rollback, production sink-side egress enforcement, or independent reviewer approval.
+
+### Current mandatory gate matrix (reconfirmed)
+
+| Gate | Status | What is still required |
+|---|---|---|
+| G1 — Owner approval and host | BLOCKED | Explicit owner-approved disposable Linux host, maintenance window, isolation boundary and rollback plan |
+| G2 — Runtime and image | BLOCKED | Locally available immutable digest-pinned image and read-only owner-host preflight |
+| G3 — Collector identity | BLOCKED | Reviewed least-privilege collector and effective privilege evidence |
+| G4 — Trust and signer | BLOCKED | Out-of-band trust fingerprints and protected signer with rotation/revocation/recovery evidence |
+| G5 — Durable anti-rollback | BLOCKED | Separately administered durable monotonic anchor, atomic concurrency and restore/rollback rejection |
+| G6 — Lifecycle and attestation | BLOCKED | Real owner-host lifecycle, immutable binding and negative/replay/tamper tests |
+| G7 — Egress enforcement | BLOCKED | Complete real topology evidence including IPv4/IPv6, DNS TCP/UDP, UDP/443/QUIC, WebSocket, alternate interfaces, dial-time pinned-IP and sink-side observations |
+| G8 — Failure and cleanup | BLOCKED | Real daemon interruption, timeout/cancel, signer/collector loss and bounded orphan cleanup drill |
+| G9 — Android primary-device assessment | BLOCKED | Physical Android browser/session/storage/lifecycle and two-real-account grant/revoke evidence |
+| G10 — Independent review | BLOCKED | Independent reviewer verifies exact code SHA, host, trust, anchor, sink observations, cleanup and two-user OIDC evidence |
+
+No G1–G10 status is promoted by the P32 CI results. No evidence is fabricated, no secrets or raw host identifiers are added to the repository.
+
+### Repository and release disposition
+
+- P31 evidence inventory: **RECONCILED through P32 exact-head CI evidence**.
+- P32 Android-first documentation: **UPDATED; CI PASS on the exact recorded commit**.
+- P42 owner-controlled read-only grant/revoke UI: **IMPLEMENTED in repository; live OIDC/device qualification pending**.
+- Repository-side CI: **PASS on recorded exact heads only; re-run required after this new documentation commit**.
+- Real-host/physical/live-identity qualification: **BLOCKED**.
+- S09-C01: **OPEN / NOT COMPLETE**.
+- S09-C02: **NOT STARTED**.
+- PR #11: **Draft / Open / Unmerged**.
+- Auto-Run OFF; browser/worker execution disabled; no paid API/payment; no deployment, merge, host/firewall mutation or production activation.
+
+**Closure rule unchanged:** C01 cannot be declared complete until every mandatory G1–G10 gate has genuine evidence, signature/integrity checks, independent review and explicit owner acceptance against the exact final code SHA. This document update closes the repository-side evidence reconciliation task only.
