@@ -217,15 +217,18 @@ def test_concurrent_recovery_requests_only_one_transition_wins(tmp_path):
     assert store.verify_audit_chain()
 
 
-def test_restored_older_sqlite_backup_is_blocked_by_newer_anchor(tmp_path):
+def test_restored_backup_multiple_revisions_behind_anchor_is_blocked(tmp_path):
     import sqlite3
     import hashlib
 
     service, store, anchor, op, ap = _setup(tmp_path)
-    first = service.apply(_signed(op, ap), now=1100)
+    # Preserve revision zero, then advance both local state and the independent
+    # anchor twice. A one-revision gap is intentionally treated as resumable:
+    # it is indistinguishable from a crash after anchor CAS and before SQLite CAS.
     backup_path = tmp_path / "owner-state-backup.sqlite3"
     with sqlite3.connect(store._database_path) as source, sqlite3.connect(backup_path) as backup:
         source.backup(backup)
+    first = service.apply(_signed(op, ap), now=1100)
     second = _signed(op, ap, change_id="backup-restore-change-002",
         expected_revision=first.revision, old_generation=first.generation,
         new_generation=hashlib.sha256(b"second-generation").hexdigest(),
@@ -233,16 +236,16 @@ def test_restored_older_sqlite_backup_is_blocked_by_newer_anchor(tmp_path):
     service.apply(second, now=1100)
     with sqlite3.connect(backup_path) as backup, sqlite3.connect(store._database_path) as restored:
         backup.backup(restored)
-    assert store.read_global_owner_state().revision == 1
+    assert store.read_global_owner_state().revision == 0
     assert anchor.read().revision == 2
     assert service.inspect().disposition == "DIVERGED_BLOCKED"
     retry = _signed(op, ap, change_id="backup-restore-retry-003",
-        expected_revision=1, old_generation=first.generation,
+        expected_revision=0, old_generation=None,
         new_generation=hashlib.sha256(b"retry-generation").hexdigest(),
         nonce="e"*64)
     with pytest.raises(RecoveryDenied):
         service.apply(retry, now=1100)
-    assert store.read_global_owner_state().revision == 1
+    assert store.read_global_owner_state().revision == 0
     assert anchor.read().revision == 2
 
 
@@ -274,7 +277,9 @@ def test_audit_tail_deletion_is_detected_by_sequence_high_water_mark(tmp_path):
     with pytest.raises(RecoveryDenied):
         service.apply(_signed(op, ap), now=1100)
     assert store.read_global_owner_state().revision == 1
-    assert anchor.read().revision == 2  # anchor advances first; local CAS fails closed on truncated audit
+    # The idempotent-target path verifies the audit before any further anchor
+    # mutation, so a deleted tail must leave the independent anchor unchanged.
+    assert anchor.read().revision == 1
 
 
 def test_key_rotation_accepts_new_dual_control_keys_and_rejects_old_keys(tmp_path):
