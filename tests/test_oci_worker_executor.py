@@ -14,7 +14,7 @@ PROFILE = {
     "host_ipc": False, "host_mounts": [], "secret_mounts": [],
     "writable_mounts": ["/tmp/job"], "browser_profile_persistence": False,
     "cdp_exposed": False, "direct_egress": False, "proxy_only_egress": True,
-    "dns_via_proxy_only": True, "egress_proxy": "http://10.20.0.2:3128",
+    "dns_via_proxy_only": True, "egress_proxy": "http://proxy.apaa.internal:3128",
     "memory_limit_bytes": 536870912, "cpu_limit_millis": 1000,
     "pids_limit": 64, "job_timeout_seconds": 30,
 }
