@@ -67,7 +67,7 @@ def probe_oci_runtime(
         version=version,
         rootless=rootless,
         cgroup_version=str(cgroup or "").lower().removeprefix("v"),
-        security_options=tuple(str(x) for x in security) if isinstance(security, list) else (),
+        security_options=tuple(str(x).removeprefix("name=") for x in security) if isinstance(security, list) else (),
         supports_create_inspect_start=supports_create and supports_inspect and supports_start,
         supports_readonly_rootfs="--read-only" in help_text,
         supports_cap_drop_all="--cap-drop" in help_text,
