@@ -68,7 +68,9 @@ def setup(tmp_path, *, corrupt_signature=False, revoked_key=False, wrong_worker=
         envelope["payload"]["runtime_attestation"]["runtime_id"] = snapshot["container_id"]
         envelope["payload"]["runtime_attestation"]["worker_id"] = snapshot["container_name"]
         envelope["payload"]["firewall"]["runtime_id"] = snapshot["container_id"]
-        envelope["payload"]["firewall"]["worker_id"] = (\n            "apaa-worker-other-job" if wrong_worker else snapshot["container_name"]\n        )
+        envelope["payload"]["firewall"]["worker_id"] = (
+            "apaa-worker-other-job" if wrong_worker else snapshot["container_name"]
+        )
         resign(envelope, private)
         if corrupt_signature:
             envelope["signature"] = "A" * 88
