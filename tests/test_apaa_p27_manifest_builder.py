@@ -108,3 +108,50 @@ def test_cli_reports_non_approval(tmp_path, capsys):
     output = json.loads(capsys.readouterr().out)
     assert output["authenticity"] == "NOT_CHECKED"
     assert output["host_qualification"] == "NOT_ASSESSED"
+
+
+
+def test_rejects_hardlinked_artifact(tmp_path):
+    root = tmp_path / "evidence"
+    _evidence(root)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    (root / "egress.json").unlink()
+    (root / "egress.json").hardlink_to(outside)
+    with pytest.raises(ManifestBuildError, match="singly-linked regular file"):
+        build_manifest(root, METADATA)
+
+
+def test_rejects_evidence_directory_symlink(tmp_path):
+    actual = tmp_path / "actual"
+    _evidence(actual)
+    alias = tmp_path / "evidence-link"
+    alias.symlink_to(actual, target_is_directory=True)
+    with pytest.raises(ManifestBuildError, match="real directory"):
+        build_manifest(alias, METADATA)
+
+
+def test_no_follow_open_rejects_symlink_swap_after_inventory(tmp_path, monkeypatch):
+    import os
+    import scripts.build_apaa_p27_manifest as builder
+
+    root = tmp_path / "evidence"
+    _evidence(root)
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"secret":"not-read"}', encoding="utf-8")
+    real_open = os.open
+    swapped = False
+
+    def swap_before_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == "egress.json" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            (root / "egress.json").unlink()
+            (root / "egress.json").symlink_to(outside)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(builder.os, "open", swap_before_open)
+    with pytest.raises(ManifestBuildError, match="regular non-symlink"):
+        build_manifest(root, METADATA)
+    assert swapped is True
+    assert not (root / "manifest.json").exists()
