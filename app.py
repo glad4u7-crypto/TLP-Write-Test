@@ -11,6 +11,7 @@ from core.models import Task
 from core.planner import PlanStatus, StepCategory, create_structured_plan
 from core.projects import ProjectRegistry
 from core.persistent_projects import PersistentProjectRegistry
+from core.project_access import ProjectAccessControl
 from core.sqlite_project_store import SQLiteProjectStore
 from core.approvals import ApprovalAuthority
 from core.audit import JsonlAuditLog
@@ -115,6 +116,7 @@ if principal is not None:
         )
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
+        project_access_control = ProjectAccessControl(project_store)
         # Optional closed-directory enrollment. This is deliberately inert
         # unless the owner explicitly configures an issuer allowlist. Only the
         # Principal produced above by Streamlit's validated OIDC claims enters.
@@ -173,8 +175,11 @@ if principal is not None:
     if (
         "project_registry" not in st.session_state
         or st.session_state.get("project_registry_tenant") != session_identity
+        or getattr(st.session_state.get("project_registry"), "_access_control", None) is None
     ):
-        st.session_state["project_registry"] = PersistentProjectRegistry(project_store, tenant)
+        st.session_state["project_registry"] = PersistentProjectRegistry(
+            project_store, tenant, access_control=project_access_control
+        )
         st.session_state["project_registry_tenant"] = session_identity
 else:
     memory_store = None
@@ -205,7 +210,7 @@ if (
 
 def visible_projects():
     if principal is not None:
-        return registry.list_projects_for_owner(principal)
+        return registry.list_projects_for_principal(principal)
     return [
         project for project in registry.list_projects()
         if project.owner_subject == "local-prototype"
@@ -214,7 +219,7 @@ def visible_projects():
 def visible_project(project_id):
     if principal is not None:
         try:
-            return registry.get_for_owner(project_id, principal)
+            return registry.get_for_principal(project_id, principal)
         except AuthorizationDenied:
             return None
     project = registry.get(project_id)
@@ -236,7 +241,7 @@ with st.sidebar:
             "Select project",
             options=project_ids,
             index=index,
-            format_func=lambda value: registry.get(value).name,
+            format_func=lambda value: next(project.name for project in projects if project.project_id == value),
         )
         st.session_state["selected_project_id"] = selected_id
         selected = visible_project(selected_id)
@@ -562,7 +567,8 @@ else:
 
     with memory_tabs[4]:
         st.subheader("Task checkpoint recovery")
-        project_options = visible_projects()
+        # Checkpoints remain private to the authenticated project owner.
+        project_options = registry.list_projects_for_owner(principal) if principal is not None else []
         if project_options:
             with st.form("checkpoint_form", clear_on_submit=True):
                 checkpoint_project = st.selectbox(
