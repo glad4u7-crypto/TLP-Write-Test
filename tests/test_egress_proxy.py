@@ -8,6 +8,7 @@ from core.egress_proxy import (
     ProxyRequestError,
     parse_connect_request,
 )
+from core.proxy_worker_topology import ProxyWorkerTopology
 
 
 PUBLIC = "93.184.216.34"
@@ -115,3 +116,42 @@ def test_proxy_denies_non_allowlisted_host_before_opening_upstream_socket():
         client.close()
         worker.join(timeout=2)
         assert not worker.is_alive()
+
+
+def test_proxy_can_bind_only_to_exact_validated_private_worker_interface():
+    policy = NavigationPolicy(allowed_hosts=frozenset({"example.com"}), resolver=lambda host: (PUBLIC,))
+    topology = ProxyWorkerTopology.build(
+        network_name="apaa-worker-net", subnet="172.30.0.0/28",
+        proxy_address="172.30.0.2", worker_address="172.30.0.3", proxy_port=3128,
+    )
+    proxy = EgressConnectProxy(
+        EgressDestinationAuthorizer(policy),
+        PinnedIPConnector(lambda address, port, timeout: None),
+        bind_host=topology.proxy_address, bind_port=topology.proxy_port,
+        allowed_ports=frozenset({topology.proxy_port}), topology=topology,
+    )
+    assert proxy.bind_host == "172.30.0.2"
+    assert proxy.bind_port == 3128
+
+def test_proxy_rejects_private_bind_without_matching_topology():
+    policy = NavigationPolicy(allowed_hosts=frozenset({"example.com"}), resolver=lambda host: (PUBLIC,))
+    with pytest.raises(ValueError, match="validated worker topology"):
+        EgressConnectProxy(
+            EgressDestinationAuthorizer(policy),
+            PinnedIPConnector(lambda address, port, timeout: None),
+            bind_host="172.30.0.2", bind_port=3128,
+        )
+
+def test_proxy_rejects_bind_port_or_address_outside_topology():
+    policy = NavigationPolicy(allowed_hosts=frozenset({"example.com"}), resolver=lambda host: (PUBLIC,))
+    topology = ProxyWorkerTopology.build(
+        network_name="apaa-worker-net", subnet="172.30.0.0/28",
+        proxy_address="172.30.0.2", worker_address="172.30.0.3", proxy_port=3128,
+    )
+    with pytest.raises(ValueError, match="exactly match"):
+        EgressConnectProxy(
+            EgressDestinationAuthorizer(policy),
+            PinnedIPConnector(lambda address, port, timeout: None),
+            bind_host=topology.proxy_address, bind_port=0,
+            allowed_ports=frozenset({3128}), topology=topology,
+        )
