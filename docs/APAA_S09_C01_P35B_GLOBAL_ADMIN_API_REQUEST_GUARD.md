@@ -23,12 +23,12 @@ Tests cover owner re-key becoming effective on the next request, old-owner denia
 
 Repository inspection found no separate HTTP API router or Global Admin API endpoint in the current application. The current UI is Streamlit. Therefore this change supplies a tested authorization primitive but **does not claim endpoint integration**. When a real API router is introduced, every privileged read and mutation route must invoke this guard after trusted authentication and before reading or mutating protected data. UI visibility is not authorization.
 
-The loader must read authoritative protected server-side configuration afresh; a loader that returns stale cached settings would defeat immediate re-key observation. Durable revocation propagation across multiple processes, shared caches, session stores and audit sinks remains unimplemented.
+The loader must read authoritative protected server-side configuration afresh. The guard now also requires a durable generation reader and denies requests when configuration and generation disagree. See P35-C for the same-host SQLite CAS/high-water primitive and its limitations. This does not create a distributed API deployment or independently durable anti-rollback anchor.
 
 ## Not implemented / blocked
 
 - No Global Admin API route, admin UI, bootstrap, recovery or re-key endpoint.
-- No durable append-only owner audit sink or multi-process revocation mechanism.
+- No external append-only owner audit sink or independently administered anti-rollback anchor; the P35-C local SQLite audit/generation primitive is not tamper-proof.
 - No live OIDC, physical Android, production Linux host or independent security review.
 - No owner identity, token, secret, API key or private key was added.
 
