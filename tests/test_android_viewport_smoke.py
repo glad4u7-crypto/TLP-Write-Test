@@ -111,3 +111,37 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
 
         context.close()
         browser.close()
+
+
+
+def test_android_user_can_prepare_and_review_plan_without_execution(streamlit_server):
+    """Exercise the primary phone workflow; planning must remain non-executing."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(**playwright.devices["Pixel 7"])
+        page = context.new_page()
+        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
+        page.get_by_label("Describe a task").wait_for(timeout=30000)
+        page.get_by_label("Describe a task").fill(
+            "Review a Python repository and suggest a safe implementation plan."
+        )
+        page.get_by_role("button", name="Prepare structured plan").click()
+        page.get_by_text("Structured plan review").wait_for(timeout=30000)
+        page.get_by_text("READY · Reviewable plan prepared. Nothing has been executed.").wait_for()
+
+        action_buttons = page.get_by_role("button").all_text_contents()
+        assert not any(
+            any(token in label.casefold() for token in ("execute", "run task", "approve action", "auto-run"))
+            for label in action_buttons
+        ), action_buttons
+
+        metrics = page.evaluate("""() => ({
+          viewport: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          bodyWidth: document.body.scrollWidth
+        })""")
+        assert metrics["documentWidth"] <= metrics["viewport"] + 2, metrics
+        assert metrics["bodyWidth"] <= metrics["viewport"] + 2, metrics
+
+        context.close()
+        browser.close()
