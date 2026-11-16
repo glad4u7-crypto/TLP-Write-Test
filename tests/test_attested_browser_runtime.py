@@ -188,3 +188,58 @@ def test_gate_fails_closed_when_worker_adapter_raises_without_fallback():
     with pytest.raises(BrowserRuntimeGateError, match="no alternate or direct launch"):
         gate.launch(signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
     assert calls == ["attempt"]
+
+
+def test_gate_blocks_untrusted_signing_key_before_worker_adapter():
+    spec = make_spec()
+    signer = Ed25519PrivateKey.generate()
+    attacker = Ed25519PrivateKey.generate()
+    calls = []
+    gate = AttestedBrowserRuntime(
+        spec, trusted_public_keys={"host-inspector-prod": attacker.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP], worker_start=lambda *_: calls.append(True),
+    )
+    with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
+        gate.launch(signed_evidence(spec, signer), challenge=CHALLENGE, now=NOW)
+    assert calls == []
+
+
+def test_gate_blocks_signature_tampering_before_worker_adapter():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+    calls = []
+    envelope = signed_evidence(spec, key)
+    envelope["signature"] = "A" * len(envelope["signature"])
+    gate = AttestedBrowserRuntime(
+        spec, trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP], worker_start=lambda *_: calls.append(True),
+    )
+    with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
+        gate.launch(envelope, challenge=CHALLENGE, now=NOW)
+    assert calls == []
+
+
+def test_gate_blocks_proxy_allowlist_mismatch_before_worker_adapter():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+    calls = []
+    gate = AttestedBrowserRuntime(
+        spec, trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=["172.20.0.3"], worker_start=lambda *_: calls.append(True),
+    )
+    with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
+        gate.launch(signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
+    assert calls == []
+
+
+def test_gate_blocks_invalid_freshness_policy_before_worker_adapter():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+    calls = []
+    gate = AttestedBrowserRuntime(
+        spec, trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP], worker_start=lambda *_: calls.append(True),
+    )
+    with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
+        gate.launch(signed_evidence(spec, key), challenge=CHALLENGE, now=NOW, max_age_seconds=-1)
+    assert calls == []
