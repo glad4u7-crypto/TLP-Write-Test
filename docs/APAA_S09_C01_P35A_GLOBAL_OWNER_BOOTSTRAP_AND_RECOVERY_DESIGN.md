@@ -140,3 +140,18 @@ Added `core/global_owner.py` and `tests/test_global_owner.py`. The pure server-s
 This is an isolated authorization primitive only. It does not read environment variables, files, browser state, task text or model output; does not establish secure configuration custody; does not implement strict raw-config parsing, startup policy, global-admin API integration, session invalidation, audit persistence, recovery/re-key, or live OIDC. No UI or endpoint exposes it. The application does not yet load or activate a global owner. Focused tests were added but must pass exact-head CI before any test-pass claim.
 
 Updated status: design RECORDED; isolated guard IMPLEMENTED; deployment config adapter, application integration, recovery/re-key and external qualification NOT IMPLEMENTED/BLOCKED.
+
+
+## 12. Server-side settings adapter and startup integration (2026-11-16)
+
+Added `core/global_owner_config.py` as a narrow adapter over the deployment-provided `[apaa].global_owner` mapping. It accepts only the exact issuer/subject pair, requires the issuer to appear exactly once in the explicit trusted-issuer collection, and delegates identity-shape validation to the immutable guard. Missing owner configuration returns an unprovisioned state; it never infers the first authenticated user. A present but malformed/untrusted configuration raises a configuration error.
+
+The Streamlit startup path now loads this optional mapping only after a trusted OIDC Principal has been produced. Invalid owner configuration displays a sanitized security error and leaves global administration disabled while ordinary authenticated project access remains governed by the existing ACL checks. A valid configuration is loaded as an immutable runtime object but is not placed in browser/session state, exposed in UI, or wired to any privileged endpoint. No owner identity has been provisioned by this code change.
+
+The startup stores only the opaque configuration generation in server session state. When that generation changes, including removal or invalidation, the adapter clears the enumerated owner-bound session capability keys. No raw subject, token or secret is stored. There are currently no global-owner API actions or owner-bound approval receipts to activate; future integrations must use the guard at each server API boundary and extend invalidation coverage before any feature can be enabled.
+
+Tests added for absent configuration/no first-login bootstrap, exact trusted issuer, malformed and duplicate issuer configuration, untrusted issuer, owner-bound cache invalidation, and Streamlit startup behavior for absent/invalid/valid configuration. The valid-config test explicitly asserts that loading configuration does not create an authorized session or activate an admin action.
+
+**Custody limitation:** this adapter consumes the framework's server-side settings mapping. It does not prove secret-manager custody, file ownership/mode, deployment operator access, atomic secret rotation, or monotonic rollback protection. Those remain external qualification requirements. No raw config file, owner subject, credential, token, key or secret is committed.
+
+**Disposition:** server-side adapter and fail-closed startup loading IMPLEMENTED; focused and full exact-head CI PENDING; privileged Global Admin API wiring NOT IMPLEMENTED; session invalidation implemented for reserved owner-bound keys only; recovery/re-key and durable audit NOT IMPLEMENTED; live OIDC, physical Android and independent review BLOCKED. Global Owner remains inactive. All release/safety locks remain unchanged.
