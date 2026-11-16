@@ -49,7 +49,8 @@ class FakePage:
         self.goto_options = (url, kwargs)
         owner = self.route_owner if self.route_owner is not None else self
         handler = owner.handlers["**/*"]
-        for target in (url, *self.redirect_urls):
+        redirect_urls = owner.redirect_urls if owner is not self else self.redirect_urls
+        for target in (url, *redirect_urls):
             route = FakeRoute(target)
             owner.routes_seen.append(route)
             handler(route)
