@@ -101,3 +101,24 @@ CI and emulator tests are useful but do not replace physical Android-device test
 ## 7. Current truth
 
 The repository currently describes a Streamlit web prototype. It does not yet contain a completed native Android application, a qualified Android local execution runtime, or a production-ready browser worker. The current CI results qualify repository tests and disposable CI scenarios only. This plan preserves the full APAA product direction while making Android the primary user interface and keeping unqualified execution paths disabled.
+
+
+## 8. Architecture checkpoint and CI evidence
+
+**Checkpoint:** `APAA-ANDROID-FIRST-ARCHITECTURE-RECORDED-CI-RUNNING`  
+**Architecture commit:** `7784fbd279d160104b38662ee1fdcefa7dce0fd0`  
+**Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
+**Verification date:** 2026-11-16
+
+All four required GitHub Actions workflows completed successfully on the exact architecture commit:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [43813616185](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43813616185) | PASS |
+| Python Demo CI | [43813616225](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43813616225) | PASS |
+| P20 Rootless Podman Runtime Qualification | [43813616191](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43813616191) | PASS |
+| P23 Rootless Podman Executor Integration | [43813616198](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43813616198) | PASS |
+
+The workflow job and step summaries were inspected; every reported job and step completed successfully. This confirms repository CI and disposable CI runtime checks only. It does not establish physical Android-device compatibility, real-host qualification, production key custody, production anti-rollback durability, or live browser/worker safety.
+
+**Checkpoint disposition:** architecture decision recorded and its exact-commit CI is PASS. Android implementation and physical-device verification remain pending. S09 C01 real-host qualification remains OPEN; browser/worker remain disabled; PR #11 remains Draft/Open/Unmerged. No merge, deployment, host mutation, paid service, payment/purchase, or Auto-Run activation is authorized.
