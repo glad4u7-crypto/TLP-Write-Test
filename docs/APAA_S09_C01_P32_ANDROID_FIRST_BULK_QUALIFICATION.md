@@ -112,3 +112,31 @@ The PR head `65e130cc6b923cdbba1fe741e058bcf0120bd366` completed all four requir
 This clears the earlier automated exact-head CI-pending item for the inspected head. It does not clear physical Android login/logout, real OIDC multi-user access/revocation, Android browser storage/lifecycle, native APK, real-host OCI/network, protected signer, independent anti-rollback or independent reviewer gates. CI is not physical-device or production-host evidence.
 
 **Qualification status:** Android automated browser-emulation coverage PASS; physical Android qualification OPEN. PC physical qualification remains optional. C01 remains OPEN / NOT COMPLETE; PR #11 remains Draft/Open/Unmerged; C02 must not start.
+
+## 9. Later repository-state reconciliation (2026-11-16)
+
+This addendum supersedes the older “latest verified exact head” pointer above where the branch has advanced. It does not upgrade any physical-device or real-host gate.
+
+- P42 owner-controlled read-only grant/revoke UI was inspected in code at `3d8c166628b5c7040d706d963ca69d12283aef7f`. The UI is bound to a server-validated OIDC Principal and configured trusted issuer allowlist; directory identities are private by default; grants require explicit owner confirmation; revocation is separately confirmed and persisted. The grant is limited to project metadata read access. This is implementation review, not live two-account OIDC or physical Android E2E.
+- The P31 evidence inventory refresh was committed at `e8fe7e06cc2cd4945c8040b7e5e2e906e7f67fa6`. All four required workflows passed on that exact PR head:
+  - [Agent Foundation CI #1055](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834897418) — PASS; Android/PC Chromium emulation and disposable Linux egress namespace jobs also passed.
+  - [Python Demo CI #1130](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834897840) — PASS.
+  - [P20 Rootless Podman Runtime Qualification #184](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834897467) — PASS.
+  - [P23 Rootless Podman Executor Integration #166](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834897632) — PASS.
+- These later results verify repository code and disposable CI only. They do not establish physical Android behavior, live OIDC with two real accounts, browser storage/lifecycle behavior on the handset, native APK/PWA readiness, owner-host Linux qualification, protected signer/key custody, independent durable anti-rollback, sink-side worker/proxy enforcement, or independent reviewer approval.
+
+### Current Android-first disposition
+
+| Gate | Current disposition |
+|---|---|
+| Android responsive viewport automation | PASS on the recorded exact CI heads; emulation only |
+| Owner-controlled grant/revoke UI implementation | Implemented and code-reviewed; live Android/OIDC E2E pending |
+| Physical Android login/logout, session switch and storage checks | BLOCKED / owner-operated test deployment and device evidence not supplied |
+| Physical Android grant/revoke with two real OIDC accounts | BLOCKED / no live two-account evidence |
+| Native Android APK/PWA | Not implemented/qualified |
+| Physical PC | Optional; not a prerequisite for Android-first qualification |
+| Real Linux host, trust, signer, anti-rollback and sink-side network gates | Separate mandatory C01 blockers; Android testing cannot clear them |
+
+Do not expose an unauthenticated prototype publicly or improvise OIDC credentials. If no secured test deployment and two controlled accounts exist, preserve the live-auth gates as BLOCKED. No secrets or raw device/session data belong in the repository.
+
+**C01 remains OPEN / NOT COMPLETE; C02 remains NOT STARTED.** PR #11 must remain Draft/Open/Unmerged. Auto-Run OFF; browser/worker disabled; no paid services, host/firewall mutation, merge or deployment.
