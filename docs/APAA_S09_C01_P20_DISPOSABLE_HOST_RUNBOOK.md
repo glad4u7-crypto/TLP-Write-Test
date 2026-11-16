@@ -51,7 +51,7 @@ docker version
 
 Do not paste secrets, registry credentials, environment variables or unrelated host inventory into issue comments.
 
-## Step 3 — Rootless Podman CI daemon lifecycle smoke
+## Step 3 — Rootless Podman CI runtime lifecycle smoke
 
 The repository now contains [apaa-p20-rootless-podman-qualification.yml](../.github/workflows/apaa-p20-rootless-podman-qualification.yml). On a pull request or manual dispatch it uses an ephemeral GitHub-hosted Ubuntu runner and:
 
@@ -62,9 +62,9 @@ The repository now contains [apaa-p20-rootless-podman-qualification.yml](../.git
 5. Starts, verifies running state, stops and force-removes using the exact immutable container ID.
 6. Checks that no qualification container remains and uploads a short-retention CI evidence artifact.
 
-A green workflow is evidence for a real **rootless Podman daemon smoke lifecycle** on that disposable runner. It is not proof of APAA's signed-attestation integration, Docker compatibility, the production worker/proxy topology, alternate-interface egress resistance or Android support. Review the actual run and artifact before recording PASS. Do not describe an unobserved or failed run as qualified.
+A green workflow is evidence for a real **rootless Podman runtime smoke lifecycle** on that disposable runner. It is not proof of APAA's signed-attestation integration, Docker compatibility, the production worker/proxy topology, alternate-interface egress resistance or Android support. Review the actual run and artifact before recording PASS. Do not describe an unobserved or failed run as qualified.
 
-## Step 4 — Full APAA daemon lifecycle gate (still pending)
+## Step 4 — Full APAA runtime lifecycle gate (still pending)
 
 Before any worker can be enabled, a separate integrated disposable-host harness must demonstrate:
 
