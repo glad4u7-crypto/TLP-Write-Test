@@ -75,6 +75,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           sudo apt-get update
-          sudo apt-get install --yes util-linux nftables
+          sudo apt-get install --yes util-linux iproute2 nftables
       - name: Inspect a disposable child process using live procfs and nftables
         run: sudo -n python scripts/qualify_linux_host_inspector.py
