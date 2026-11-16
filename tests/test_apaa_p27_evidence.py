@@ -208,10 +208,8 @@ def test_rejects_signature_from_another_key(tmp_path):
 
 def test_rejects_signature_inside_evidence_directory(tmp_path):
     root = tmp_path / "evidence"
-    manifest = make_pack(root)
-    sig = root / "manifest.sig"; sig.write_text("invalid")
-    manifest["files"]["manifest.sig"] = hashlib.sha256(sig.read_bytes()).hexdigest()
-    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    make_pack(root)
+    sig = root / "host-preflight.json"
     pub = tmp_path / "trusted.pub"; pub.write_bytes(b"x" * 32)
     with pytest.raises(EvidenceValidationError, match="outside the evidence directory"):
         validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256="0" * 64)
