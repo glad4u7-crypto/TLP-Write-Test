@@ -12,7 +12,19 @@ def _click_button_by_label(app: AppTest, label: str) -> None:
     matches[0].click().run()
 
 
-def _authenticated_test_user(monkeypatch):
+def _authenticated_test_user(monkeypatch, *, configure_owner=True):
+    # Authenticated UI tests default to the exact synthetic owner identity.
+    # Negative owner-gate tests opt out explicitly.
+    if configure_owner and isinstance(st.secrets, dict):
+        apaa = st.secrets.setdefault("apaa", {})
+        if isinstance(apaa, dict):
+            apaa.setdefault(
+                "global_owner",
+                {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
+            )
     claims = {
         "is_logged_in": True,
         "iss": "https://accounts.example.test",
@@ -515,10 +527,11 @@ def test_global_owner_is_not_bootstrapped_when_server_config_is_absent(monkeypat
             },
         },
     )
-    _authenticated_test_user(monkeypatch)
+    _authenticated_test_user(monkeypatch, configure_owner=False)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
-    assert app.session_state["global_owner_generation"] is None
+    assert any("no valid owner identity" in item.value for item in app.error)
+    assert not any("Project Manager" in item.value for item in app.header)
     assert not any("Global Owner configuration is invalid" in item.value for item in app.error)
 
 
@@ -539,10 +552,12 @@ def test_invalid_global_owner_config_disables_admin_without_stopping_project_app
             },
         },
     )
-    _authenticated_test_user(monkeypatch)
+    _authenticated_test_user(monkeypatch, configure_owner=False)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
-    assert app.session_state["global_owner_generation"] is None
+    assert any("Global Owner configuration is invalid" in item.value for item in app.error)
+    assert any("no valid owner identity" in item.value for item in app.error)
+    assert not any("Project Manager" in item.value for item in app.header)
     assert any("Global Owner configuration is invalid" in item.value for item in app.error)
 
 
@@ -563,13 +578,11 @@ def test_valid_global_owner_config_is_loaded_but_not_activated(monkeypatch):
             },
         },
     )
-    _authenticated_test_user(monkeypatch)
+    _authenticated_test_user(monkeypatch, configure_owner=False)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
-    assert isinstance(app.session_state["global_owner_generation"], str)
-    assert len(app.session_state["global_owner_generation"]) == 64
-    assert "global_owner_authorized" not in app.session_state
-    assert not any("Global Owner configuration is invalid" in item.value for item in app.error)
+    assert any("available only to its configured owner" in item.value for item in app.error)
+    assert not any("Project Manager" in item.value for item in app.header)
 
 
 def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monkeypatch):
@@ -583,7 +596,7 @@ def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monk
             "trusted_identity_issuers": ["https://accounts.example.test"],
             "global_owner": {
                 "issuer": "https://accounts.example.test",
-                "subject": "owner-subject",
+                "subject": "app-smoke-test-user",
             },
         },
     }
