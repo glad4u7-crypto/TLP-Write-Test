@@ -4,17 +4,18 @@ The backend below is a deterministic reference model, not a production anchor.
 These tests specify invariants that a real independently administered adapter
 must satisfy before it can be qualified.
 """
+import base64
+import json
 import threading
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.inspector_trust_sequence import (
     InspectorTrustSequenceError,
     accept_signed_inspector_trust_bundle,
 )
-from tests.test_inspector_trust_sequence import _bundle
-
-
 ISSUER = "control:root-001"
 
 
@@ -52,6 +53,40 @@ class DurableReferenceAnchor:
                     raise RuntimeError("backup restore would roll back monotonic state")
             self.store.clear()
             self.store.update(snapshot)
+
+
+def _bundle(sequence=4):
+    root = Ed25519PrivateKey.generate()
+    public = root.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    payload = {
+        "schema_version": 1,
+        "sequence": sequence,
+        "issued_at": 100,
+        "expires_at": 300,
+        "keys": [{
+            "key_id": "inspector:worker-001",
+            "public_key": base64.b64encode(bytes([7]) * 32).decode(),
+            "not_before": 100,
+            "not_after": 250,
+            "revoked": False,
+        }],
+    }
+    signed = {
+        "schema_version": 1,
+        "issuer_key_id": ISSUER,
+        "payload": payload,
+    }
+    signature = root.sign(json.dumps(
+        signed, sort_keys=True, separators=(",", ":")
+    ).encode())
+    envelope = {
+        **signed,
+        "signature": base64.b64encode(signature).decode(),
+    }
+    return public, json.dumps(envelope)
 
 
 def _accept(public, raw, backend):
