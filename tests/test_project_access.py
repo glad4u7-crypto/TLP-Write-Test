@@ -132,3 +132,21 @@ def test_access_audit_events_survive_store_reconstruction(tmp_path):
     ProjectAccessControl(store).grant_read(project.project_id, OWNER, READER)
     reopened = ProjectAccessControl(SQLiteProjectStore(path))
     assert [event.action for event in reopened.list_events_for_owner(project.project_id, OWNER)] == ["grant"]
+
+ 
+def test_access_audit_events_cannot_be_updated_or_deleted(tmp_path):
+    import sqlite3
+    _, project, access = setup_access(tmp_path)
+    access.grant_read(project.project_id, OWNER, READER)
+    with access._store._connect() as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE project_access_events SET action='revoke' WHERE project_id=?",
+                (project.project_id,),
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "DELETE FROM project_access_events WHERE project_id=?",
+                (project.project_id,),
+            )
+    assert [event.action for event in access.list_events_for_owner(project.project_id, OWNER)] == ["grant"]
