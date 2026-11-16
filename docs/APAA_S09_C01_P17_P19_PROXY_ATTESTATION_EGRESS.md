@@ -2,7 +2,7 @@
 
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **Scope:** Proxy/worker topology, durable identity-bound inspector challenge, strict egress evidence parsing.  
-**Status:** Code and automated tests committed; exact-head CI and real disposable-Linux qualification remain pending. No production network or firewall was changed.
+**Status:** P17–P19 implementation and automated tests committed. Exact-head CI is pending; live disposable-Linux qualification remains external. No production network or firewall was changed.
 
 ## P17 — Proxy/Worker topology
 
@@ -15,13 +15,10 @@
 ### Required deployment topology
 ```text
 Internet
-   ^
-   | proxy-side outbound only (validated DNS + pinned upstream IP)
-[ Egress Proxy ]
-   | 172.30.0.2:3128 / dedicated private network
+   ^ proxy-side outbound only (validated DNS + pinned upstream IP)
+[ Egress Proxy ] 172.30.0.2:3128 / dedicated private network
    |
 [ Worker ] 172.30.0.3
-   |
    X direct DNS / arbitrary TCP / UDP / QUIC / IPv6 / alternate NIC
 ```
 
@@ -29,12 +26,14 @@ The deployment MUST create a dedicated internal OCI network, publish no proxy ho
 
 ## P18 — Durable, identity-bound attestation
 
-### Implemented
-- `core/oci_worker_executor.py` now refuses stateless attestation. A configured `InspectorEvidenceControlPlane` and validated `TenantKey` are mandatory for any successful start.
+### Implemented and test coverage added
+- `core/oci_worker_executor.py` refuses stateless attestation. A configured `InspectorEvidenceControlPlane` and validated `TenantKey` are mandatory for any successful start.
 - After stopped-container inspection, the control plane issues a durable single-use challenge bound to the exact OCI container ID and planned worker name.
-- Evidence is verified against the trusted key registry, launch-spec digest, signed runtime facts, exact proxy IP/port firewall allowlist and challenge. The challenge is atomically consumed only after signature and identity checks pass.
+- Evidence is verified against the active trusted key registry, launch-spec digest, signed runtime facts, exact proxy IP/port firewall allowlist and challenge. The challenge is atomically consumed only after signature and identity checks pass.
 - Executor independently checks the accepted evidence's runtime ID, worker ID and launch-spec digest against the inspected OCI plan before issuing START.
-- Missing control plane, wrong identity, expired/replayed challenge, bad signature or evidence mismatch follows the fail-closed remove path.
+- Added `tests/test_oci_worker_executor_attestation.py`: successful attestation is required before START; bad signature blocks START and triggers removal.
+- Existing `tests/test_inspector_control_plane.py` covers durable single-use challenges, replay, expired/revoked keys, wrong tenant, wrong runtime/worker identity, and rejection without burning the valid owner's challenge.
+- Existing `tests/test_sqlite_security_store.py` covers challenge persistence after reopening, tenant/runtime/worker binding, expiry, raw-challenge hashing and concurrent single-winner consumption.
 
 ### Existing trusted components reused
 - `core/inspector_control_plane.py`
@@ -47,19 +46,15 @@ Key provisioning remains out-of-band. The SQLite database must be private to the
 ## P19 — Strict egress and bypass rejection
 
 ### Implemented
-- `core/browser_nftables.py` now accepts only one inet table and one output base chain with policy DROP; unmodelled sets, elements, counters, maps or other nftables objects fail closed.
+- `core/browser_nftables.py` accepts only one inet table and one output base chain with policy DROP; unmodelled sets, elements, counters, maps or other nftables objects fail closed.
 - Only exact TCP destination IP + TCP destination port allow rules are accepted; the complete allowlist must equal the configured proxy IP set and port.
-- Added negative tests for direct HTTPS, direct DNS over TCP/UDP, DNS to proxy on port 53, UDP/443 QUIC, IPv6 egress and unmodelled nftables objects.
+- Negative tests cover direct HTTPS, direct DNS over TCP/UDP, DNS to proxy on port 53, UDP/443 QUIC, IPv6 egress and unmodelled nftables objects.
 - Existing collector signs the ruleset digest, namespace inode, interface and runtime/worker identities; verifier checks signature and freshness.
-
-### Security boundary
-A parser test proves how a supplied nftables JSON snapshot is interpreted. It does NOT prove that the host kernel currently enforces those rules, that another namespace/firewall hook cannot bypass them, or that routes/NICs are absent. Those require a trusted collector and disposable Linux namespace tests.
 
 ## Verification and remaining qualification
 
-- New/updated automated tests are committed: topology validation, proxy bind scoping, DNS/UDP/QUIC/direct TCP/IPv6 bypass rejection.
-- CI must pass on the final PR head before these checkpoints are marked CI-verified.
+- P18 implementation and new executor integration tests are committed; do not mark CI-verified until both repository workflows pass on the exact final PR head.
 - Still required: disposable Linux runtime tests; inspect actual Docker/Podman network and namespace configuration; verify internal network flags, host firewall hook precedence, IPv4/IPv6 routes, direct DNS and UDP/QUIC denial; test proxy upstream DNS rebinding and pinned-IP dial; exercise cancellation and cleanup.
 - No OCI container, network, firewall, browser or website was created/accessed in this implementation. No merge, deployment, payment, purchase, paid provider, API key or Auto-Run was used.
 
-**Checkpoint decision:** P17/P18/P19 implementation layer delivered; operational security qualification pending. Live browser remains disabled.
+**Checkpoint decision:** P17/P18/P19 code and automated-test layers delivered; exact-head CI and operational security qualification pending. Live browser remains disabled.
