@@ -22,6 +22,7 @@ from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
+from core.trusted_identity_directory import SQLiteTrustedIdentityDirectory
 
 st.set_page_config(
     page_title="Autonomous AI Agent",
@@ -114,6 +115,27 @@ if principal is not None:
         )
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
+        # Optional closed-directory enrollment. This is deliberately inert
+        # unless the owner explicitly configures an issuer allowlist. Only the
+        # Principal produced above by Streamlit's validated OIDC claims enters.
+        trusted_identity_issuers = apaa_settings.get("trusted_identity_issuers", [])
+        if not isinstance(trusted_identity_issuers, (list, tuple)) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in trusted_identity_issuers
+        ):
+            raise ValueError("trusted_identity_issuers must be an explicit list of non-empty issuer URLs.")
+        if principal.issuer in trusted_identity_issuers:
+            identity_db_path = apaa_settings.get(
+                "trusted_identity_directory_db_path", ".apaa_identity/identity.sqlite3"
+            )
+            trusted_identity_directory = SQLiteTrustedIdentityDirectory(
+                identity_db_path, allowed_issuers=set(trusted_identity_issuers)
+            )
+            if st.session_state.get("trusted_directory_enrolled_session") != session_identity:
+                trusted_identity_directory.record_authenticated_principal(principal)
+                st.session_state["trusted_directory_enrolled_session"] = session_identity
+        else:
+            trusted_identity_directory = None
         memory_db_path = apaa_settings.get("memory_db_path", ".apaa_memory/memory.sqlite3")
         memory_store = SQLiteMemoryStore(memory_db_path)
         checkpoint_access = OwnerProjectCheckpointAccess(memory_store, project_store, principal)
