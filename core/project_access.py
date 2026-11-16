@@ -127,6 +127,20 @@ class ProjectAccessControl:
                 connection.rollback()
                 raise
 
+    def is_owner(self, project_id: str, principal: Principal) -> bool:
+        """Return true only for the exact immutable owner identity."""
+        try:
+            issuer, subject = self._identity(principal)
+        except (PermissionError, TypeError, ValueError):
+            return False
+        with self._store._connect() as connection:
+            project = connection.execute(
+                """SELECT 1 FROM projects WHERE project_id = ?
+                   AND tenant_issuer = ? AND tenant_subject = ?""",
+                (project_id, issuer, subject),
+            ).fetchone()
+        return project is not None
+
     def has_access(self, project_id: str, principal: Principal) -> bool:
         """Return owner or active-grantee access; invalid identities fail closed."""
         try:
