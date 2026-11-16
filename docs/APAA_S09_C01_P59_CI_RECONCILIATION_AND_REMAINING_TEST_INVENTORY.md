@@ -121,4 +121,4 @@ P59 can close only when:
 4. The P60–P63 test inventory is frozen and traceable to evidence artifacts.
 5. No external qualification is misrepresented as CI PASS.
 
-Until then: **P59 IN PROGRESS; repository CI PASS only for the recorded exact head; real-host qualification BLOCKED; C01 OPEN; C02 NOT STARTED.**
+Current disposition: **P59 repository scope COMPLETE** — P58 exact-commit CI is verified, the P60–P63 inventory is consolidated, and remediation source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` passed all five applicable workflows. Real-host and other external qualification remain BLOCKED; C01 OPEN; C02 NOT STARTED.
