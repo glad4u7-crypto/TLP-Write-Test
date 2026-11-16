@@ -32,3 +32,10 @@ The existing recovery implementation verifies the audit chain before changing th
 ## Safety and release locks
 
 PR #11 remains Draft / Open / Unmerged. Auto-Run OFF; Worker and Browser DISABLED. No merge, deployment, production activation, host/firewall mutation, paid provider, payment, purchase or C02 start. C01 remains OPEN pending P63 review and the mandatory external evidence gates.
+
+
+## 6. Latest branch-head regression verification
+
+The P62 tests remain included in current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This validates the disposable software concurrency, injected SQLite crash and audit-chain tampering tests only. Real multi-host/power-loss/disaster-recovery and external immutable-audit qualification remain BLOCKED.
+
+**P62 software scope: COMPLETE. Production qualification: NOT QUALIFIED.**
