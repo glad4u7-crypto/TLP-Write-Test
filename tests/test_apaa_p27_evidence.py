@@ -84,6 +84,26 @@ def test_rejects_missing_required_artifact(tmp_path):
         validate_evidence_directory(root)
 
 
+def test_rejects_manifest_listing_unexpected_artifact(tmp_path):
+    root = tmp_path / "evidence"
+    manifest = make_pack(root)
+    extra = root / "operator-extra.json"
+    extra.write_text('{"unexpected":true}', encoding="utf-8")
+    manifest["files"]["operator-extra.json"] = hashlib.sha256(extra.read_bytes()).hexdigest()
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(EvidenceValidationError, match="exactly the nine required"):
+        validate_evidence_directory(root)
+
+
+def test_rejects_artifact_over_16_mib(tmp_path):
+    root = tmp_path / "evidence"
+    make_pack(root)
+    with (root / "host-preflight.json").open("wb") as stream:
+        stream.truncate(16 * 1024 * 1024 + 1)
+    with pytest.raises(EvidenceValidationError, match="16 MiB size limit"):
+        validate_evidence_directory(root)
+
+
 @pytest.mark.parametrize("path", ["../outside", "/tmp/escape", "a/../../escape", "manifest.json"])
 def test_rejects_unsafe_manifest_paths(tmp_path, path):
     root = tmp_path / "evidence"
