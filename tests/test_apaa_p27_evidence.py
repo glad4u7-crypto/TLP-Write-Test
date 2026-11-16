@@ -120,3 +120,21 @@ def test_cli_returns_zero_for_valid_pack(tmp_path, capsys):
     make_pack(root)
     assert main([str(root)]) == 0
     assert '"integrity": "PASS"' in capsys.readouterr().out
+
+
+def test_rejects_unknown_manifest_fields(tmp_path):
+    root = tmp_path / "evidence"
+    manifest = make_pack(root)
+    manifest["unexpected"] = "must-not-be-ignored"
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(EvidenceValidationError, match="unknown fields"):
+        validate_evidence_directory(root)
+
+
+def test_rejects_duplicate_json_object_keys(tmp_path):
+    root = tmp_path / "evidence"
+    make_pack(root)
+    original = (root / "manifest.json").read_text()
+    (root / "manifest.json").write_text(original[:-1] + ', "schema_version": 1}')
+    with pytest.raises(EvidenceValidationError, match="duplicate JSON object keys"):
+        validate_evidence_directory(root)
