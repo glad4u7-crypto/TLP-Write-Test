@@ -52,8 +52,7 @@ After inspecting the current PR-branch test fixture, the authenticated AppTest h
 The fixture now provisions the exact synthetic OIDC issuer + subject as the server-side owner by default; tests explicitly exercising missing/invalid owner configuration continue to opt out. This is test-fixture-only and does not weaken the runtime owner gate.
 
 - Remediation commit: [57e44ad26c6e91bd713c742769534f4b4157c8fc](https://github.com/glad4u7-crypto/TLP-Write-Test/commit/57e44ad26c6e91bd713c742769534f4b4157c8fc).
-- CI/status for this commit: no PR-triggered workflow run or commit status was returned at verification time.
-- Therefore the fix is committed, but its tests are **NOT YET VERIFIED**. Do not mark the P68.1 regression resolved until CI runs on this exact SHA and all required workflows pass.
+- Historical status at the time of the original P59 inspection: no PR-triggered workflow run or commit status had yet been returned for this intermediate commit. This pending status was superseded by the later remediation-branch commits and exact-head CI evidence recorded below and in `docs/APAA_S09_C01_ACTION_AUDIT_REMEDIATION_01.md`.
 
 ## 3. P58 verification boundary
 
@@ -122,3 +121,20 @@ P59 can close only when:
 5. No external qualification is misrepresented as CI PASS.
 
 Current disposition: **P59 repository scope COMPLETE** — P58 exact-commit CI is verified, the P60–P63 inventory is consolidated, and remediation source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` passed all five applicable workflows. Real-host and other external qualification remain BLOCKED; C01 OPEN; C02 NOT STARTED.
+
+
+## 7. Superseding action-audit remediation verification (2026-11-16)
+
+The intermediate pending status in Section 2A is historical and is superseded by the later remediation branch. The action-audit fixes and strengthened workflow-policy tests were verified on code/test head `f81be85ef75b3d0b26ee3e3e80dacb921db16ad6`; the subsequent documentation-only commit `075715f49337cdb3af367663f32c367e1869417e` also completed all five applicable PR workflows successfully.
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [#1228](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944979) | PASS |
+| Python Demo CI | [#1317](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913945016) | PASS |
+| APAA Security CI | [#25](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944772) | PASS |
+| P23 Rootless Podman Executor Integration | [#339](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944791) | PASS |
+| P20 Rootless Podman Runtime Qualification | [#357](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944784) | PASS |
+
+The Agent Foundation and APAA Security pytest jobs each reported **1,352 passed, 9 skipped**. Skipped tests are reported separately and are not counted as passes. This verifies the repository software and disposable CI checks only; it does not close any external qualification gate.
+
+**Current action-audit disposition:** software findings FIXED; current candidate exact-head CI PASS 5/5; PR #12 remains Draft / Open / Unmerged; external gates BLOCKED; C01 OPEN / NO-GO; C02 NOT STARTED.
