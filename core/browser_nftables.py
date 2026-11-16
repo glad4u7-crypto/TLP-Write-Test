@@ -16,7 +16,6 @@ import re
 import time
 from typing import Protocol, runtime_checkable
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.browser_runtime import WorkerLaunchSpec, verify_prestart_attestation
 from core.browser_inspector import _canonical_json, _normalize_proxy_addresses, _proxy_config
@@ -39,6 +38,18 @@ class ParsedNftablesEgress:
     default_policy: str
     allowed_egress: tuple[tuple[str, str, int], ...]
     ruleset_digest: str
+
+
+@runtime_checkable
+class InspectorSigningProvider(Protocol):
+    """Signing boundary for a non-exportable host key (TPM/HSM/service adapter).
+
+    Production adapters should keep private key material outside this process and
+    expose only a bounded sign operation plus the corresponding public key.
+    """
+
+    def public_key_bytes(self) -> bytes: ...
+    def sign(self, message: bytes) -> bytes: ...
 
 
 @runtime_checkable
@@ -192,7 +203,7 @@ def collect_signed_inspector_evidence(
     *,
     challenge: str,
     key_id: str,
-    signing_key: Ed25519PrivateKey,
+    signer: InspectorSigningProvider,
     expected_proxy_addresses: Sequence[str],
     now: int | None = None,
     max_age_seconds: int = 60,
@@ -258,7 +269,7 @@ def collect_signed_inspector_evidence(
         "firewall": firewall,
     }
     signed = {"schema_version": 1, "key_id": key_id, "payload": payload}
-    signature = signing_key.sign(_canonical_json(signed))
+    try:\n        signature = signer.sign(_canonical_json(signed))\n    except Exception as exc:\n        raise HostCollectionError("Inspector signing operation failed.") from exc\n    if type(signature) is not bytes or len(signature) != 64:\n        raise HostCollectionError("Inspector signing provider returned an invalid Ed25519 signature.")
     envelope = {
         **signed,
         "signature": base64.b64encode(signature).decode("ascii"),
