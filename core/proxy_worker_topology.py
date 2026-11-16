@@ -1,0 +1,84 @@
+"""Validated private network contract for the APAA proxy/worker boundary.
+
+Configuration validation only: this module never creates an OCI network,
+binds a proxy socket, alters routes, or installs firewall rules.
+"""
+from __future__ import annotations
+from dataclasses import dataclass
+import ipaddress
+import re
+from urllib.parse import urlsplit
+
+class ProxyWorkerTopologyError(ValueError):
+    """Unsafe or ambiguous proxy/worker network configuration."""
+
+_NAME = re.compile(r"^[a-z][a-z0-9_-]{2,47}$")
+
+@dataclass(frozen=True)
+class ProxyWorkerTopology:
+    network_name: str
+    subnet: str
+    proxy_address: str
+    worker_address: str
+    proxy_port: int = 3128
+
+    @classmethod
+    def build(cls, *, network_name: str, subnet: str, proxy_address: str,
+              worker_address: str, proxy_port: int = 3128) -> "ProxyWorkerTopology":
+        if (type(network_name) is not str or not _NAME.fullmatch(network_name)
+                or network_name in {"bridge", "host", "none", "default"}):
+            raise ProxyWorkerTopologyError("A dedicated explicit APAA network name is required.")
+        try:
+            network = ipaddress.ip_network(subnet, strict=True)
+            proxy = ipaddress.ip_address(proxy_address)
+            worker = ipaddress.ip_address(worker_address)
+        except (TypeError, ValueError) as exc:
+            raise ProxyWorkerTopologyError("Subnet and endpoint addresses must be canonical IP values.") from exc
+        rfc1918 = (ipaddress.ip_network("10.0.0.0/8"),
+                   ipaddress.ip_network("172.16.0.0/12"),
+                   ipaddress.ip_network("192.168.0.0/16"))
+        if network.version != 4 or not any(network.subnet_of(block) for block in rfc1918):
+            raise ProxyWorkerTopologyError("Worker network must be a private IPv4 subnet.")
+        if proxy.version != 4 or worker.version != 4:
+            raise ProxyWorkerTopologyError("Only IPv4 proxy/worker endpoints are supported.")
+        if proxy not in network or worker not in network or proxy == worker:
+            raise ProxyWorkerTopologyError("Proxy and worker need distinct addresses in the exact subnet.")
+        reserved = {network.network_address, network.broadcast_address}
+        # Reserve the first usable address for the network gateway; the
+        # topology contract never assigns it to a worker or proxy endpoint.
+        if network.num_addresses > 2:
+            reserved.add(network.network_address + 1)
+        if proxy in reserved or worker in reserved:
+            raise ProxyWorkerTopologyError("Network, gateway and broadcast addresses cannot be endpoints.")
+        if type(proxy_port) is not int or not 1024 <= proxy_port <= 65535:
+            raise ProxyWorkerTopologyError("Proxy port must be an unprivileged TCP port.")
+        return cls(network_name, str(network), proxy.compressed, worker.compressed, proxy_port)
+
+    @property
+    def worker_proxy_url(self) -> str:
+        return f"http://{self.proxy_address}:{self.proxy_port}"
+
+    @property
+    def expected_proxy_addresses(self) -> tuple[str, ...]:
+        return (self.proxy_address,)
+
+    def validate_worker_proxy_url(self, value: object) -> None:
+        # Exact string equality rejects alternate spellings (including padded
+        # ports, empty query/fragment delimiters, userinfo and URL normalization
+        # ambiguities). The worker receives one canonical endpoint only.
+        if type(value) is not str or value != self.worker_proxy_url:
+            raise ProxyWorkerTopologyError(
+                "Worker must use the exact canonical private proxy URL."
+            )
+
+    def deployment_invariants(self) -> tuple[str, ...]:
+        return (
+            "OCI network is dedicated to APAA browser workers and marked internal",
+            "worker has exactly one non-loopback interface on the dedicated subnet",
+            "proxy listens only on the proxy_address:proxy_port interface",
+            "proxy port is not published on host or public interfaces",
+            "worker default egress is host-enforced DROP; only TCP to proxy_address:proxy_port is allowed",
+            "worker has no direct DNS resolver, internet gateway, IPv6 route, or alternate NIC",
+            "proxy performs DNS resolution and pins validated upstream IPs per connection",
+            "proxy management access is out-of-band and not reachable from the worker subnet",
+        )

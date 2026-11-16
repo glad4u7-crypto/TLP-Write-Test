@@ -1,0 +1,273 @@
+# APAA-S09-C01-P27 — Real-host security qualification evidence pack
+
+**Status:** operator-ready evidence specification drafted; no real-host qualification claimed  
+**Parent:** P26 external inspector signing-provider boundary  
+**Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
+**PR:** #11 (Draft/Open/Unmerged)  
+**Execution policy:** read-only preflight first; no worker/browser launch, firewall mutation, deployment, merge or Auto-Run
+
+## Purpose
+
+P26 separates the collector from private-key custody. P27 makes the remaining real-host qualification reproducible and reviewable without pretending that CI or synthetic evidence is a production host. This document defines the evidence package an owner-approved operator must collect on a disposable Linux host.
+
+A completed evidence pack is not itself a security approval. An independent reviewer must verify authenticity, completeness, test isolation and the stated pass/fail results.
+
+## Hard prerequisites
+
+Do not begin runtime tests until all are true:
+
+1. The owner explicitly approves a disposable Linux host, maintenance window, exact runtime and pinned version.
+2. The host is isolated from production data and has a rollback/rebuild plan.
+3. A local digest-pinned test image is already available; do not pull an unreviewed image during qualification.
+4. A dedicated least-privilege host identity and collector package have been reviewed.
+5. The trust root and inspector key are provisioned out-of-band; record public fingerprints only. Never put private keys, tokens, environment dumps or credentials in evidence.
+6. A separately administered monotonic anchor has documented CAS, persistence and backup/restore anti-rollback behavior.
+7. The approved proxy endpoint and expected network policy are documented.
+8. A stop condition and human operator are present for every host-mutating test.
+
+If any prerequisite is missing, mark the corresponding gate BLOCKED and stop. Do not substitute CI-generated keys, in-memory anchors, mocks or guessed host facts.
+
+## Evidence directory and manifest
+
+Create a new evidence directory on the disposable host with restrictive permissions. Use a unique run ID and UTC timestamps. The evidence bundle should contain:
+
+- `manifest.json`: schema version, run ID, operator, approval reference, host alias, start/end UTC, runtime name/version, collector/signer versions, test image digest, proxy policy ID and per-file SHA-256.
+- `host-preflight.json`: OS/kernel, architecture, non-sensitive runtime info, rootless status, cgroup mode and tool versions.
+- `identity.json`: dedicated service account UID/GID, collector binary/package digest and effective privilege review.
+- `trust.json`: public root fingerprint, inspector public-key fingerprint, issuer/key IDs, signed bundle digest/sequence/validity and monotonic-anchor backend identity. Public data only.
+- `lifecycle.json`: immutable container ID, image digest, launch-spec digest, network namespace inode, timestamps and CREATE/INSPECT/ATTEST/START/STOP/REMOVE results.
+- `egress.json`: effective namespace nftables ruleset digest, exact approved proxy tuple, direct TCP/DNS TCP+UDP/UDP-443/IPv6/alternate-interface probe outcomes and sink-side observations.
+- `negative-tests.json`: stale, replayed, wrong-host, wrong-worker, wrong-container, wrong-launch-digest, unknown/revoked-key and malformed-signature rejection outcomes.
+- `failure-cleanup.json`: injected interruption point, bounded stop/remove deadlines, daemon availability and final orphan-container inventory.
+- `anchor-recovery.json`: restart, concurrent CAS, backup/restore and rollback rejection evidence.
+- `review.json`: independent reviewer, reviewed manifest digest, findings, exceptions and signed disposition.
+
+The manifest must hash every evidence file except itself. Sign the final manifest digest using the approved evidence-signing identity. Store the package in the owner's approved restricted evidence location; do not commit raw host evidence or identifiers to this public/private code repository.
+
+## Phase A — read-only preflight
+
+The existing P20 preflight command is read-only. Run it only with the owner-approved runtime and exact version pin:
+
+```bash
+python -m scripts.qualify_oci_runtime_preflight --runtime podman --pinned-version <OWNER_APPROVED_VERSION>
+```
+
+Capture the exit code and sanitized output. Also capture the minimum facts needed to identify the environment, such as OS/kernel, `id`, runtime version and rootless/cgroup status. Do not capture environment variables, process command lines containing secrets, registry credentials or unrelated inventory.
+
+A passing preflight means only that the observed runtime matches the preflight contract. It does not authorize or prove a container lifecycle.
+
+## Phase B — trust and signer qualification
+
+- Confirm the root public-key fingerprint through two independent out-of-band channels.
+- Verify the signed trust bundle and issuer identity.
+- Demonstrate sequence advancement is atomic and durable before success is returned.
+- Restart the control plane and verify the accepted sequence remains unchanged.
+- Restore a deliberately older test snapshot in the isolated test environment and prove the anchor refuses rollback.
+- Test concurrent writers, unavailable anchor, stale bundle, unknown key, revoked key, expired key and overlap rotation.
+- Demonstrate the signer cannot export private key material and that only the approved collector identity can request signatures.
+
+Never export or attach private key material. If a TPM/HSM or equivalent protected signer is unavailable, mark protected key custody BLOCKED.
+
+## Phase C — real daemon lifecycle and attestation
+
+Using only the reviewed APAA executor and approved local image:
+
+1. CREATE exactly one stopped container with the expected immutable image digest and hardened configuration.
+2. INSPECT and independently compare immutable ID, launch-spec digest, network, read-only rootfs, capability drop, no-new-privileges and seccomp.
+3. Collect a fresh challenge-bound host snapshot and sign it through the external provider.
+4. Verify the signature and all host/container/worker/network bindings before START.
+5. Prove valid evidence permits exactly one START.
+6. Prove stale, replayed, tampered, wrong-host, wrong-worker, wrong-container, wrong-network-namespace, wrong-launch-spec and revoked-key evidence prevents START.
+7. Exercise cancellation, timeout, collector loss, signer loss and daemon interruption at each lifecycle boundary.
+8. Verify bounded STOP/REMOVE and zero remaining qualification containers after every path.
+
+Do not run these steps on a production host or with production workloads.
+
+## Phase D — network enforcement
+
+Verify the effective worker namespace policy, not merely the intended configuration. The approved proxy endpoint must be the only allowed egress destination and protocol/port tuple. Test direct IPv4 and IPv6, DNS TCP and UDP, UDP/443, QUIC, alternate interfaces, unexpected routes and firewall hook precedence. Include sink-side observations so a local client error is not mistaken for network denial.
+
+Any unexplained packet, alternate route, unknown nftables object, missing observation or incomplete probe is FAIL/BLOCKED. Do not change host firewall rules as part of this evidence collection unless a separate change plan is approved; use an isolated disposable namespace/host and record the exact approved change separately.
+
+## Phase E — evidence integrity and review
+
+- Hash every artifact and validate the manifest.
+- Remove secrets and personal data before export; preserve enough context for independent reproduction.
+- Record every skipped test as SKIPPED with reason; skipped is never PASS.
+- Have a reviewer independent of the implementer verify the host identity, key custody, test logs, sink observations, cleanup and manifest signature.
+- Record findings and remediation; rerun the complete affected gate on the final code commit after any change.
+
+## Result vocabulary
+
+Use only these values per gate:
+
+- **PASS:** observed on the approved real host, artifacts complete and independently reviewed.
+- **FAIL:** a required assertion failed.
+- **BLOCKED:** prerequisite, host, key, anchor, permission or evidence unavailable.
+- **SKIPPED:** explicitly not run; never counts toward completion.
+
+The overall real-host qualification is PASS only if every mandatory gate is PASS and the independent reviewer approves the exact code commit and evidence manifest. Otherwise it remains OPEN.
+
+## Current repository evidence
+
+As of commit `1230e97fd8f83d5efc154bf18bf7cabc9c4a35c9`, the following exact-head workflows completed successfully:
+
+- Agent Foundation CI #929 — PASS.
+- Python Demo CI #1004 — PASS.
+- P20 Rootless Podman Runtime Qualification #58 — PASS.
+- P23 Rootless Podman Executor Integration #40 — PASS.
+
+These are disposable CI checks. They do not satisfy any real-host, production key-custody, independent monotonic-anchor, full topology or Android/Termux gate in this evidence pack.
+
+## Exit criteria
+
+P27 documentation is ready for operator use when the pack is reviewed for completeness. P27 does not close C01. C01 remains OPEN until the owner-approved real-host evidence package is collected, independently reviewed and linked from a restricted qualification record. Keep browser and worker execution disabled until all preceding operational gates pass.
+
+No host is provisioned by this document. No firewall mutation, deployment, live browsing, worker activation, paid provider, API key, merge or Auto-Run is authorized.
+
+
+## P27 manifest integrity validator
+
+The repository now includes a standard-library-only validator:
+
+```bash
+python -m scripts.validate_apaa_p27_evidence <EVIDENCE_DIRECTORY>
+```
+
+The directory must contain `manifest.json` and all nine required artifacts listed above. The manifest uses schema version 1, UTC start/end timestamps, a SHA-256 digest-pinned test image, and a path-to-SHA-256 map for every artifact except the manifest itself. The validator rejects missing/unlisted files, symlinks, path traversal, mutable image tags, invalid timestamps and digest mismatches.
+
+A successful result means **artifact integrity only**. It explicitly reports `authenticity=NOT_CHECKED` and `host_qualification=NOT_ASSESSED`; it does not verify the detached signature, prove host identity, or turn BLOCKED/SKIPPED observations into PASS. Independent signature verification and review remain mandatory.
+
+
+## Detached manifest signature verification
+
+The P27 validator supports Ed25519 verification of the exact raw bytes of manifest.json. The detached signature is canonical base64 text in a sidecar stored outside the evidence directory. The raw 32-byte public key is also stored outside that directory and must be provisioned independently. Supply the independently pinned SHA-256 fingerprint:
+
+```bash
+python -m scripts.validate_apaa_p27_evidence EVIDENCE_DIRECTORY \
+  --signature /secure/evidence/manifest.sig \
+  --public-key /secure/trust/evidence-signing.pub \
+  --expected-key-sha256 OUT_OF_BAND_PINNED_SHA256
+```
+
+A successful check reports authenticity=VERIFIED_ED25519 and the signer fingerprint. Without all trust inputs, authenticity remains NOT_CHECKED. This does not prove that the key belongs to an approved real host, that the signer is hardware-protected, or that observations are truthful. Those remain separate provisioning and independent-review gates. Test signing keys are ephemeral and test-only.
+
+
+## Signed independent reviewer disposition
+
+The repository includes `scripts/verify_apaa_p27_review.py` to verify a detached reviewer attestation after the evidence manifest has passed integrity and Ed25519 signature verification. The reviewer attestation is canonical JSON signed by a separate Ed25519 reviewer key and binds the exact SHA-256 digest of the raw manifest bytes, reviewer ID, UTC review time, disposition (PASS/FAIL/BLOCKED), reviewer-key fingerprint and findings. The attestation, signature and reviewer public key must be outside the evidence directory. The reviewer key fingerprint must be independently pinned out-of-band.
+
+The verifier reports `reviewer_identity=OUT_OF_BAND_IDENTITY_CHECK_REQUIRED` and `reviewer_independence=OUT_OF_BAND_INDEPENDENCE_CHECK_REQUIRED`. Even a cryptographically valid PASS disposition returns `qualification_approval=NOT_GRANTED_BY_CRYPTOGRAPHIC_VERIFICATION`; an owner must independently establish the reviewer identity and independence and approve the exact evidence/code. This verifier cannot prove the real host or the truth of observations.
+
+Example:
+
+```bash
+python -m scripts.verify_apaa_p27_review EVIDENCE_DIRECTORY \
+  --manifest-signature /secure/evidence/manifest.sig \
+  --manifest-public-key /secure/trust/host-evidence.pub \
+  --manifest-key-sha256 OUT_OF_BAND_HOST_KEY_FINGERPRINT \
+  --review-attestation /secure/review/review-attestation.json \
+  --review-signature /secure/review/review-attestation.sig \
+  --review-public-key /secure/trust/reviewer.pub \
+  --review-key-sha256 OUT_OF_BAND_REVIEWER_KEY_FINGERPRINT
+```
+
+
+## Operator manifest builder (P28 usability increment)
+
+After an operator has collected all nine real evidence artifacts, the repository provides
+`scripts/build_apaa_p27_manifest.py` to inventory and hash them consistently. It is a
+local file utility only: it does not inspect a host, run tests, create containers, alter
+firewall rules, sign evidence, or approve qualification.
+
+Example (replace every value with facts from the approved run; never use these example
+values as evidence):
+
+```bash
+python -m scripts.build_apaa_p27_manifest EVIDENCE_DIRECTORY \
+  --run-id RUN_ID --operator OPERATOR_ID \
+  --approval-reference CHANGE_APPROVAL_ID --host-alias DISPOSABLE_HOST_ALIAS \
+  --started-at-utc 2026-11-16T10:00:00Z --ended-at-utc 2026-11-16T10:30:00Z \
+  --runtime-name podman --runtime-version OWNER_APPROVED_VERSION \
+  --collector-version REVIEWED_COLLECTOR_VERSION --signer-version APPROVED_SIGNER_VERSION \
+  --test-image-digest sha256:ACTUAL_64_HEX_DIGEST --proxy-policy-id APPROVED_POLICY_ID
+```
+
+The directory must contain exactly the nine required JSON artifacts, each a regular
+non-symlink file containing a JSON object. The command refuses to overwrite an existing
+manifest and records SHA-256 for the exact artifact bytes. It creates the manifest with
+restricted file permissions. It reports `authenticity=NOT_CHECKED` and
+`host_qualification=NOT_ASSESSED`; next run the integrity validator, then sign the
+manifest using the independently provisioned evidence-signing key and complete the
+separate reviewer workflow. The builder does not establish that any artifact is genuine.
+
+
+## Read-only evidence privacy preflight (P29)
+
+Before moving a completed evidence pack to its approved restricted store, run:
+
+```bash
+python -m scripts.check_apaa_p27_evidence_privacy EVIDENCE_DIRECTORY
+```
+
+This scans the manifest and nine required JSON artifacts for common credential field names,
+private-key headers, bearer-like values and common cloud/source-control token patterns. A
+finding returns a non-zero exit status and identifies only the file/path and pattern class,
+not the matched value. It is read-only and does not redact or rewrite evidence.
+
+A clean scan reports only `NO_KNOWN_PATTERN_MATCHES` and
+`PATTERN_SCAN_ONLY_HUMAN_REVIEW_REQUIRED`. It is not DLP, cannot detect every secret or
+personal identifier, and is not permission to publish evidence. Human review and the
+owner-approved restricted evidence store remain mandatory. Do not upload raw host evidence
+to this repository.
+
+
+## Latest repository/disposable-CI evidence — 2026-11-16
+
+**Exact verified branch head:** `cbbf048969769e3bb6302fa5315b98c9d6c41a0c`
+
+The following GitHub Actions checks completed successfully on that exact head:
+
+- Agent Foundation CI: [run 43866524987](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866524987)
+  - Full suite: **1,266 passed, 9 skipped** (Python 3.12.16).
+  - Disposable Linux live host-inspector qualification: PASS for a child process in a disposable CI network namespace; live `/proc` PID, namespace inode, interface and read-only nftables JSON observed.
+  - Disposable Linux egress qualification: PASS; exact TCP proxy tuple accepted; direct TCP, DNS, UDP/QUIC and IPv6 probes blocked by the disposable namespace ruleset.
+- Python Demo CI: [run 43866525269](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866525269) — PASS.
+- Rootless Podman runtime lifecycle: [run 43866524981](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866524981) — PASS; disposable rootless runtime evidence artifact uploaded.
+- P23 rootless Podman executor integration: [run 43866525091](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866525091) — PASS; disposable executor evidence artifact uploaded.
+- Android/PC Chromium viewport verification: included in Agent Foundation CI — PASS (emulated browser/viewport only).
+
+### What this evidence does and does not establish
+
+This closes the exact-head **repository CI verification** for the P27 manifest crash/recovery tests, disposable Linux host-inspector path, disposable egress namespace, rootless Podman lifecycle and executor integration.
+
+It does **not** close the separately controlled real-host gates. GitHub-hosted CI is not the owner's host; CI-generated/test keys are not protected production signing keys; the current SQLite/in-memory test anchors are not independently administered monotonic anti-rollback storage; Chromium mobile emulation is not a physical Android/Termux device; and CI is not an independent security reviewer.
+
+### Remaining external acceptance blockers — still OPEN
+
+1. Owner-approved disposable Linux host execution with actual runtime/container identity and signed host evidence.
+2. Independently provisioned non-exportable signing key (TPM/HSM or equivalently protected signer), out-of-band fingerprint confirmation, key-custody/rotation/revocation ceremony.
+3. Independently administered durable monotonic anchor with proven CAS, persistence, restart, concurrency and backup/restore rollback resistance.
+4. Physical Android/Termux compatibility run on the owner's selected device/runtime; keep browser automation denied until separately approved.
+5. Independent security reviewer verification of the complete evidence pack and explicit owner approval.
+
+No synthetic or CI result may be substituted for these items. Until each blocker has authentic evidence and approval, C01 remains OPEN / NOT SECURITY-QUALIFIED; worker/browser activation, Auto-Run, deployment, PR merge and C02 remain disabled.
+
+
+## Latest exact-head verification — 2026-11-16 (P46)
+
+**Exact verified PR head:** `c3ffb15f043441e014adce08c2bd09152e179c41`.
+
+All seven GitHub Actions check-runs completed with conclusion **success** on this exact SHA:
+
+- Agent Foundation CI — PASS.
+- Python Demo CI — PASS.
+- Disposable rootless Podman runtime lifecycle — PASS.
+- P23 real Podman executor and durable attestation-gate plumbing — PASS.
+- Disposable Linux live host-inspector qualification — PASS.
+- Disposable Linux egress namespace qualification — PASS.
+- Android and PC Chromium browser verification — PASS (emulated browser/viewport only).
+
+This exact-head result supersedes the earlier cbbf048 checkpoint for repository CI status. It establishes only repository/disposable-CI verification. It does not establish owner-host qualification, physical Android/Termux compatibility, production signer custody, an independently administered durable monotonic anchor, or independent reviewer/owner approval. Those external gates remain BLOCKED and C01 remains OPEN / NOT COMPLETE.
+
+PR #11 remains Draft/Open/Unmerged. Auto-Run remains OFF; Worker/Browser remain DISABLED; no production deployment, host/firewall mutation, paid provider, payment, purchase or C02 start is authorized.

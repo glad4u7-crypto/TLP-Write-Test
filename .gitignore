@@ -4,3 +4,15 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 .DS_Store
+
+# Local authentication secrets and durable security databases
+.streamlit/secrets.toml
+.apaa_security/
+.apaa_audit/
+*.sqlite3
+*.db
+
+.apaa_projects/
+
+# Local persistent memory and knowledge database
+.apaa_memory/

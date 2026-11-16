@@ -1,21 +1,80 @@
 name: Agent Foundation CI
 on:
   push:
-    branches: ["main", "feature/**"]
-  pull_request:
     branches: ["main"]
+  pull_request:
+    branches: ["main", "feature/agent-v0.3-zero-cost-core"]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-agent-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: "3.12"
       - name: Install application and test dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Audit Python dependencies
+        run: python -m pip install pip-audit && pip-audit -r requirements.txt
       - name: Compile application modules
-        run: python -m compileall -q app.py core tests
+        run: python -m compileall -q app.py core tests scripts
       - name: Run foundation tests
         run: python -m pytest -q
+
+  linux-egress-qualification:
+    name: Disposable Linux egress namespace qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Install isolated network test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes iproute2 nftables
+      - name: Run disposable namespace egress qualification
+        run: sudo -n bash scripts/qualify_linux_egress_namespace.sh
+  android-viewport-emulation:
+    name: Android and PC Chromium browser verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Install application and browser test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt playwright
+      - name: Install Chromium for Playwright
+        run: python -m playwright install --with-deps chromium
+      - name: Run Android and desktop browser smoke tests
+        run: python -m pytest -q tests/test_android_viewport_smoke.py tests/test_pc_browser_smoke.py
+
+  linux-host-inspector-live:
+    name: Disposable Linux live host-inspector qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Install application dependencies and host inspection tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install --yes util-linux iproute2 nftables
+      - name: Inspect a disposable child process using live procfs and nftables
+        run: sudo -n python scripts/qualify_linux_host_inspector.py

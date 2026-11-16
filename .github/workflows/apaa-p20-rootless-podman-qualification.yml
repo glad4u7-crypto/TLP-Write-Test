@@ -1,0 +1,198 @@
+name: APAA P20 Rootless Podman Runtime Qualification
+
+on:
+  pull_request:
+    branches: ["main", "feature/agent-v0.3-zero-cost-core"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-p20-podman-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  rootless-podman-runtime:
+    name: Disposable rootless Podman runtime lifecycle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact PR revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+
+      - name: Install Podman and local image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes podman busybox-static uidmap slirp4netns fuse-overlayfs
+          command -v podman
+          command -v busybox
+
+      - name: Configure disposable runner for rootless Podman
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            sudo usermod --add-subuids 100000-165535 "$(id -un)"
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            sudo usermod --add-subgids 100000-165535 "$(id -un)"
+          fi
+          podman info --format json > podman-info.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          info = json.loads(Path("podman-info.json").read_text())
+          host = info.get("host") or {}
+          security = host.get("security") or {}
+          rootless = security.get("rootless")
+          cgroup = str(host.get("cgroupVersion") or "").removeprefix("v")
+          if rootless is not True:
+              raise SystemExit("FAIL: Podman daemon is not rootless")
+          if cgroup != "2":
+              raise SystemExit(f"FAIL: cgroup v2 required, observed {cgroup!r}")
+          print(f"PASS: rootless Podman; cgroup v{cgroup}")
+          PY
+          podman version
+
+      - name: Build a local digest-addressed smoke image without pulling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .p20-image
+          install -m 0755 "$(command -v busybox)" .p20-image/busybox
+          printf '%s\n' \
+            'FROM scratch' \
+            'COPY busybox /busybox' \
+            'ENTRYPOINT ["/busybox","sleep","60"]' > .p20-image/Containerfile
+          podman build --pull=never --network=none --tag localhost/apaa-p20-smoke:ci .p20-image
+          podman image inspect localhost/apaa-p20-smoke:ci --format '{{.Id}}' > image-id.txt
+          IMAGE_ID="$(cat image-id.txt)"
+          [[ "$IMAGE_ID" =~ ^[0-9a-f]{64}$ ]]
+          IMAGE_REF="sha256:$IMAGE_ID"
+          printf '%s\n' "$IMAGE_REF" > image-id.txt
+          echo "Local immutable image ID: $IMAGE_REF"
+
+      - name: CREATE and INSPECT the stopped hardened container
+        id: create
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECComp=/usr/share/containers/seccomp.json
+          test -s "$SECComp"
+          IMAGE_ID="$(cat image-id.txt)"
+          podman create \
+            --pull=never \
+            --name apaa-p20-qualification \
+            --network=none \
+            --user 1000:1000 \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            --security-opt="seccomp=$SECComp" \
+            --pids-limit 64 \
+            --memory 128m \
+            --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+            "$IMAGE_ID" > container-id.txt
+          CID="$(cat container-id.txt)"
+          [[ "$CID" =~ ^[0-9a-f]{64}$ ]]
+          echo "container_id=$CID" >> "$GITHUB_OUTPUT"
+          podman inspect "$CID" > inspect.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          cid = Path("container-id.txt").read_text().strip()
+          rows = json.loads(Path("inspect.json").read_text())
+          if not isinstance(rows, list) or len(rows) != 1:
+              raise SystemExit("FAIL: inspect must return exactly one container")
+          item = rows[0]
+          state = item.get("State") or {}
+          host = item.get("HostConfig") or {}
+          config = item.get("Config") or {}
+          checks = {
+              "immutable ID matches CREATE": item.get("Id") == cid,
+              "container is stopped before start": state.get("Status") == "created",
+              "read-only rootfs": host.get("ReadonlyRootfs") is True,
+              "capability drops are explicitly recorded": bool(host.get("CapDrop")),
+              "no capabilities added": not (host.get("CapAdd") or []),
+              "no-new-privileges": any(str(x).startswith("no-new-privileges") for x in (host.get("SecurityOpt") or [])),
+              "seccomp profile enforced": any(str(x).startswith("seccomp=") for x in (host.get("SecurityOpt") or [])),
+              "no network": host.get("NetworkMode") == "none",
+              "not privileged": host.get("Privileged") is not True,
+              "no host PID namespace": host.get("PidMode") != "host",
+              "no host IPC namespace": host.get("IpcMode") != "host",
+          }
+          for label, ok in checks.items():
+              print(f'{"PASS" if ok else "FAIL"}: {label}')
+          if not all(checks.values()):
+              raise SystemExit("FAIL: OCI inspect security contract did not match")
+          PY
+
+      - name: START, verify running state, STOP and REMOVE by immutable ID
+        if: steps.create.outputs.container_id != ''
+        env:
+          CONTAINER_ID: ${{ steps.create.outputs.container_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            podman rm --force "$CONTAINER_ID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          podman start "$CONTAINER_ID"
+          podman inspect "$CONTAINER_ID" --format '{{.State.Status}}' | grep -Fx running
+          podman exec "$CONTAINER_ID" /busybox cat /proc/self/status > process-status.txt
+          python - <<'PY'
+          from pathlib import Path
+
+          fields = {}
+          for line in Path("process-status.txt").read_text().splitlines():
+              if ":" in line:
+                  key, value = line.split(":", 1)
+                  if key in {"CapInh", "CapPrm", "CapEff", "CapBnd"}:
+                      fields[key] = int(value.strip(), 16)
+          required = {"CapInh", "CapPrm", "CapEff", "CapBnd"}
+          if set(fields) != required or any(fields.values()):
+              raise SystemExit(f"FAIL: process capability sets are not empty: {fields}")
+          print("PASS: process inheritable/permitted/effective/bounding capability sets are all zero")
+          PY
+          podman stop --time 2 "$CONTAINER_ID"
+          podman inspect "$CONTAINER_ID" --format '{{.State.Status}}' | grep -Fx exited
+          podman rm --force "$CONTAINER_ID"
+          if podman ps --all --filter "id=$CONTAINER_ID" --format '{{.ID}}' | grep -q .; then
+            echo "FAIL: container remains after removal" >&2
+            exit 1
+          fi
+          trap - EXIT
+          echo "PASS: CREATE -> INSPECT -> START -> STOP -> REMOVE completed by immutable ID"
+
+      - name: Verify no qualification container remains
+        if: always()
+        run: |
+          if podman ps --all --filter name=apaa-p20-qualification --format '{{.ID}}' | grep -q .; then
+            echo "CLEANUP: removing leftover qualification container"
+            podman rm --force apaa-p20-qualification
+          fi
+          if podman ps --all --filter name=apaa-p20-qualification --format '{{.ID}}' | grep -q .; then
+            echo "FAIL: qualification container remains after cleanup" >&2
+            exit 1
+          fi
+          echo "PASS: no orphaned qualification container"
+
+      - name: Upload sanitized qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apaa-p20-rootless-podman-evidence
+          path: |
+            podman-info.json
+            image-id.txt
+            container-id.txt
+            inspect.json
+            process-status.txt
+          if-no-files-found: ignore
+          retention-days: 7

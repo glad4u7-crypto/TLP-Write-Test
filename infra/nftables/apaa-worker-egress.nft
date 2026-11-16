@@ -1,0 +1,19 @@
+# APAA worker-network firewall template — DO NOT APPLY to the host namespace.
+# Apply only inside a newly created, disposable APAA worker network namespace,
+# after substituting the proxy IPv4 address and TCP port from ProxyWorkerTopology.
+# This file intentionally does not flush or replace any existing ruleset.
+
+define APAA_PROXY_IPV4 = 172.30.0.2
+define APAA_PROXY_TCP_PORT = 3128
+
+table inet apaa_worker {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        ct state established,related accept
+    }
+
+    chain output {
+        type filter hook output priority 0; policy drop;
+        ip daddr $APAA_PROXY_IPV4 tcp dport $APAA_PROXY_TCP_PORT accept
+    }
+}
