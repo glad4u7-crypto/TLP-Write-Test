@@ -52,3 +52,8 @@ PR #11 remains Draft/Open/Unmerged. Auto-Run OFF. Worker OFF. C02 NOT STARTED. C
 ## Acceptance
 
 P61 reference-model and fail-closed software tests may be accepted only after exact-head CI passes for the latest test commit. Production independent-anchor qualification remains BLOCKED until a real independently administered adapter and its restart/backup/restore evidence are available.
+
+
+## 6. Latest branch-head regression verification
+
+The P61 tests remain included in current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This validates the reference-model and fail-closed software tests in the current tree only. An independently administered production anchor and real backup/restore anti-rollback drill remain NOT QUALIFIED.
