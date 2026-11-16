@@ -1,6 +1,6 @@
 # APAA-S09-C01-P26 — External host-inspector signing provider boundary
 
-**Status:** implementation committed; exact-head CI verification pending  
+**Status:** implementation committed; exact-head CI PASS on `8f1f41c17306e35cfea30e7b0b28115ef98c7dad`  
 **Parent:** P24 signed trust bundle / P25 monotonic sequence gate  
 **PR:** #11 (Draft/Open/Unmerged)  
 **Production status:** NOT qualified; no host signing key provisioned
@@ -36,4 +36,4 @@ This is an interface boundary, **not a TPM/HSM implementation**. No hardware dev
 
 ## Verification
 
-Exact-head CI must pass before P26 is marked implementation-verified. Tests use only ephemeral in-memory test keys. No deployment, firewall change, live browser, worker activation, paid service, API key, merge or Auto-Run.
+Exact-head CI passed on `8f1f41c17306e35cfea30e7b0b28115ef98c7dad`:\n- Agent Foundation CI #43808497146 — PASS\n- Python Demo CI #43808497002 — PASS\n- P20 Rootless Podman Runtime Qualification #43808496957 — PASS\n- P23 Rootless Podman Executor Integration #43808496949 — PASS\n\nTests use only ephemeral in-memory test keys. CI PASS verifies the software contract and existing disposable runner checks; it does not qualify a production TPM/HSM, host key custody, anti-rollback anchor or real APAA host collector. No deployment, firewall change, live browser, worker activation, paid service, API key, merge or Auto-Run.
