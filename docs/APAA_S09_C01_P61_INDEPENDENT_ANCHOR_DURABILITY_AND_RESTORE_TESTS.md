@@ -57,3 +57,10 @@ P61 reference-model and fail-closed software tests may be accepted only after ex
 ## 6. Latest branch-head regression verification
 
 The P61 tests remain included in current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This validates the reference-model and fail-closed software tests in the current tree only. An independently administered production anchor and real backup/restore anti-rollback drill remain NOT QUALIFIED.
+
+
+## 7. Remediation clarification — protected floor model
+
+The action-audit remediation extends the reference tests with a separately supplied protected-floor fixture shared across adapter recreation. The rollback-capable data-store snapshot does not contain that floor. A restored data store below the protected floor now causes anchor reads to fail closed, and an old backup is rejected after adapter recreation.
+
+This is still an in-memory test fixture representing two separate persistence domains. It is **not** proof that a real independent service, hardware monotonic counter, or separately administered durable store exists. Production anchor qualification remains NOT QUALIFIED until those external controls are implemented and independently tested.
