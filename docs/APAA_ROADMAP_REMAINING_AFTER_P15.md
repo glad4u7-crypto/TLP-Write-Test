@@ -1,7 +1,7 @@
 # APAA — Remaining Roadmap After P15
 
 **Repository:** glad4u7-crypto/TLP-Write-Test  
-**Current implementation checkpoint:** APAA-S09-C01-P19 — disposable Linux egress qualification added; CI pending  
+**Current implementation checkpoint:** APAA-S09-C01-P20 — pinned OCI runtime compatibility gate and unit tests added; runtime qualification pending  
 **Release state:** Draft / not merged / live browser disabled
 
 ## Guardrails
