@@ -4,7 +4,7 @@
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **Implementation head before host-preflight addition:** `c8104c4ab49ceaaa378d2fa3c6dda61468d1bb29`  
 **PR:** [#11 — Gated OCI Worker and Proxy Isolation](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11)  
-**Status:** Implementation CI passed; read-only host preflight and runbook added; real daemon qualification remains pending.  
+**Status:** Read-only host preflight/tests passed on the preceding code head; live egress qualification was attempted and failed on the hosted runner because IPv6/network capabilities were unavailable. A clearer early-capability diagnostic was added; latest-head CI is pending. Real daemon qualification remains pending.  
 **Release posture:** Draft only; no merge, deployment, live browser enablement or production claim.
 
 ## Delivered in P20
@@ -25,6 +25,12 @@ At implementation head `c8104c4ab49ceaaa378d2fa3c6dda61468d1bb29`:
 At documentation update head `72ea66fee9823df4f27d13738b482b953cc28f85`, all three checks completed successfully. The egress job's completed step was a hosted-runner limitation notice, not a live network isolation test.
 
 A further code commit adds the host preflight and tests; its CI must be checked separately before it can be called PASS.
+
+## Live egress attempt — not qualified
+
+The first actual run of `scripts/qualify_linux_egress_namespace.sh` on GitHub-hosted Ubuntu failed: the host-side IPv6 test sink could not bind `fd42:aa:19::1:3128`, and the worker-side IPv6 socket probe raised `Operation not permitted`. This is an environment capability failure, not evidence that the egress policy passed. The script now checks host/namespace IPv6 addresses, IPv6 socket creation and namespace-local nftables permissions before starting the test, and emits an explicit failure reason. The updated script has not yet passed a capable runner.
+
+[Failed hosted-runner attempt — Agent Foundation CI run 43795768030](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43795768030).
 
 ## Operational qualification still pending
 
