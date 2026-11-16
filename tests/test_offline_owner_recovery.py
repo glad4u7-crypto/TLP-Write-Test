@@ -49,6 +49,23 @@ def _signed(op, ap, **overrides):
     message = canonical_request(request)
     return SignedRecoveryRequest(request, op.sign(message), ap.sign(message))
 
+def test_malformed_anchor_state_fails_closed_without_mutation(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    anchor.state = AnchorState(-1, None, None)
+    with pytest.raises(RecoveryDenied): service.apply(_signed(op, ap), now=1100)
+    assert store.read_global_owner_state().revision == 0
+
+def test_anchor_read_exception_fails_closed_without_mutation(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    anchor.read = lambda: (_ for _ in ()).throw(OSError("anchor unavailable"))
+    with pytest.raises(RecoveryDenied): service.apply(_signed(op, ap), now=1100)
+    assert store.read_global_owner_state().revision == 0
+
+def test_anchor_revision_zero_cannot_claim_existing_generation(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    anchor.state = AnchorState(0, hashlib.sha256(b"forged").hexdigest(), None)
+    with pytest.raises(RecoveryDenied): service.inspect()
+
 def test_dual_control_rekey_commits_state_and_audit(tmp_path):
     service, store, anchor, op, ap = _setup(tmp_path)
     result = service.apply(_signed(op, ap), now=1100)

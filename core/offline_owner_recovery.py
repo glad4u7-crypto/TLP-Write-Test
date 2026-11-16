@@ -57,6 +57,11 @@ class AnchorState:
     change_id: str | None
 
 class MonotonicOwnerAnchor(Protocol):
+    """Independent durable high-water mark with linearizable CAS semantics.
+
+    Production implementations must survive process/host restart and
+    backup/restore. Process-local or same-database anchors are not safe.
+    """
     def read(self) -> AnchorState: ...
     def compare_and_advance(self, *, expected: AnchorState, target: AnchorState) -> bool: ...
 
@@ -112,6 +117,28 @@ class OfflineOwnerRecoveryService:
             raise RecoveryDenied("Operator and approver trust domains must be independent.")
 
     @staticmethod
+    def _validate_anchor_state(anchor: object) -> AnchorState:
+        if (not isinstance(anchor, AnchorState)
+            or type(anchor.revision) is not int or anchor.revision < 0
+            or (anchor.generation is not None and
+                (type(anchor.generation) is not str or not _DIGEST.fullmatch(anchor.generation)))
+            or (anchor.change_id is not None and
+                (type(anchor.change_id) is not str or not _CHANGE_ID.fullmatch(anchor.change_id)))
+            or (anchor.revision == 0 and
+                (anchor.generation is not None or anchor.change_id is not None))
+            or (anchor.revision > 0 and anchor.change_id is None)):
+            raise RecoveryDenied("Independent rollback anchor state is malformed.")
+        return anchor
+
+    def _read_anchor(self) -> AnchorState:
+        try:
+            return self._validate_anchor_state(self._anchor.read())
+        except RecoveryDenied:
+            raise
+        except Exception:
+            raise RecoveryDenied("Independent rollback anchor is unavailable.") from None
+
+    @staticmethod
     def _index_keys(keys: tuple[RecoveryPublicKey, ...]) -> dict[str, RecoveryPublicKey]:
         if type(keys) is not tuple or not keys:
             raise RecoveryDenied("Recovery verification policy is incomplete.")
@@ -125,9 +152,7 @@ class OfflineOwnerRecoveryService:
 
     def inspect(self) -> RecoveryInspection:
         local = self._store.read_global_owner_state()
-        anchor = self._anchor.read()
-        if not isinstance(anchor, AnchorState):
-            raise RecoveryDenied("Independent rollback anchor is unavailable.")
+        anchor = self._read_anchor()
         local_state = AnchorState(local.revision, local.generation, local.change_id)
         if anchor == local_state:
             disposition = "CONSISTENT"
@@ -181,9 +206,7 @@ class OfflineOwnerRecoveryService:
         local = self._store.read_global_owner_state()
         local_anchor = AnchorState(local.revision, local.generation, local.change_id)
         target = AnchorState(r.expected_revision + 1, r.new_generation, r.change_id)
-        anchor = self._anchor.read()
-        if not isinstance(anchor, AnchorState):
-            raise RecoveryDenied("Independent rollback anchor is unavailable.")
+        anchor = self._read_anchor()
         if local_anchor == target:
             if anchor != target:
                 raise RecoveryDenied("Owner state and independent rollback anchor diverged.")
@@ -197,11 +220,11 @@ class OfflineOwnerRecoveryService:
                 advanced = self._anchor.compare_and_advance(expected=anchor, target=target)
             except Exception:
                 raise RecoveryDenied("Independent rollback anchor update failed.") from None
-            if advanced is not True and self._anchor.read() != target:
+            if advanced is not True and self._read_anchor() != target:
                 raise RecoveryDenied("Independent rollback anchor rejected the update.")
         elif anchor != target:
             raise RecoveryDenied("Rollback anchor is not at the expected state.")
-        anchor_after = self._anchor.read()
+        anchor_after = self._read_anchor()
         if anchor_after != target:
             raise RecoveryDenied("Independent rollback anchor confirmation failed.")
 
