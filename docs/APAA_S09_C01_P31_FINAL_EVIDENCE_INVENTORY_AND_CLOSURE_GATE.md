@@ -309,3 +309,25 @@ All four workflows completed successfully on that exact head:
 Agent Foundation test, Android/PC Chromium browser emulation and disposable Linux egress jobs all passed. The P27/P35-A guard tests were included in the Foundation test job. The browser job reported 9 passed. These are CI results only; no physical Android, live OIDC, protected owner-config custody, recovery rehearsal or production host qualification is implied.
 
 Disposition: isolated global-owner identity guard + focused tests IMPLEMENTED and CI-VERIFIED at the code head above. Secure configuration loading/custody, startup and privileged API integration, session/cache invalidation, durable owner bootstrap/re-key audit, recovery workflow and independent review remain NOT IMPLEMENTED / BLOCKED. No global owner identity has been configured.
+
+
+## 17. P35-A server-side owner configuration adapter and startup integration (2026-11-16)
+
+Added `core/global_owner_config.py`, `tests/test_global_owner_config.py`, and Streamlit startup wiring in `app.py`, with corresponding application smoke tests.
+
+- The adapter accepts only the server-side `[apaa].global_owner` mapping and exact trusted OIDC issuer + subject values.
+- Missing configuration means UNPROVISIONED; no first-login bootstrap or fallback exists.
+- Present but malformed/untrusted configuration fails closed, emits a sanitized error, and leaves global administration disabled. Existing authenticated project access continues to use its established ACL boundary.
+- Valid configuration is loaded as an immutable runtime value but is not stored in session state, rendered in UI, or connected to a privileged API.
+- Session state retains only the opaque configuration generation. A change/removal invalidates reserved owner-bound cached capability keys. This is not yet a substitute for end-to-end invalidation of future API/session caches.
+- No raw owner identity, secret, token, credential or key is committed.
+
+Tests cover absent/malformed/untrusted settings, exact issuer validation, duplicate allowlist rejection, owner-bound cache invalidation, and startup behavior for absent/invalid/valid configuration. The valid-config startup test asserts that configuration loading alone does not authorize the current user or activate a Global Admin feature.
+
+**Limitations:** server-side settings consumption does not prove secret-manager custody, deployment filesystem permissions, operator authorization, atomic rotation or monotonic rollback protection. Global Admin API authorization wiring, recovery/re-key, durable append-only audit, live OIDC and physical Android qualification remain outstanding.
+
+**Verification:** implementation and documentation commits are present on the PR branch; exact latest-head CI is pending and must be checked before claiming code verification.
+
+**Disposition:** P35-A settings adapter/startup fail-closed loading IMPLEMENTED; CI PENDING; Global Admin API integration NOT IMPLEMENTED; owner recovery/re-key and durable audit NOT IMPLEMENTED; live OIDC, physical Android and independent review BLOCKED. Global Owner remains inactive. S09-C01 remains OPEN / NOT COMPLETE; S09-C02 NOT STARTED.
+
+All locks remain unchanged: PR #11 Draft/Open/Unmerged; Auto-Run OFF; browser/worker OFF; no merge, deployment, host/firewall mutation, paid API, payment or production activation.
