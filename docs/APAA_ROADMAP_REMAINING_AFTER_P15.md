@@ -1,8 +1,8 @@
 # APAA — Remaining Roadmap After P15
 
 **Repository:** glad4u7-crypto/TLP-Write-Test  
-**Current checkpoint:** APAA-S09-C01-P20 — read-only host preflight and lifecycle hardening delivered; exact-head Agent Foundation + Python Demo CI PASS (1002 tests each); disposable namespace egress qualification PASS; real daemon lifecycle qualification pending  
-**Latest code commit:** e669a8767fa7471056e3695fca36d413d435675a  
+**Current checkpoint:** APAA-S09-C01-P26 — external inspector signing-provider boundary implemented; exact-head four-workflow CI PASS on `8f1f41c17306e35cfea30e7b0b28115ef98c7dad`; production TPM/HSM, monotonic anchor, trusted host collector and full real-daemon/topology qualification remain pending  
+**Latest code commit at P26 verification:** 8f1f41c17306e35cfea30e7b0b28115ef98c7dad  
 **Release state:** Draft / not merged / live browser disabled
 
 ## Guardrails
@@ -22,9 +22,9 @@
 | P18 | Post-create signed attestation | durable tenant-bound single-use challenge; exact container ID + worker name + launch digest; signature/freshness/firewall checks | Code/tests delivered; trusted host collector and out-of-band key provisioning remain external |
 | P19 | Egress isolation proof | strict nftables evidence parser and negative tests for direct TCP/DNS, UDP, QUIC, IPv6 and unknown ruleset objects | Parser/tests delivered; disposable Linux namespace egress script passes in exact-head CI; full worker topology and bypass matrix remain pending |
 | P20 | Runtime compatibility | pinned Docker/Podman versions; read-only runtime probes; strict inspect normalization; disposable rootless daemon lifecycle and timeout/cancel qualification | Read-only host preflight delivered; immutable-ID lifecycle and fail-closed timeout/daemon-disconnect regression tests delivered. Exact-head Agent Foundation and Python Demo CI each PASS with 1002 tests; compile, dependency audit, demo smoke and disposable namespace egress qualification PASS. Real Docker/Podman daemon lifecycle, signed host collector, real timeout/cancel/orphan cleanup and full worker-topology egress qualification remain pending |
-| P21 | Browser integration | isolated ephemeral browser only after P16–P20 operational gates; request/redirect/DNS rebinding policy enforced at network boundary; downloads/profile/CDP blocked | Not started; browsing disabled |
-| P22 | Android / Termux qualification | device capability matrix; OCI availability, storage, process, network and browser constraints | Not started |
-| P23 | Integration and release verification | full tests, exact-head CI, security review, threat model, recovery/cleanup drill, owner permission E2E; draft-only report | Not started |
+| P21 | Browser integration | isolated ephemeral browser only after P16–P20 operational gates; request/redirect/DNS rebinding policy enforced at network boundary; downloads/profile/CDP blocked | Restricted foundations exist; live browser integration remains blocked by redirect-hop, pinned-IP dialer and complete transport-level egress qualification; browsing disabled |
+| P22 | Android / Termux qualification | device capability matrix; OCI availability, storage, process, network and browser constraints | Conservative Android/Termux detection and fail-closed browser block implemented; physical device/OCI/browser qualification not performed |
+| P23 | Integration and release verification | full tests, exact-head CI, security review, threat model, recovery/cleanup drill, owner permission E2E; draft-only report | Executor/attestation-gate code and disposable Podman CI workflow exist; production host integration, recovery drills and owner-permission E2E remain pending |
 
 ## P20 exact-head CI and egress evidence
 
@@ -64,3 +64,25 @@ A checkpoint is complete only when implementation, negative tests, exact-head CI
 
 **Current checkpoint:** APAA-S09-C01-P20-CODE-AND-CI-PASS-REAL-OCI-DAEMON-QUALIFICATION-PENDING.  
 **Next:** Qualify a real rootless Docker/Podman daemon on a disposable Linux host, including trusted collector and signed attestation, then exercise lifecycle and bounded cleanup. Keep worker/browser disabled until all gates pass.
+
+
+## P24–P26 follow-on trust work (2026-11-16)
+
+- **P24 Signed inspector trust bundle:** implementation and exact-head CI passed; signature verification uses an independently pinned root key and strict bundle schema. Production trust-root custody and authenticated configuration integration remain external.
+- **P25 Monotonic inspector trust sequence:** implementation and exact-head CI passed on `7f4992b3a9f83daff8ba592390254488db25aee4`; the sequence backend is a protocol contract with an in-memory test fake only. No independently administered durable anti-rollback anchor is provisioned or qualified.
+- **P26 External inspector signing provider:** implementation and all four exact-head workflows passed on `8f1f41c17306e35cfea30e7b0b28115ef98c7dad`: Agent Foundation CI #43808497146, Python Demo CI #43808497002, P20 Runtime Qualification #43808496957 and P23 Executor Integration #43808496949. This validates code/tests and CI disposable runner checks only. No TPM/HSM adapter or host key is provisioned.
+
+## C01 closure decision — 2026-11-16
+
+**C01 remains OPEN / NOT COMPLETE. C02 must not start.**
+
+Remaining hard acceptance gates (not replaceable by unit tests or documentation):
+1. An owner-approved disposable Linux host/runtime and locally available digest-pinned test image, with actual APAA CREATE/INSPECT/ATTEST/START/STOP/REMOVE execution.
+2. A real least-privilege host collector, provisioned out-of-band Ed25519 trust root and inspector signing key (preferably non-exportable TPM/HSM), with rotation/revocation and recovery tests.
+3. A separately administered durable monotonic sequence anchor with atomic compare-and-swap, restart/concurrency and backup/restore rollback rejection tests.
+4. End-to-end worker/proxy topology qualification, including redirect-aware proxy enforcement, pinned-IP connection at dial time, DNS rebinding, WebSocket, UDP/QUIC, IPv6, alternate-interface bypass and host firewall hook precedence.
+5. Bounded timeout/cancel/daemon interruption/orphan cleanup drills against the real daemon.
+6. Physical Android/Termux capability assessment. Browser launch must remain denied on Android until supported OCI/browser/network isolation is demonstrated.
+7. Final exact-head CI after all code changes, independent security review and owner-controlled permission/access E2E.
+
+**No live browsing, production worker, host mutation, firewall change, deployment, PR merge, paid service, API key or Auto-Run is authorized by this roadmap.**
