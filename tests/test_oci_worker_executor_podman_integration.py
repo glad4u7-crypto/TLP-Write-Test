@@ -43,6 +43,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _runner(argv, timeout):
+    return subprocess_command_runner(argv, timeout)
+
+
 def _executor_runner(calls):
     def run(argv, timeout):
         result = subprocess_command_runner(argv, timeout)
@@ -139,7 +143,16 @@ def test_executor_attests_then_starts_and_removes_real_rootless_podman_container
 
     inspect_output = next((stdout for argv, code, stdout, stderr in calls
                            if len(argv) > 1 and argv[1] == "inspect"), "")
-    assert report.started is True, (report.events, inspect_output[:12000])
+    inspect_summary = {}
+    if inspect_output:
+        row = json.loads(inspect_output)[0]
+        host = row.get("HostConfig") or {}
+        network_settings = row.get("NetworkSettings") or {}
+        inspect_summary = {
+            "host_network_mode": host.get("NetworkMode"),
+            "network_names": sorted((network_settings.get("Networks") or {}).keys()),
+        }
+    assert report.started is True, (report.events, inspect_summary)
     assert report.cleaned is False
     assert report.handle is not None
     assert report.handle.container_id
