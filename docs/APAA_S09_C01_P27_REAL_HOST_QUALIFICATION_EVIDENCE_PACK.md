@@ -220,3 +220,35 @@ A clean scan reports only `NO_KNOWN_PATTERN_MATCHES` and
 personal identifier, and is not permission to publish evidence. Human review and the
 owner-approved restricted evidence store remain mandatory. Do not upload raw host evidence
 to this repository.
+
+
+## Latest repository/disposable-CI evidence — 2026-11-16
+
+**Exact verified branch head:** `cbbf048969769e3bb6302fa5315b98c9d6c41a0c`
+
+The following GitHub Actions checks completed successfully on that exact head:
+
+- Agent Foundation CI: [run 43866524987](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866524987)
+  - Full suite: **1,266 passed, 9 skipped** (Python 3.12.16).
+  - Disposable Linux live host-inspector qualification: PASS for a child process in a disposable CI network namespace; live `/proc` PID, namespace inode, interface and read-only nftables JSON observed.
+  - Disposable Linux egress qualification: PASS; exact TCP proxy tuple accepted; direct TCP, DNS, UDP/QUIC and IPv6 probes blocked by the disposable namespace ruleset.
+- Python Demo CI: [run 43866525269](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866525269) — PASS.
+- Rootless Podman runtime lifecycle: [run 43866524981](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866524981) — PASS; disposable rootless runtime evidence artifact uploaded.
+- P23 rootless Podman executor integration: [run 43866525091](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43866525091) — PASS; disposable executor evidence artifact uploaded.
+- Android/PC Chromium viewport verification: included in Agent Foundation CI — PASS (emulated browser/viewport only).
+
+### What this evidence does and does not establish
+
+This closes the exact-head **repository CI verification** for the P27 manifest crash/recovery tests, disposable Linux host-inspector path, disposable egress namespace, rootless Podman lifecycle and executor integration.
+
+It does **not** close the separately controlled real-host gates. GitHub-hosted CI is not the owner's host; CI-generated/test keys are not protected production signing keys; the current SQLite/in-memory test anchors are not independently administered monotonic anti-rollback storage; Chromium mobile emulation is not a physical Android/Termux device; and CI is not an independent security reviewer.
+
+### Remaining external acceptance blockers — still OPEN
+
+1. Owner-approved disposable Linux host execution with actual runtime/container identity and signed host evidence.
+2. Independently provisioned non-exportable signing key (TPM/HSM or equivalently protected signer), out-of-band fingerprint confirmation, key-custody/rotation/revocation ceremony.
+3. Independently administered durable monotonic anchor with proven CAS, persistence, restart, concurrency and backup/restore rollback resistance.
+4. Physical Android/Termux compatibility run on the owner's selected device/runtime; keep browser automation denied until separately approved.
+5. Independent security reviewer verification of the complete evidence pack and explicit owner approval.
+
+No synthetic or CI result may be substituted for these items. Until each blocker has authentic evidence and approval, C01 remains OPEN / NOT SECURITY-QUALIFIED; worker/browser activation, Auto-Run, deployment, PR merge and C02 remain disabled.
