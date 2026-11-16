@@ -79,8 +79,19 @@ P36 adds a narrow owner-only read-grant/revoke controller and immutable grant/re
 - Grant/revoke operations are owner-only, read-only, append-only audited, and immediately enforced by all subsequent reads.
 - Revocation is tested from an already-open second session and after process/store reconstruction.
 - Project mutation/action, file/resource operations, memory, conversations, preferences and checkpoints remain denied to a read-only collaborator.
-- Project checkpoint association is independently bound to an owner-authorized project before any collaborator/API exposure.
+- Project checkpoint save and recovery must pass through `OwnerProjectCheckpointAccess`, which derives the tenant from the authenticated principal and verifies exact project ownership.
 - Two distinct real OIDC accounts are used; synthetic principals and unit tests are not accepted as live OIDC evidence.
 - Android and PC browsers are both exercised physically for sign-in, sign-out, session switch, revocation, storage isolation and responsive behavior.
 
 Until those tests and the other mandatory gates are independently approved, the safe default remains owner-only application access; no collaborator UI/API is enabled.
+
+
+### P36 implementation references
+
+- Owner-only read grant/revoke controller: `core/project_access_controller.py`.
+- Exact-owner checkpoint association and recovery: `core/project_checkpoint_access.py`.
+- Resource authorization audit: `docs/APAA_S09_C01_P36_PART06_RESOURCE_AUTHORIZATION_AUDIT.md`.
+- Two-user/session regression tests: `tests/test_project_access_session_regression.py`.
+- Android and PC browser smoke suites: `tests/test_android_viewport_smoke.py`, `tests/test_pc_browser_smoke.py`.
+
+Repository tests and CI remain separate from live OIDC and physical-device evidence. Recheck the exact latest PR head before marking any code-side P36 verification PASS.
