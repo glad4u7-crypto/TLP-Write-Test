@@ -44,6 +44,17 @@ The inspected commit's diff adds an owner-only deployment wiring test; the avail
 - do not ignore it if `c02dcfe...` is later proposed as a release candidate;
 - reconcile its branch/ancestry and rerun CI on the exact candidate SHA before accepting it.
 
+
+## 2A. P59 remediation commit — CI pending
+
+After inspecting the current PR-branch test fixture, the authenticated AppTest helper was found to accept `configure_owner` but discard it. This meant positive authenticated integration tests could enter the new owner-only fail-closed gate without provisioning the matching server-side owner identity.
+
+The fixture now provisions the exact synthetic OIDC issuer + subject as the server-side owner by default; tests explicitly exercising missing/invalid owner configuration continue to opt out. This is test-fixture-only and does not weaken the runtime owner gate.
+
+- Remediation commit: [57e44ad26c6e91bd713c742769534f4b4157c8fc](https://github.com/glad4u7-crypto/TLP-Write-Test/commit/57e44ad26c6e91bd713c742769534f4b4157c8fc).
+- CI/status for this commit: no PR-triggered workflow run or commit status was returned at verification time.
+- Therefore the fix is committed, but its tests are **NOT YET VERIFIED**. Do not mark the P68.1 regression resolved until CI runs on this exact SHA and all required workflows pass.
+
 ## 3. P58 verification boundary
 
 P58's protected-key/remote-anchor implementation must be reviewed against the exact source commit(s) and their PR ancestry. The four passing workflows above establish aggregate repository/CI behavior at the recorded PR head; they do not by themselves prove that a particular P58 commit was tested unless its ancestry is confirmed.
