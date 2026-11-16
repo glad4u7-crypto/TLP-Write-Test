@@ -72,7 +72,7 @@ See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md
 
 ## Current work
 
-The active APAA security-hardening work is tracked in [Pull Request #5](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/5), on branch `feature/approval-ui-e2e-p06` targeting `feature/agent-v0.3-zero-cost-core`. It remains Open + Draft and is not merged or deployed.
+The active APAA security-hardening work is tracked in [Pull Request #11](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11), on branch `feature/apaa-s09-c01-p16-oci-lifecycle` targeting `feature/agent-v0.3-zero-cost-core`. At the verified head recorded on 2026-11-16 (`e4109f4bb382a29d1ce0fd4e10a176777c58119e`), the PR is Open + Draft + Unmerged. Four PR-triggered workflows associated with that exact commit completed successfully: Agent Foundation CI, Python Demo CI, P20 Rootless Podman Runtime Qualification and P23 Rootless Podman Executor Integration. These are repository/disposable-runner results only; they do not qualify an owner-controlled Linux host, protected signer, independent anti-rollback anchor, complete sink-side egress topology, physical Android/PC devices or independent security review. Keep C01 OPEN / NOT COMPLETE until every P31 gate is independently evidenced and approved. Auto-Run remains OFF; browser/worker execution remains disabled; do not merge or deploy without explicit owner authorization.
 
 
 ## Cross-platform product commitment: Android + PC
