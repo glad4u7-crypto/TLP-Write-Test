@@ -63,18 +63,13 @@ class ProxyWorkerTopology:
         return (self.proxy_address,)
 
     def validate_worker_proxy_url(self, value: object) -> None:
-        if type(value) is not str:
-            raise ProxyWorkerTopologyError("Worker proxy URL must be explicit text.")
-        parsed = urlsplit(value)
-        try:
-            port = parsed.port
-        except ValueError as exc:
-            raise ProxyWorkerTopologyError("Worker proxy URL has an invalid port.") from exc
-        if (parsed.scheme != "http" or parsed.hostname != self.proxy_address
-                or port != self.proxy_port or parsed.username is not None
-                or parsed.password is not None or parsed.path not in ("",)
-                or parsed.query or parsed.fragment):
-            raise ProxyWorkerTopologyError("Worker must target the exact private proxy IP and TCP port.")
+        # Exact string equality rejects alternate spellings (including padded
+        # ports, empty query/fragment delimiters, userinfo and URL normalization
+        # ambiguities). The worker receives one canonical endpoint only.
+        if type(value) is not str or value != self.worker_proxy_url:
+            raise ProxyWorkerTopologyError(
+                "Worker must use the exact canonical private proxy URL."
+            )
 
     def deployment_invariants(self) -> tuple[str, ...]:
         return (
