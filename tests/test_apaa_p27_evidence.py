@@ -163,7 +163,7 @@ def test_detached_ed25519_manifest_signature_verifies(tmp_path):
 
 
 def test_rejects_manifest_changed_after_signing(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir()
+    root = tmp_path / "evidence"
     pub, sig, fp = _signed_pack(root, tmp_path)
     (root / "manifest.json").write_bytes((root / "manifest.json").read_bytes() + b" ")
     with pytest.raises(EvidenceValidationError):
