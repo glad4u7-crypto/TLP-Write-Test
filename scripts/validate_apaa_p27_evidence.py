@@ -12,13 +12,17 @@ import hashlib
 import json
 import re
 import stat
-import sys
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_ALLOWED_MANIFEST_FIELDS = {
+    "schema_version", "run_id", "operator", "approval_reference", "host_alias",
+    "started_at_utc", "ended_at_utc", "runtime_name", "runtime_version",
+    "collector_version", "signer_version", "test_image_digest", "proxy_policy_id", "files",
+}
 _REQUIRED_TEXT = (
     "run_id", "operator", "approval_reference", "host_alias",
     "runtime_name", "runtime_version", "collector_version",
@@ -66,6 +70,15 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EvidenceValidationError("manifest contains duplicate JSON object keys")
+        result[key] = value
+    return result
+
+
 def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
     root = Path(directory)
     if root.is_symlink() or not root.is_dir():
@@ -74,11 +87,23 @@ def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise EvidenceValidationError("manifest.json is missing or is not a regular file")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        if manifest_path.stat().st_size > 1024 * 1024:
+            raise EvidenceValidationError("manifest exceeds the 1 MiB size limit")
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
+        )
+    except EvidenceValidationError:
+        raise
+    except (OSError, UnicodeError, ValueError) as exc:
         raise EvidenceValidationError("manifest.json is unreadable or invalid JSON") from exc
     if not isinstance(manifest, dict):
         raise EvidenceValidationError("manifest must be a JSON object")
+    unknown_fields = set(manifest) - _ALLOWED_MANIFEST_FIELDS
+    if unknown_fields:
+        raise EvidenceValidationError("manifest contains unknown fields")
+    missing_fields = _ALLOWED_MANIFEST_FIELDS - set(manifest)
+    if missing_fields:
+        raise EvidenceValidationError("manifest is missing required fields")
     if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         raise EvidenceValidationError("schema_version must equal integer 1")
     for field in _REQUIRED_TEXT:
@@ -95,6 +120,8 @@ def validate_evidence_directory(directory: str | Path) -> dict[str, Any]:
     files = manifest.get("files")
     if not isinstance(files, dict) or not files:
         raise EvidenceValidationError("files must map artifact paths to SHA-256 digests")
+    if len(files) > 10000:
+        raise EvidenceValidationError("manifest contains too many artifact entries")
     normalized: dict[str, str] = {}
     for name, expected in files.items():
         rel = _safe_relative_path(name)
