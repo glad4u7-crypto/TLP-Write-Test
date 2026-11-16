@@ -228,3 +228,53 @@ The checklist now defines, for each G1–G10:
 It distinguishes physical Android/two-real-account OIDC qualification from Chromium emulation, and separates disposable CI results from owner-host evidence. It does not provision infrastructure, create identities, mutate firewall policy, launch workers or authorize deployment.
 
 **Disposition:** documentation/checklist prepared; no G1–G10 external test has been performed by this change. G1–G10 remain BLOCKED. C01 remains OPEN / NOT COMPLETE; C02 NOT STARTED. PR #11 remains Draft/Open/Unmerged; Auto-Run OFF; browser/worker disabled; no paid API/payment, deployment, merge, host/firewall mutation or production activation. The new documentation commit requires exact-head CI verification before its repository-side status is current.
+
+
+## 13. P27 evidence-tooling audit and latest exact-head CI (2026-11-16)
+
+**Audited code head before this P31/P35 documentation reconciliation:** ad3024f34c3be101643f6082ef29e5226cf459a0.
+
+### 13.1 P27 tooling review
+
+Reviewed:
+- scripts/build_apaa_p27_manifest.py
+- scripts/check_apaa_p27_evidence_privacy.py
+- scripts/validate_apaa_p27_evidence.py
+- scripts/verify_apaa_p27_review.py
+- tests/test_apaa_p27_manifest_builder.py
+- tests/test_apaa_p27_evidence_privacy.py
+- tests/test_apaa_p27_evidence.py
+- tests/test_apaa_p27_review.py
+
+Repository-side controls present:
+- Manifest builder requires the exact nine-artifact inventory, bounded regular non-symlink JSON files, required metadata, UTC timestamps and an immutable image digest; it refuses to overwrite an existing manifest and reports integrity/authenticity/qualification as separate states.
+- Privacy preflight checks the exact pack inventory, rejects duplicate JSON keys and non-standard JSON constants, bounds file size, detects common secret patterns and explicitly states that pattern scanning is not a privacy guarantee.
+- Evidence validator rejects unknown/missing manifest fields, duplicate manifest keys, unsafe/non-canonical paths, symlinks/non-regular files, inventory mismatch, oversized files and digest mismatch. Detached Ed25519 verification requires an independently supplied expected public-key fingerprint and reports host qualification as NOT_ASSESSED.
+- Independent-review verifier requires a separately pinned reviewer key, binds the signed attestation to the exact manifest digest, rejects malformed/duplicate JSON, invalid disposition/findings and non-UTC/future timestamps. Its output explicitly leaves reviewer identity and independence to out-of-band owner verification and does not grant qualification approval.
+- Targeted tests cover manifest inventory/metadata, symlink rejection, tamper/path traversal, signature/key mismatch, duplicate keys, non-standard JSON constants, excessive nesting, review digest binding, reviewer-key pinning and unresolved PASS findings.
+
+**Audit limitation:** this was a source/test review, not a live signing ceremony, protected-key custody test, real evidence-pack qualification, or independent reviewer exercise. A clean pattern scan is not proof of absence of sensitive data. Evidence observations still require human review and trusted restricted storage.
+
+### 13.2 Latest exact-head CI reconciliation
+
+Commit ad3024f34c3be101643f6082ef29e5226cf459a0 has all four PR-triggered workflows completed successfully:
+- Agent Foundation CI — PASS: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43837466004
+- Python Demo CI — PASS: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43837465991
+- P20 Rootless Podman Runtime Qualification — PASS: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43837466249
+- P23 Rootless Podman Executor Integration — PASS: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43837466126
+
+All jobs in the Agent Foundation run completed successfully, including tests, disposable Linux egress namespace qualification and Android/PC Chromium browser emulation. These remain disposable CI/emulation results, not physical Android or owner-operated production-host evidence.
+
+### 13.3 P35/P42 status reconciliation
+
+P35's earlier F-02 and P35-B–D status reflected a prior code head. P42 subsequently implemented the narrow owner-confirmed read-only grant/revoke workflow. See the P35 Section 8 reconciliation. The general APAA-wide owner bootstrap/recovery, live two-user OIDC, physical Android verification and independent review remain open/blocked.
+
+### 13.4 Current disposition and locks
+
+- Repository code review and exact-head CI for ad3024f34c3be101643f6082ef29e5226cf459a0: PASS for the checks listed above.
+- P27 evidence tooling source/test audit: RECORDED; no authentic host evidence generated.
+- P35 narrow read-only sharing implementation: IMPLEMENTED; live qualification BLOCKED.
+- G1–G10: BLOCKED pending authentic external evidence and independent review.
+- S09-C01: OPEN / NOT COMPLETE; S09-C02: NOT STARTED.
+- PR #11: Draft/Open/Unmerged.
+- Auto-Run OFF; browser/worker disabled; no deployment, merge, paid API/payment, host/firewall mutation or production activation.
