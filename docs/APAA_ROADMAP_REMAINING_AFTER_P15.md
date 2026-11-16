@@ -119,3 +119,13 @@ This is stronger than a unit-test-only result: CI exercised a real disposable ro
 - Added `tests/test_apaa_p27_evidence.py` covering valid packs, tampering, unlisted/missing artifacts, path traversal, non-UTC timestamps, mutable image references and CLI exit behavior.
 - The validator explicitly reports authenticity as NOT_CHECKED and host qualification as NOT_ASSESSED. It cannot approve a host, verify a detached signature or convert test outcomes to PASS.
 - CI for the implementation commit must pass before this code is treated as verified. Real-host key custody, independent monotonic anchor, actual worker/proxy topology and independent review remain BLOCKED.
+
+
+## APAA S09 C01 — P27 detached evidence signature verifier (2026-11-16)
+
+- Implemented Ed25519 detached signature verification over the exact raw manifest bytes in `scripts/validate_apaa_p27_evidence.py`.
+- The detached signature and raw 32-byte public key must be regular non-symlink files outside the evidence directory. The caller must supply an independently provisioned public-key SHA-256 fingerprint; signature verification cannot bootstrap trust from a key embedded in the evidence pack.
+- Added negative tests for manifest alteration, wrong signer key, wrong pinned fingerprint, sidecar placement and incomplete trust inputs. Test private keys are ephemeral and test-only.
+- Latest exact implementation head `1009939c847a2fc3157e9715e79bacacad89ced0`: all four required CI workflows PASS; Foundation and Demo suites each report 1049 passed, 7 skipped; P23 and P20 rootless Podman qualification PASS.
+- The result `VERIFIED_ED25519` proves only that the exact manifest bytes verify under the supplied pinned public key. It does not prove who controls that key, protected hardware custody, real-host identity, truthful observations, or network isolation.
+- **Next:** define an independent reviewer-verification/disposition contract and test it against the manifest digest and signer fingerprint. Keep host qualification BLOCKED until owner-approved real host, out-of-band trust provisioning, protected signer, durable anti-rollback anchor and sink-side network evidence exist.
