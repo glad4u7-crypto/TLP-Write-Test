@@ -1,7 +1,8 @@
 """Read-only live Linux qualification for the P07 host inspector.
 
-Runs only in a disposable CI runner. It inspects a child process in the
-runner's existing network namespace and never changes host/network policy.
+Runs only in a disposable CI runner. It creates a short-lived isolated
+network namespace with one disposable dummy worker interface, then inspects
+a child process there. It never changes the runner's host network policy.
 This is not owner-host or production qualification.
 """
 from __future__ import annotations
@@ -22,8 +23,16 @@ from core.linux_host_inspector import LinuxHostInspectorAdapter
 
 
 def main() -> int:
+    # Use a private disposable netns: hosted runners may expose several
+    # non-loopback interfaces, while the worker contract intentionally allows
+    # exactly one. The dummy interface exists only inside this child netns.
     worker = subprocess.Popen(
-        [sys.executable, "-c", "import time; time.sleep(30)"],
+        [
+            "/usr/bin/unshare", "--net", "--",
+            "/bin/sh", "-c",
+            "ip link add apaa0 type dummy && ip link set apaa0 up && "
+            "exec " + sys.executable + " -c 'import time; time.sleep(30)'",
+        ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
