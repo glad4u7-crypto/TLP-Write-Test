@@ -105,3 +105,32 @@ def test_directory_requires_durable_storage_and_explicit_issuer_allowlist(tmp_pa
         SQLiteTrustedIdentityDirectory(":memory:", allowed_issuers={OWNER.issuer})
     with pytest.raises(ValueError):
         SQLiteTrustedIdentityDirectory(tmp_path / "x.sqlite3", allowed_issuers=set())
+
+
+def test_directory_database_uses_owner_only_filesystem_permissions(tmp_path):
+    import os
+    import stat
+
+    if os.name != "posix":
+        pytest.skip("POSIX filesystem permission assertions are platform-specific.")
+    directory = tmp_path / "private-identity-store"
+    database = directory / "identity.sqlite3"
+    SQLiteTrustedIdentityDirectory(database, allowed_issuers={OWNER.issuer})
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_directory_rejects_group_or_world_accessible_parent(tmp_path):
+    import os
+
+    if os.name != "posix":
+        pytest.skip("POSIX filesystem permission assertions are platform-specific.")
+    import stat
+
+    shared = tmp_path / "shared"
+    shared.mkdir(mode=0o755)
+    os.chmod(shared, 0o755)
+    with pytest.raises(ValueError, match="owner-only"):
+        SQLiteTrustedIdentityDirectory(
+            shared / "identity.sqlite3", allowed_issuers={OWNER.issuer}
+        )
