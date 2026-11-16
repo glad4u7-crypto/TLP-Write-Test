@@ -1,4 +1,4 @@
-name: APAA P20 Rootless Podman Qualification
+name: APAA P20 Rootless Podman Runtime Qualification
 
 on:
   pull_request:
@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rootless-podman-daemon:
-    name: Disposable rootless Podman daemon lifecycle
+  rootless-podman-runtime:
+    name: Disposable rootless Podman runtime lifecycle
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
