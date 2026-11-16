@@ -12,6 +12,8 @@ import getpass
 import hashlib
 import json
 import os
+from pathlib import Path
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from core.pkcs11_ed25519_signer import PKCS11Ed25519InspectorSigner, PKCS11SignerError
 
 _ED25519_OID = bytes.fromhex("06032b6570")
+_KEY_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
 class PKCS11ProvisionError(RuntimeError):
@@ -31,9 +34,20 @@ def provision_and_self_test(
     *, module_path: str, token_label: str, key_id: str, label: str,
     pin: str, pkcs11_api, signer_class=PKCS11Ed25519InspectorSigner,
 ) -> dict[str, object]:
+    module = Path(module_path).expanduser()
+    if not module.is_absolute() or not module.is_file() or module.is_symlink():
+        raise PKCS11ProvisionError("PKCS#11 module path must be an absolute regular non-symlink file.")
+    if type(key_id) is not str or not _KEY_ID.fullmatch(key_id):
+        raise PKCS11ProvisionError("PKCS#11 key ID is invalid.")
+    if type(token_label) is not str or not token_label or len(token_label) > 128:
+        raise PKCS11ProvisionError("PKCS#11 token label is invalid.")
+    if type(label) is not str or not label or len(label) > 128:
+        raise PKCS11ProvisionError("PKCS#11 key label is invalid.")
+    if type(pin) is not str or not 4 <= len(pin.encode("utf-8")) <= 128:
+        raise PKCS11ProvisionError("PKCS#11 PIN length is invalid.")
     key_id_bytes = key_id.encode("ascii")
     try:
-        library = pkcs11_api.lib(module_path)
+        library = pkcs11_api.lib(str(module))
         token = library.get_token(token_label=token_label)
         with token.open(rw=True, user_pin=pin.encode("utf-8")) as session:
             existing = list(session.get_objects({pkcs11_api.Attribute.ID: key_id_bytes}))
@@ -59,7 +73,7 @@ def provision_and_self_test(
                 },
             )
         signer = signer_class(
-            module_path=module_path, token_label=token_label,
+            module_path=str(module), token_label=token_label,
             key_id=key_id, user_pin=pin,
             pkcs11_loader=lambda _path: pkcs11_api,
         )
