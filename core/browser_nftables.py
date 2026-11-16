@@ -210,9 +210,10 @@ def collect_signed_inspector_evidence(
 ) -> dict[str, object]:
     """Collect through an injected read-only source, validate, then sign P06 envelope.
 
-    No source implementation, private key storage, host command or collector
-    daemon is included. The caller is responsible for authenticating the source,
-    provisioning the key out-of-band and consuming the challenge exactly once.
+    No source implementation, private-key storage, host command or collector
+    daemon is included. The signer may use a non-exportable TPM/HSM or
+    authenticated signing service. The caller must authenticate the source,
+    provision the public key out-of-band and consume the challenge exactly once.
     """
     if not isinstance(source, HostSnapshotSource):
         raise HostCollectionError("A trusted HostSnapshotSource adapter is required.")
@@ -220,8 +221,14 @@ def collect_signed_inspector_evidence(
         raise HostCollectionError("A caller-generated 256-bit challenge is required.")
     if type(key_id) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}", key_id):
         raise HostCollectionError("Inspector key ID is invalid.")
-    if not isinstance(signing_key, Ed25519PrivateKey):
-        raise HostCollectionError("An externally provisioned Ed25519 private key is required.")
+    if not isinstance(signer, InspectorSigningProvider):
+        raise HostCollectionError("An external Ed25519 signing provider is required.")
+    try:
+        public_key = signer.public_key_bytes()
+    except Exception as exc:
+        raise HostCollectionError("Inspector signing provider public-key read failed.") from exc
+    if type(public_key) is not bytes or len(public_key) != 32:
+        raise HostCollectionError("Inspector signing provider must expose a 32-byte Ed25519 public key.")
     current = int(time.time()) if now is None else now
     if type(current) is not int:
         raise HostCollectionError("Collection timestamp is invalid.")
@@ -269,14 +276,18 @@ def collect_signed_inspector_evidence(
         "firewall": firewall,
     }
     signed = {"schema_version": 1, "key_id": key_id, "payload": payload}
-    try:\n        signature = signer.sign(_canonical_json(signed))\n    except Exception as exc:\n        raise HostCollectionError("Inspector signing operation failed.") from exc\n    if type(signature) is not bytes or len(signature) != 64:\n        raise HostCollectionError("Inspector signing provider returned an invalid Ed25519 signature.")
+    try:
+        signature = signer.sign(_canonical_json(signed))
+    except Exception as exc:
+        raise HostCollectionError("Inspector signing operation failed.") from exc
+    if type(signature) is not bytes or len(signature) != 64:
+        raise HostCollectionError("Inspector signing provider returned an invalid Ed25519 signature.")
     envelope = {
         **signed,
         "signature": base64.b64encode(signature).decode("ascii"),
     }
     # Ensure the emitted envelope is compatible with the P06 verifier before returning.
     from core.browser_inspector import verify_signed_inspector_evidence
-    public_key = signing_key.public_key().public_bytes_raw()
     try:
         verify_signed_inspector_evidence(
             spec, envelope, trusted_public_keys={key_id: public_key},
