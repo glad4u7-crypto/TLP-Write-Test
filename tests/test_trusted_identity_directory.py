@@ -134,3 +134,22 @@ def test_directory_rejects_group_or_world_accessible_parent(tmp_path):
         SQLiteTrustedIdentityDirectory(
             shared / "identity.sqlite3", allowed_issuers={OWNER.issuer}
         )
+
+
+
+def test_discoverability_status_is_private_by_default_and_tracks_explicit_choice(tmp_path):
+    _, _, directory = setup(tmp_path)
+    directory.record_authenticated_principal(READER)
+    assert directory.is_discoverable(READER) is False
+
+    directory.set_discoverability(READER, discoverable=True)
+    assert directory.is_discoverable(READER) is True
+
+    directory.set_discoverability(READER, discoverable=False)
+    assert directory.is_discoverable(READER) is False
+
+
+def test_discoverability_status_rejects_unallowlisted_identity(tmp_path):
+    _, _, directory = setup(tmp_path)
+    with pytest.raises(PermissionError):
+        directory.is_discoverable(OTHER_ISSUER)
