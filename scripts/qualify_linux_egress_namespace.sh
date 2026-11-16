@@ -164,7 +164,12 @@ for family, kind, host, port in probes:
             else:
                 raise SystemExit(f"FAIL: unexpected connection to {host}:{port}")
         else:
-            s.sendto(b"blocked-egress-probe", (host, port))
+            try:
+                s.sendto(b"blocked-egress-probe", (host, port))
+            except OSError:
+                # A local policy-drop may surface as EPERM/EACCES instead of
+                # silently dropping the datagram; the host sink checks leakage.
+                pass
     finally:
         s.close()
 PY
