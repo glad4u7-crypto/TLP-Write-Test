@@ -156,7 +156,19 @@ def test_crash_during_audit_append_rolls_back_local_state_and_is_resumable(tmp_p
 def test_audit_field_hash_or_deletion_tampering_blocks_recovery(tmp_path, tamper_sql):
     service, store, anchor, operator, approver = _setup(tmp_path)
     first = _signed(operator, approver)
-    service.apply(first, now=1100)
+    first_state = service.apply(first, now=1100)
+    second_request = RecoveryRequest(
+        change_id="p62-change-middle", action="rekey",
+        expected_revision=first_state.revision, old_generation=first_state.generation,
+        new_generation=hashlib.sha256(b"middle-generation").hexdigest(),
+        reason_code="owner_account_recovery", nonce="f" * 64,
+        issued_at=1000, expires_at=1600,
+        operator_key_id="operator-key-01", approver_key_id="approver-key-01",
+    )
+    second_message = canonical_request(second_request)
+    service.apply(SignedRecoveryRequest(
+        second_request, operator.sign(second_message), approver.sign(second_message)
+    ), now=1100)
     assert store.verify_audit_chain() is True
 
     with sqlite3.connect(store._database_path) as db:
@@ -185,7 +197,7 @@ def test_audit_field_hash_or_deletion_tampering_blocks_recovery(tmp_path, tamper
     with pytest.raises(RecoveryDenied, match="audit integrity"):
         service.apply(envelope, now=1100)
     assert anchor.read() == before_anchor
-    assert store.read_global_owner_state().revision == 1
+    assert store.read_global_owner_state().revision == 2
 
 
 def test_audit_reordering_is_detected(tmp_path):
