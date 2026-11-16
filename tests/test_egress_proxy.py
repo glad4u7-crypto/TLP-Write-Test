@@ -105,8 +105,8 @@ def test_proxy_denies_non_allowlisted_host_before_opening_upstream_socket():
     worker.start()
     try:
         client.sendall(
-            b"CONNECT not-allowed.example:443 HTTP/1.1\\r\\n"
-            b"Host: not-allowed.example:443\\r\\n\\r\\n"
+            b"CONNECT not-allowed.example:443 HTTP/1.1\r\n"
+            b"Host: not-allowed.example:443\r\n\r\n"
         )
         response = client.recv(1024)
         assert response.startswith(b"HTTP/1.1 502")
