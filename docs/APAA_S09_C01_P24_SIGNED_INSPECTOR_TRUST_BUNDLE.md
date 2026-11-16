@@ -1,6 +1,6 @@
 # APAA-S09-C01-P24 — Signed out-of-band inspector trust bundle
 
-**Status:** implementation added; exact-head CI verification pending  
+**Status:** implementation and exact-head CI verification passed on commit `d865b8e14d375bb8a18d01d7b36bd405f5c252a9`  
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **PR:** #11 (Draft/Open/Unmerged)  
 **Deployment / merge / Auto-Run:** not authorized
@@ -28,7 +28,7 @@
 
 Offline tests use ephemeral synthetic Ed25519 keys only in test memory. They cover signature validity/tampering, pinned-root mismatch, issuer mismatch, sequence rollback, validity windows, revocation, duplicate JSON keys, unknown fields and malformed public-key encoding.
 
-The P24 implementation is not yet connected to production configuration or a rollback-protected sequence store. No production root key, host private key, secret, credential or signing material is present in the repository. CI must pass on the exact P24 commit before marking this checkpoint verified.
+The P24 implementation is not yet connected to production configuration or a rollback-protected sequence store. No production root key, host private key, secret, credential or signing material is present in the repository. Exact-head CI passed on `d865b8e14d375bb8a18d01d7b36bd405f5c252a9`: Agent Foundation CI, Python Demo CI, P20 Rootless Podman Runtime Qualification and P23 Real Podman Executor Integration. This verifies the implementation in CI, not production trust or live-host qualification.
 
 ## Remaining release gates
 
