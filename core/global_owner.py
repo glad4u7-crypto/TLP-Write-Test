@@ -29,6 +29,19 @@ class GlobalOwnerConfig:
     issuer: str
     subject: str
 
+    def __post_init__(self) -> None:
+        if type(self.issuer) is not str or not _valid_https_issuer(self.issuer):
+            raise GlobalOwnerConfigurationError("Global owner issuer must be a valid HTTPS issuer.")
+        if (
+            type(self.subject) is not str
+            or not self.subject
+            or self.subject != self.subject.strip()
+            or len(self.subject) > 255
+            or not self.subject.isascii()
+            or any(ord(ch) < 0x21 or ord(ch) > 0x7E for ch in self.subject)
+        ):
+            raise GlobalOwnerConfigurationError("Global owner subject is invalid.")
+
     @property
     def generation(self) -> str:
         """Opaque stable identifier for invalidating owner-bound cached state."""
@@ -77,7 +90,7 @@ def load_global_owner_config(
     subject = source.get("subject")
     if type(issuer) is not str or not _valid_https_issuer(issuer):
         raise GlobalOwnerConfigurationError("Global owner issuer must be a valid HTTPS issuer.")
-    if not isinstance(trusted_issuers, Collection) or issuer not in trusted_issuers:
+    if (\n        not isinstance(trusted_issuers, Collection)\n        or isinstance(trusted_issuers, (str, bytes))\n        or issuer not in trusted_issuers\n    ):
         raise GlobalOwnerConfigurationError("Global owner issuer is not in the trusted issuer allowlist.")
     if (
         type(subject) is not str
