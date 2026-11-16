@@ -292,3 +292,20 @@ Disposition: design/documentation RECORDED; implementation NOT IMPLEMENTED; live
 Added `core/global_owner.py` and `tests/test_global_owner.py`. The primitive validates a server-supplied issuer/subject mapping against the trusted HTTPS issuer allowlist and provides exact authenticated Principal matching with fail-closed behavior. Missing config, invalid config, untrusted issuer and mismatched/unauthenticated Principal are denied. The generation fingerprint is opaque and is not used as an authorization key.
 
 This is not an active global owner bootstrap: no secure config adapter/custody, strict raw-config parser, startup integration, privileged API wiring, session invalidation, audit persistence, recovery/re-key or live OIDC qualification exists yet. No owner identity or secret was added. Focused tests are awaiting exact-head CI. Keep all release/safety locks unchanged.
+
+
+## 16. Global owner guard exact-head verification (2026-11-16)
+
+The first CI attempt after adding the isolated global-owner guard caught a Python syntax error in the trusted-issuer allowlist condition during test collection. The failure was inspected from the job log, corrected, and the exact corrected head below was rerun. This failure is retained in the engineering record rather than hidden.
+
+Corrected code head: `9e3d7206bd03db928a3620c0219da2b0dfeaaced`.
+
+All four workflows completed successfully on that exact head:
+- Agent Foundation CI: PASS — https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43839763321
+- Python Demo CI: PASS — https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43839763182
+- P20 Rootless Podman Runtime Qualification: PASS — https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43839763318
+- P23 Rootless Podman Executor Integration: PASS — https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43839763417
+
+Agent Foundation test, Android/PC Chromium browser emulation and disposable Linux egress jobs all passed. The P27/P35-A guard tests were included in the Foundation test job. The browser job reported 9 passed. These are CI results only; no physical Android, live OIDC, protected owner-config custody, recovery rehearsal or production host qualification is implied.
+
+Disposition: isolated global-owner identity guard + focused tests IMPLEMENTED and CI-VERIFIED at the code head above. Secure configuration loading/custody, startup and privileged API integration, session/cache invalidation, durable owner bootstrap/re-key audit, recovery workflow and independent review remain NOT IMPLEMENTED / BLOCKED. No global owner identity has been configured.
