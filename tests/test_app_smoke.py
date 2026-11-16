@@ -15,16 +15,18 @@ def _click_button_by_label(app: AppTest, label: str) -> None:
 def _authenticated_test_user(monkeypatch, *, configure_owner=True):
     # Authenticated UI tests default to the exact synthetic owner identity.
     # Negative owner-gate tests opt out explicitly.
-    if configure_owner and isinstance(st.secrets, dict):
-        apaa = st.secrets.setdefault("apaa", {})
-        if isinstance(apaa, dict):
-            apaa.setdefault(
-                "global_owner",
-                {
-                    "issuer": "https://accounts.example.test",
-                    "subject": "app-smoke-test-user",
-                },
-            )
+    if configure_owner:
+        secrets_config = dict(st.secrets)
+        apaa = dict(secrets_config.get("apaa", {}))
+        apaa.setdefault(
+            "global_owner",
+            {
+                "issuer": "https://accounts.example.test",
+                "subject": "app-smoke-test-user",
+            },
+        )
+        secrets_config["apaa"] = apaa
+        monkeypatch.setattr(st, "secrets", secrets_config)
     claims = {
         "is_logged_in": True,
         "iss": "https://accounts.example.test",
@@ -476,6 +478,7 @@ def test_explicit_logout_clears_identity_state_before_provider_logout(tmp_path, 
             "auth": {"redirect_uri": "https://example.test/oauth2callback"},
             "apaa": {
                 "require_auth": True,
+                "global_owner": {"issuer": "https://accounts.example.test", "subject": "logout-integration-user"},
                 "approval_signing_secret_hex": "ab" * 32,
                 "security_db_path": str(tmp_path / "security" / "security.sqlite3"),
                 "project_db_path": str(tmp_path / "projects" / "projects.sqlite3"),
@@ -624,8 +627,9 @@ def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monk
     app.run()
 
     assert not app.exception
-    assert app.session_state["active_identity_subject"] != "https://accounts.example.test\\napp-smoke-test-user"
-    assert isinstance(app.session_state["global_owner_generation"], str)
+    assert "active_identity_subject" not in app.session_state
+    assert any("available only to its configured owner" in item.value for item in app.error)
+    assert "global_owner_generation" not in app.session_state
     assert "global_owner_authorized" not in app.session_state
     assert "global_owner_admin_context" not in app.session_state
     assert "global_owner_approval_receipt" not in app.session_state
