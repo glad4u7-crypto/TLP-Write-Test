@@ -77,6 +77,16 @@ class ProjectAccessControl:
                 """CREATE INDEX IF NOT EXISTS idx_project_access_events_project_time
                    ON project_access_events(project_id, occurred_at, event_id)"""
             )
+            connection.execute(
+                """CREATE TRIGGER IF NOT EXISTS project_access_events_no_update
+                   BEFORE UPDATE ON project_access_events
+                   BEGIN SELECT RAISE(ABORT, 'project access audit events are immutable'); END"""
+            )
+            connection.execute(
+                """CREATE TRIGGER IF NOT EXISTS project_access_events_no_delete
+                   BEFORE DELETE ON project_access_events
+                   BEGIN SELECT RAISE(ABORT, 'project access audit events are immutable'); END"""
+            )
 
     @staticmethod
     def _identity(principal: Principal) -> tuple[str, str]:
