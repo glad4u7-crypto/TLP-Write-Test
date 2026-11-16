@@ -209,7 +209,7 @@ def test_inspect_timeout_fails_closed_and_force_removes_by_immutable_id():
     assert "START" not in [event.stage for event in report.events]
 
 
-def test_start_daemon_interruption_attempts_stop_then_force_remove():
+def test_inspect_daemon_interruption_fails_closed_and_force_removes_by_id():
     spec, plan = make_plan()
     calls = []
 
@@ -218,23 +218,12 @@ def test_start_daemon_interruption_attempts_stop_then_force_remove():
         if argv[1] == "create":
             return CommandResult(0, "a" * 64, "")
         if argv[1] == "inspect":
-            return CommandResult(0, json.dumps([{
-                "Id": "a" * 64,
-                "State": {"Status": "created"},
-                "Config": {"Image": IMAGE},
-                "HostConfig": {
-                    "NetworkMode": "apaa-egress-prod", "ReadonlyRootfs": True,
-                    "Privileged": False, "PidMode": "private", "IpcMode": "private",
-                    "CapDrop": ["ALL"],
-                    "SecurityOpt": ["no-new-privileges:true", "seccomp=/etc/apaa/seccomp.json"],
-                },
-            }]), "")
-        if argv[1] == "start":
-            raise OSError("simulated daemon interruption")
+            raise OSError("simulated daemon disconnect")
         return CommandResult(0, "", "")
 
     report = make_executor(runner).launch(plan, spec)
-    assert [call[1] for call in calls] == ["create", "inspect", "start", "rm"]
+    assert [call[1] for call in calls] == ["create", "inspect", "rm"]
     assert calls[-1][-1] == "a" * 64
     assert report.started is False
     assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
