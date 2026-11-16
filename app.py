@@ -380,7 +380,7 @@ if principal is not None and trusted_identity_directory is not None:
                         roles=(),
                     )
                     fingerprint = hashlib.sha256(
-                        (grant.grantee_issuer + "\\0" + grant.grantee_subject).encode("utf-8")
+                        (repr((grant.grantee_issuer, grant.grantee_subject))).encode("utf-8")
                     ).hexdigest()
                     revoke_principals[fingerprint] = grantee
                     display_label = trusted_identity_directory.owner_grant_display_label(
