@@ -98,3 +98,17 @@ The Android/desktop browser job is Chromium/Playwright emulation, not physical-d
 Physical Android remains pending until the owner-run checklist is completed and reviewed. PC physical testing remains optional.
 
 **C01 stays OPEN / NOT COMPLETE. C02 must not start.**
+
+
+## 8. Exact-head CI re-verification (2026-11-16)
+
+The PR head `65e130cc6b923cdbba1fe741e058bcf0120bd366` completed all four required PR-triggered workflows successfully:
+
+- [Agent Foundation CI #1024](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828374664) — PASS. The Android and PC Chromium browser verification job passed, including Playwright mobile viewport smoke coverage; disposable Linux egress namespace qualification and the full foundation test job also passed.
+- [Python Demo CI #1099](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828374673) — PASS.
+- [P20 Rootless Podman Runtime Qualification #153](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828374682) — PASS. Disposable rootless Podman lifecycle completed CREATE/INSPECT/START/STOP/REMOVE and orphan check.
+- [P23 Rootless Podman Executor Integration #135](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828374665) — PASS. APAA executor integration against disposable rootless Podman completed successfully.
+
+This clears the earlier automated exact-head CI-pending item for the inspected head. It does not clear physical Android login/logout, real OIDC multi-user access/revocation, Android browser storage/lifecycle, native APK, real-host OCI/network, protected signer, independent anti-rollback or independent reviewer gates. CI is not physical-device or production-host evidence.
+
+**Qualification status:** Android automated browser-emulation coverage PASS; physical Android qualification OPEN. PC physical qualification remains optional. C01 remains OPEN / NOT COMPLETE; PR #11 remains Draft/Open/Unmerged; C02 must not start.
