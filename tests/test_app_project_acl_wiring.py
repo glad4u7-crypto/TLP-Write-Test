@@ -54,4 +54,4 @@ def test_owner_share_controls_require_directory_selection_and_explicit_confirmat
     assert "project_access_controller.revoke_read(" in source
     assert "I confirm revoking this account's project metadata access" in source
     assert 'oidc_claims.get("name")' in source
-    assert "email" not in source[source.index("record_authenticated_principal("):source.index("st.header(\"Project Manager\")")]
+    assert 'oidc_claims.get("email")' not in source
