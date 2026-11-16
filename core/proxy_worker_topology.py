@@ -25,7 +25,8 @@ class ProxyWorkerTopology:
     @classmethod
     def build(cls, *, network_name: str, subnet: str, proxy_address: str,
               worker_address: str, proxy_port: int = 3128) -> "ProxyWorkerTopology":
-        if type(network_name) is not str or not _NAME.fullmatch(network_name):
+        if (type(network_name) is not str or not _NAME.fullmatch(network_name)
+                or network_name in {"bridge", "host", "none", "default"}):
             raise ProxyWorkerTopologyError("A dedicated explicit APAA network name is required.")
         try:
             network = ipaddress.ip_network(subnet, strict=True)
@@ -33,7 +34,10 @@ class ProxyWorkerTopology:
             worker = ipaddress.ip_address(worker_address)
         except (TypeError, ValueError) as exc:
             raise ProxyWorkerTopologyError("Subnet and endpoint addresses must be canonical IP values.") from exc
-        if network.version != 4 or not network.is_private or network.is_link_local:
+        rfc1918 = (ipaddress.ip_network("10.0.0.0/8"),
+                   ipaddress.ip_network("172.16.0.0/12"),
+                   ipaddress.ip_network("192.168.0.0/16"))
+        if network.version != 4 or not any(network.subnet_of(block) for block in rfc1918):
             raise ProxyWorkerTopologyError("Worker network must be a private IPv4 subnet.")
         if proxy.version != 4 or worker.version != 4:
             raise ProxyWorkerTopologyError("Only IPv4 proxy/worker endpoints are supported.")
