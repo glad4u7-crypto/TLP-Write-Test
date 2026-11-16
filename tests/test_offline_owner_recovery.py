@@ -341,3 +341,41 @@ def test_audit_commit_failure_rolls_back_owner_state_and_audit_atomically(tmp_pa
     assert store.verify_audit_chain()
     assert anchor.read().revision == 1
     assert service.inspect().disposition == "ANCHOR_AHEAD_RESUMABLE"
+
+
+def test_anchor_lost_ack_after_commit_reconciles_exact_target_by_readback(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    original = anchor.compare_and_advance
+    state = {"lose_ack": True}
+
+    def commit_then_lose_ack(*, expected, target):
+        advanced = original(expected=expected, target=target)
+        if advanced and state["lose_ack"]:
+            state["lose_ack"] = False
+            raise TimeoutError("simulated acknowledgement lost after durable commit")
+        return advanced
+
+    anchor.compare_and_advance = commit_then_lose_ack
+    result = service.apply(_signed(op, ap), now=1100)
+    assert result.revision == 1
+    assert anchor.read() == AnchorState(1, result.generation, "offline-change-001")
+    assert service.inspect().disposition == "CONSISTENT"
+    assert store.verify_audit_chain()
+
+
+def test_anchor_lost_ack_without_exact_readback_still_fails_closed(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    original = anchor.compare_and_advance
+
+    def commit_then_hide_readback(*, expected, target):
+        advanced = original(expected=expected, target=target)
+        if advanced:
+            anchor.read = lambda: (_ for _ in ()).throw(OSError("readback unavailable"))
+            raise TimeoutError("acknowledgement lost")
+        return advanced
+
+    anchor.compare_and_advance = commit_then_hide_readback
+    with pytest.raises(RecoveryDenied, match="outcome is unknown"):
+        service.apply(_signed(op, ap), now=1100)
+    assert store.read_global_owner_state().revision == 0
+    assert anchor.state.revision == 1
