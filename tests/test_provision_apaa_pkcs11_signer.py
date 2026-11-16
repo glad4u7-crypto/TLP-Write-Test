@@ -29,6 +29,12 @@ class API:
         PUBLIC_KEY = "public"
         PRIVATE_KEY = "private"
 
+    class MechanismFlag:
+        HW = 1
+
+    class SlotFlag:
+        HW_SLOT = 4
+
     def __init__(self):
         self.library = Library(self)
 
@@ -54,6 +60,15 @@ class Session:
         self.api = api
         self.key = None
         self.created = 0
+        self.hardware = True
+        self.slot = self
+
+    @property
+    def flags(self):
+        return self.api.SlotFlag.HW_SLOT
+
+    def get_mechanism_info(self, _mechanism):
+        return type("MechanismInfo", (), {"flags": self.api.MechanismFlag.HW if self.hardware else 0})()
 
     def open(self, *, rw=False, user_pin):
         if rw:
@@ -166,3 +181,18 @@ def test_provisioner_refuses_existing_key_id(tmp_path):
             label="APAA Test", pin="hidden-pin", pkcs11_api=api,
         )
     assert session.created == 0
+
+
+def test_provisioner_refuses_token_without_hardware_eddsa_flag(tmp_path):
+    import pytest
+    from scripts.provision_apaa_pkcs11_signer import PKCS11ProvisionError
+    module = tmp_path / "pkcs11.so"
+    module.write_bytes(b"fake")
+    api = API()
+    api.library.session.hardware = False
+    with pytest.raises(PKCS11ProvisionError, match="hardware-backed EdDSA"):
+        cli.provision_and_self_test(
+            module_path=str(module), token_label="TEST-TOKEN", key_id="test-key-02",
+            label="APAA Test", pin="hidden-pin", pkcs11_api=api,
+        )
+    assert api.library.session.created == 0
