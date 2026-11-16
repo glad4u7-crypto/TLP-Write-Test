@@ -1,7 +1,7 @@
 # APAA-S09-C01-P59 — CI Reconciliation and Remaining Test Inventory
 
 **Checkpoint:** `APAA-S09-C01-P59-CI-RECONCILIATION-AND-REMAINING-TEST-INVENTORY`  
-**Status:** IN PROGRESS — repository CI evidence reconciled for the last recorded PR head; P58-specific ancestry and all external gates remain to be independently closed.  
+**Status:** COMPLETE for the P59 repository scope — P58 exact-commit CI evidence and the P60–P63 qualification inventory are reconciled. Current remediation-branch CI is tracked separately; external qualification gates remain BLOCKED.  
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **PR:** #11 — Draft / Open / Unmerged.  
 **Safety:** no merge, deployment, host mutation, paid service, Auto-Run, browser/worker activation, or C02 start.
