@@ -2,7 +2,7 @@
 
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **Scope:** Proxy/worker topology, durable identity-bound inspector challenge, strict egress evidence parsing.  
-**Status:** P17–P19 implementation and automated tests committed. Exact-head CI is pending; live disposable-Linux qualification remains external. No production network or firewall was changed.
+**Status:** P17–P19 implementation and automated tests committed. The exact code head `b45383deb50613fd8780f5ad2f732ff0250a2ff2` passed both Agent Foundation CI and Python Demo CI (2026-11-16). Live disposable-Linux qualification remains external. No production network or firewall was changed.
 
 ## P17 — Proxy/Worker topology
 
@@ -53,8 +53,8 @@ Key provisioning remains out-of-band. The SQLite database must be private to the
 
 ## Verification and remaining qualification
 
-- P18 implementation and new executor integration tests are committed; do not mark CI-verified until both repository workflows pass on the exact final PR head.
+- P18 executor integration tests and P19 strict nftables parser/collector tests are included in the repository test suites. Both repository workflows passed on exact code head `b45383deb50613fd8780f5ad2f732ff0250a2ff2`: Agent Foundation CI run `43794016584` and Python Demo CI run `43794016699`.
 - Still required: disposable Linux runtime tests; inspect actual Docker/Podman network and namespace configuration; verify internal network flags, host firewall hook precedence, IPv4/IPv6 routes, direct DNS and UDP/QUIC denial; test proxy upstream DNS rebinding and pinned-IP dial; exercise cancellation and cleanup.
 - No OCI container, network, firewall, browser or website was created/accessed in this implementation. No merge, deployment, payment, purchase, paid provider, API key or Auto-Run was used.
 
-**Checkpoint decision:** P17/P18/P19 code and automated-test layers delivered; exact-head CI and operational security qualification pending. Live browser remains disabled.
+**Checkpoint decision:** P17/P18/P19 code and automated-test layers delivered; automated CI verified on the code head above. Operational security qualification (real Linux OCI namespaces, firewall hooks, routes, DNS/UDP/QUIC bypass and proxy DNS-rebinding/pinned-IP tests) remains pending. Live browser remains disabled.
