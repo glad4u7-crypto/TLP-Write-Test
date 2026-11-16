@@ -59,7 +59,7 @@ GitHub Actions additionally run dependency audit, browser smoke tests and dispos
 - SQLite and in-process capabilities are not a hostile-code sandbox or a validated multi-host production architecture.
 - Production is **NOT APPROVED** until the release blockers have independently reviewed evidence and explicit approval.
 
-See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md), [S04 Final Security Closure Plan](docs/APAA_S04_FINAL_SECURITY_CLOSURE_PLAN.md), and [P31 Final Evidence Inventory](docs/APAA_S09_C01_P31_FINAL_EVIDENCE_INVENTORY_AND_CLOSURE_GATE.md).
+See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md), [S04 Final Security Closure Plan](docs/APAA_S04_FINAL_SECURITY_CLOSURE_PLAN.md), [P31 Final Evidence Inventory](docs/APAA_S09_C01_P31_FINAL_EVIDENCE_INVENTORY_AND_CLOSURE_GATE.md), [P32 Android-first qualification](docs/APAA_S09_C01_P32_ANDROID_FIRST_BULK_QUALIFICATION.md), and the [authenticated Android test setup runbook](docs/APAA_S09_C01_AUTHENTICATED_ANDROID_TEST_SETUP.md).
 
 ## Development rules
 
@@ -74,7 +74,7 @@ See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md
 
 The active APAA security-hardening work is tracked in [Pull Request #11](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11), on branch `feature/apaa-s09-c01-p16-oci-lifecycle` targeting `feature/agent-v0.3-zero-cost-core`.
 
-At commit `2776db4dc1524416d96acf05aca64691f02d4f18` (2026-11-16), all four PR-triggered workflows completed successfully: Agent Foundation CI, Python Demo CI, P20 Rootless Podman Runtime Qualification and P23 Rootless Podman Executor Integration. These verify repository code and disposable CI environments only. They do not qualify an owner-controlled Linux host, protected signer, independent anti-rollback anchor, complete sink-side egress topology, physical devices or independent security review.
+At code commit `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4` (2026-11-16), all four PR-triggered workflows completed successfully: Agent Foundation CI, Python Demo CI, P20 Rootless Podman Runtime Qualification and P23 Rootless Podman Executor Integration. A later documentation-only commit records those results and adds the [authenticated Android test setup runbook](docs/APAA_S09_C01_AUTHENTICATED_ANDROID_TEST_SETUP.md); no new CI run is claimed for that documentation-only commit. These CI runs verify repository code and disposable CI environments only. They do not qualify an owner-controlled Linux host, protected signer, independent anti-rollback anchor, complete sink-side egress topology, physical devices or independent security review.
 
 S09 C01 remains **OPEN / NOT COMPLETE** until every mandatory P31 real-host gate is independently evidenced and approved. PR #11 remains Draft/Open/Unmerged. Auto-Run remains OFF; browser/worker execution remains disabled; do not merge or deploy without explicit owner authorization.
 
