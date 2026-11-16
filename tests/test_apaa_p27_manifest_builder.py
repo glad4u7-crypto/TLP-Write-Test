@@ -160,6 +160,35 @@ def test_no_follow_open_rejects_symlink_swap_after_inventory(tmp_path, monkeypat
 
 
 
+
+def test_recovers_from_crash_left_staging_file(tmp_path):
+    root = tmp_path / "evidence"
+    _evidence(root)
+    stale = root / (".manifest-" + "a" * 32 + ".tmp")
+    stale.write_bytes(b"partial bytes from interrupted writer")
+
+    manifest = build_manifest(root, METADATA)
+
+    assert set(manifest["files"]) == set(FILES)
+    assert (root / "manifest.json").is_file()
+    assert not stale.exists()
+    assert not list(root.glob(".manifest-*.tmp"))
+
+
+def test_existing_manifest_cleans_crash_left_staging_file_without_overwrite(tmp_path):
+    root = tmp_path / "evidence"
+    _evidence(root)
+    build_manifest(root, METADATA)
+    original = (root / "manifest.json").read_bytes()
+    stale = root / (".manifest-" + "b" * 32 + ".tmp")
+    stale.write_bytes(b"interrupted cleanup")
+
+    with pytest.raises(ManifestBuildError, match="already exists"):
+        build_manifest(root, METADATA)
+
+    assert (root / "manifest.json").read_bytes() == original
+    assert not stale.exists()
+
 def test_concurrent_builders_publish_exactly_one_complete_manifest(tmp_path, monkeypatch):
     import scripts.build_apaa_p27_manifest as builder
 
