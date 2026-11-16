@@ -21,6 +21,12 @@ _IDENTITY_BOUND_KEYS = (
     "approval_session_scope",
     "approval_authority_config_id",
     "trusted_directory_enrolled_session",
+    "global_owner_generation",
+    "global_owner_principal",
+    "global_owner_authorized",
+    "global_owner_admin_context",
+    "global_owner_pending_action",
+    "global_owner_approval_receipt",
 )
 
 
