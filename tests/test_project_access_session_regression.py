@@ -12,11 +12,12 @@ BOB = Principal("bob", "https://users.example", True)
 
 
 def test_two_user_sessions_do_not_share_identity_bound_state(tmp_path):
-    owner_state = {"pending_project": {"name": "owner draft"}}
-    reader_state = {"pending_project": {"name": "reader draft"}}
-
+    owner_state = {}
+    reader_state = {}
     bind_session_identity(owner_state, session_identity_key(OWNER.issuer, OWNER.subject))
     bind_session_identity(reader_state, session_identity_key(ALICE.issuer, ALICE.subject))
+    owner_state["pending_project"] = {"name": "owner draft"}
+    reader_state["pending_project"] = {"name": "reader draft"}
 
     assert owner_state["active_identity_subject"] != reader_state["active_identity_subject"]
     assert owner_state["pending_project"]["name"] == "owner draft"
@@ -73,13 +74,14 @@ def test_logout_then_identity_switch_cannot_reuse_old_session_capability():
     old_authority = ApprovalAuthority()
     old_scope = "owner-session-scope"
     payload = {"operation": "sensitive"}
-    receipt = old_authority.issue("test_action", payload, session_scope=old_scope)
+    payload = {"name": "Private project", "description": ""}
+    receipt = old_authority.issue("create_project", payload, session_scope=old_scope)
 
     state.update({
         "approval_authority": old_authority,
         "approval_session_scope": old_scope,
         "execution_gateway": ExecutionGateway(
-            {"test_action": lambda data: "executed"},
+            {"create_project": lambda data: "executed"},
             approval_authority=old_authority,
             session_scope=old_scope,
         ),
@@ -93,5 +95,5 @@ def test_logout_then_identity_switch_cannot_reuse_old_session_capability():
         approval_authority=new_authority,
         session_scope="reader-session-scope",
     )
-    result = new_gateway.execute("test_action", payload, approval_receipt=receipt)
+    result = new_gateway.execute("create_project", payload, approval_receipt=receipt)
     assert result.executed is False
