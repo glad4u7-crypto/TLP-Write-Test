@@ -122,3 +122,27 @@ All four required GitHub Actions workflows completed successfully on the exact a
 The workflow job and step summaries were inspected; every reported job and step completed successfully. This confirms repository CI and disposable CI runtime checks only. It does not establish physical Android-device compatibility, real-host qualification, production key custody, production anti-rollback durability, or live browser/worker safety.
 
 **Checkpoint disposition:** architecture decision recorded and its exact-commit CI is PASS. Android implementation and physical-device verification remain pending. S09 C01 real-host qualification remains OPEN; browser/worker remain disabled; PR #11 remains Draft/Open/Unmerged. No merge, deployment, host mutation, paid service, payment/purchase, or Auto-Run activation is authorized.
+
+
+## 9. Android-first responsive UI implementation and practice
+
+**Part checkpoint:** `APAA-ANDROID-FIRST-RESPONSIVE-UI-IMPLEMENTATION`  
+**Status:** IMPLEMENTED IN REPOSITORY · AUTOMATED CI PENDING · PHYSICAL ANDROID PRACTICE PENDING
+
+Implementation in this part:
+- Streamlit page layout changed from wide to centered and sidebar defaults to collapsed.
+- Responsive CSS is isolated in `core/mobile_ui.py` and injected by the app at startup.
+- Narrow-screen styles cover readable form controls (16px), minimum 44px touch targets, tab overflow scrolling, responsive spacing/typography, and constrained horizontal layouts.
+- Presentation-only boundary: this change does not register execution handlers, enable Auto-Run, configure a paid provider, or alter approval/security policy.
+- Automated CSS contract tests are in `tests/test_mobile_ui.py`.
+
+**Required learner practice (real Android device):**
+1. Open the PR preview/deployment only when one is made available; otherwise use a locally/privately hosted development instance. Do not expose local prototype mode publicly.
+2. On Android Chrome, inspect portrait and landscape layouts; scroll the Project Manager, Task Workspace, and Memory & Knowledge sections.
+3. Verify buttons are comfortably tappable, form text is readable, tabs can be horizontally scrolled, and no page-wide horizontal overflow occurs.
+4. Report any clipped text, overlapping controls, difficult touch targets, or unexpected navigation. Do not enter secrets or real personal data in a prototype.
+5. Confirm that task preparation remains review-only and that no browser/device action or Auto-Run starts.
+
+**Pass evidence required:** successful GitHub CI on the final commit plus user-confirmed Android Chrome observations. Until both exist, this part must not be labelled fully completed.
+
+**Scope boundary:** no PWA manifest/service worker or APK is claimed by this part. Native Android/PWA packaging is a later sequential part after responsive web validation.
