@@ -47,3 +47,8 @@ No token, PIN, private key, production credential, paid service, host or deploym
 ## P60 acceptance
 
 P60 software lifecycle tests are accepted only after exact-head CI is green. Physical-token lifecycle qualification remains BLOCKED until a compatible owner-approved device is available and independently verified. C01 remains OPEN.
+
+
+## 6. Latest branch-head regression verification
+
+The P60 tests remain included in the current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This is regression evidence for the current tree, not a physical-token test. P60 software lifecycle scope remains COMPLETE; real hardware key rotation/revocation/recovery remains BLOCKED.
