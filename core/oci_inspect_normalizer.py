@@ -9,6 +9,22 @@ from core.oci_worker_plan import OCIWorkerPlan
 from core.oci_errors import OCIExecutionError
 
 
+# Linux capability names known to the supported runtime contract. Podman may
+# expand --cap-drop=ALL into this explicit list in inspect JSON; Docker commonly
+# preserves the literal ALL token. Unknown/missing entries fail closed.
+_LINUX_CAPABILITIES = frozenset({
+    "AUDIT_CONTROL", "AUDIT_READ", "AUDIT_WRITE", "BLOCK_SUSPEND", "BPF",
+    "CHECKPOINT_RESTORE", "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH",
+    "FOWNER", "FSETID", "IPC_LOCK", "IPC_OWNER", "KILL", "LEASE",
+    "LINUX_IMMUTABLE", "MAC_ADMIN", "MAC_OVERRIDE", "MKNOD", "NET_ADMIN",
+    "NET_BIND_SERVICE", "NET_BROADCAST", "NET_RAW", " setfcap".strip(),
+    "SETGID", "SETFCAP", "SETPCAP", "SETUID", "SYS_ADMIN", "SYS_BOOT",
+    "SYS_CHROOT", "SYS_MODULE", "SYS_NICE", "SYS_PACCT", "SYS_PTRACE",
+    "SYS_RAWIO", "SYS_RESOURCE", "SYS_TIME", "SYS_TTY_CONFIG", "SYSLOG",
+    "WAKE_ALARM",
+})
+
+
 @dataclass(frozen=True)
 class OCIInspectSnapshot:
     container_id: str
@@ -20,6 +36,13 @@ class OCIInspectSnapshot:
     cap_drop: tuple[str, ...]
     security_options: tuple[str, ...]
     launch_spec_digest: str
+
+
+def _all_capabilities_dropped(value: Any) -> bool:
+    if not isinstance(value, list) or not value or not all(type(x) is str for x in value):
+        return False
+    normalized = {x.upper().removeprefix("CAP_") for x in value}
+    return normalized == {"ALL"} or normalized == _LINUX_CAPABILITIES
 
 
 def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
@@ -40,7 +63,6 @@ def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
     if type(container_id) is not str or len(container_id) < 12:
         raise OCIExecutionError("inspect: runtime did not return a valid immutable container ID.")
 
-    # Docker reports Config.Image; Podman may additionally report ImageName.
     config_image = config.get("Image") if isinstance(config, dict) else None
     podman_image = item.get("ImageName") if plan.runtime == "podman" else None
     effective_image = config_image or podman_image
@@ -56,8 +78,11 @@ def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
     if host.get("Privileged") is True or host.get("PidMode") == "host" or host.get("IpcMode") == "host":
         raise OCIExecutionError("inspect: privileged or host namespace mode detected.")
     caps = host.get("CapDrop")
-    if not isinstance(caps, list) or "ALL" not in caps:
+    if not _all_capabilities_dropped(caps):
         raise OCIExecutionError("inspect: Linux capabilities are not fully dropped.")
+    cap_add = host.get("CapAdd")
+    if cap_add not in (None, []):
+        raise OCIExecutionError("inspect: runtime adds Linux capabilities.")
     security = host.get("SecurityOpt")
     if not isinstance(security, list) or not any(
         isinstance(x, str) and x.startswith("no-new-privileges") for x in security
