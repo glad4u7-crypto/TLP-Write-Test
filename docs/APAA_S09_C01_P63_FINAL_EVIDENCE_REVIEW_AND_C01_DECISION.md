@@ -113,3 +113,17 @@ The owner has confirmed that Android is the available primary device. APAA quali
 This decision removes PC hardware availability as a blocker; it does not waive physical Android, live identity/revocation, protected-key, independent-anchor, real-host or independent-review gates.
 
 **Android-only delivery status:** PC device prerequisite = NOT REQUIRED; physical Android owner acceptance = PENDING; C01 = OPEN / NOT COMPLETE; C02 = NOT STARTED.
+
+
+## 8. Latest branch-head CI and final disposition refresh (2026-11-16)
+
+The current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb` completed all four required PR workflows successfully:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | #1214 | PASS |
+| Python Demo CI | #1303 | PASS |
+| P20 Rootless Podman Runtime Qualification | #343 | PASS |
+| P23 Rootless Podman Executor Integration | #325 | PASS |
+
+Both pytest jobs reported 1,348 passed and 9 skipped. This verifies the latest repository regression state after owner-only OIDC fixture corrections. It does not waive any G1–G10 external gate. The repository remains Draft/Open/Unmerged; no production deployment or real hardware/service qualification has occurred. Therefore P59–P63 repository/software sequence is COMPLETE, but C01 closure remains NO-GO / OPEN and C02 remains NOT STARTED.
