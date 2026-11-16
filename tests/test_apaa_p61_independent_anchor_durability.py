@@ -177,3 +177,64 @@ def test_restore_of_newer_backup_does_not_reduce_sequence():
     with pytest.raises(RuntimeError, match="roll back"):
         anchor.restore(newer_backup)
     assert anchor.read_sequence(ISSUER) == 5
+
+
+
+class FailingReadAnchor:
+    def read_sequence(self, issuer_key_id):
+        raise OSError("anchor read unavailable")
+
+    def advance_sequence(self, issuer_key_id, *, expected_current, new_sequence):
+        raise AssertionError("advance must not run after read failure")
+
+
+class InvalidReadAnchor:
+    def __init__(self, value):
+        self.value = value
+
+    def read_sequence(self, issuer_key_id):
+        return self.value
+
+    def advance_sequence(self, issuer_key_id, *, expected_current, new_sequence):
+        raise AssertionError("advance must not run for an invalid anchor value")
+
+
+class FailingAdvanceAnchor:
+    def read_sequence(self, issuer_key_id):
+        return 0
+
+    def advance_sequence(self, issuer_key_id, *, expected_current, new_sequence):
+        raise OSError("anchor commit outcome unavailable")
+
+
+class RejectingAdvanceAnchor:
+    def read_sequence(self, issuer_key_id):
+        return 0
+
+    def advance_sequence(self, issuer_key_id, *, expected_current, new_sequence):
+        return False
+
+
+def test_anchor_read_failure_fails_closed_before_bundle_acceptance():
+    public, raw = _bundle(sequence=4)
+    with pytest.raises(InspectorTrustSequenceError, match="Could not read"):
+        _accept(public, raw, FailingReadAnchor())
+
+
+@pytest.mark.parametrize("invalid_value", [-1, True, None, "0"])
+def test_invalid_anchor_read_value_fails_closed(invalid_value):
+    public, raw = _bundle(sequence=4)
+    with pytest.raises(InspectorTrustSequenceError, match="invalid value"):
+        _accept(public, raw, InvalidReadAnchor(invalid_value))
+
+
+def test_anchor_advance_exception_fails_closed():
+    public, raw = _bundle(sequence=4)
+    with pytest.raises(InspectorTrustSequenceError, match="update failed"):
+        _accept(public, raw, FailingAdvanceAnchor())
+
+
+def test_anchor_cas_rejection_fails_closed():
+    public, raw = _bundle(sequence=4)
+    with pytest.raises(InspectorTrustSequenceError, match="changed concurrently"):
+        _accept(public, raw, RejectingAdvanceAnchor())
