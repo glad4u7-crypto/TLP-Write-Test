@@ -81,3 +81,37 @@ def test_parse_connect_request_accepts_only_matching_host_header():
     )
     assert request.hostname == "example.com"
     assert request.port == 443
+
+
+def test_proxy_denies_non_allowlisted_host_before_opening_upstream_socket():
+    """An unauthorized CONNECT target must fail before the connector is called."""
+    import socket
+    import threading
+
+    policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        resolver=lambda host: (PUBLIC,),
+    )
+    authorizer = EgressDestinationAuthorizer(policy)
+    dial_attempts = []
+
+    def dialer(address, port, timeout):
+        dial_attempts.append((address, port))
+        raise AssertionError("connector must not run for a denied hostname")
+
+    proxy = EgressConnectProxy(authorizer, PinnedIPConnector(dialer))
+    client, server_side = socket.socketpair()
+    worker = threading.Thread(target=proxy.handle_client, args=(server_side,), daemon=True)
+    worker.start()
+    try:
+        client.sendall(
+            b"CONNECT not-allowed.example:443 HTTP/1.1\\r\\n"
+            b"Host: not-allowed.example:443\\r\\n\\r\\n"
+        )
+        response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 502")
+        assert dial_attempts == []
+    finally:
+        client.close()
+        worker.join(timeout=2)
+        assert not worker.is_alive()
