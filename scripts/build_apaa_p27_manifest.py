@@ -28,6 +28,21 @@ _REQUIRED = (
 )
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
+_STAGING_NAME = re.compile(r"^\.manifest-[0-9a-f]{32}\.tmp$")
+
+
+def _cleanup_staging_files(root_fd: int) -> None:
+    """Remove only reserved manifest staging names without following entries."""
+    removed = False
+    for name in os.listdir(root_fd):
+        if _STAGING_NAME.fullmatch(name):
+            try:
+                os.unlink(name, dir_fd=root_fd)
+                removed = True
+            except FileNotFoundError:
+                pass
+    if removed:
+        os.fsync(root_fd)
 
 
 class ManifestBuildError(ValueError):
@@ -122,9 +137,13 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
         except FileNotFoundError:
             pass
         else:
+            # A prior process may have crashed after publication but before its
+            # staging-file cleanup. The final manifest is immutable; remove only
+            # reserved staging names, then refuse replacement.
+            _cleanup_staging_files(root_fd)
             raise ManifestBuildError("manifest.json already exists; refusing to overwrite")
 
-        present = set(os.listdir(root_fd))
+        present = {name for name in os.listdir(root_fd) if not _STAGING_NAME.fullmatch(name)}
         expected = set(_REQUIRED)
         if present != expected:
             missing, extra = sorted(expected - present), sorted(present - expected)
@@ -167,6 +186,9 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
             except FileExistsError as exc:
                 raise ManifestBuildError("manifest.json already exists; refusing to overwrite") from exc
             os.fsync(root_fd)
+            # Once this complete manifest wins publication, reserved staging
+            # names are disposable; a live losing builder will fail its link safely.
+            _cleanup_staging_files(root_fd)
         finally:
             try:
                 os.unlink(temp_name, dir_fd=root_fd)
