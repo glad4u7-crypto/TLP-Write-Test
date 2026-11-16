@@ -25,6 +25,20 @@ from core.storage import TenantKey
 
 
 @dataclass(frozen=True)
+class GlobalOwnerState:
+    """Durable monotonic owner-configuration generation state."""
+
+    revision: int
+    generation: str | None
+    change_id: str | None
+    updated_at: str | None
+
+
+class GlobalOwnerStateConflict(RuntimeError):
+    """Raised when an operator CAS update uses a stale revision."""
+
+
+@dataclass(frozen=True)
 class DurableAuditEvent:
     action: str
     result: str
@@ -137,13 +151,134 @@ class SQLiteSecurityStore:
                 previous_hash TEXT NOT NULL,
                 entry_hash TEXT NOT NULL UNIQUE
             )""",
+            """CREATE TABLE IF NOT EXISTS global_owner_config_state (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                generation TEXT,
+                change_id TEXT,
+                updated_at TEXT
+            )""",
         )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for statement in statements:
                     connection.execute(statement)
+                connection.execute(
+                    """INSERT OR IGNORE INTO global_owner_config_state
+                       (singleton_id, revision, generation, change_id, updated_at)
+                       VALUES (1, 0, NULL, NULL, NULL)"""
+                )
                 connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+
+    @staticmethod
+    def _validate_owner_generation(generation: str | None) -> None:
+        if generation is not None and (
+            type(generation) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", generation)
+        ):
+            raise ValueError("Owner generation must be a lowercase SHA-256 hex digest or None.")
+
+    def read_global_owner_state(self) -> GlobalOwnerState:
+        """Read the shared owner-generation high-water mark.
+
+        Every privileged request should call this against the authoritative
+        shared security database; do not cache the result across requests.
+        """
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                """SELECT revision, generation, change_id, updated_at
+                   FROM global_owner_config_state WHERE singleton_id = 1"""
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Global owner state row is missing.")
+            return GlobalOwnerState(
+                revision=int(row["revision"]),
+                generation=row["generation"],
+                change_id=row["change_id"],
+                updated_at=row["updated_at"],
+            )
+
+    def compare_and_set_global_owner_generation(
+        self,
+        *,
+        expected_revision: int,
+        generation: str | None,
+        change_id: str,
+    ) -> GlobalOwnerState:
+        """Atomically advance/revoke owner generation and append local audit.
+
+        This is a storage primitive, not an operator-authentication mechanism.
+        It MUST only be called by a separately authorized offline/operator
+        workflow, never by a browser, task, model, or ordinary API request.
+        The revision CAS prevents concurrent updates from silently winning.
+        """
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValueError("Expected owner-state revision is invalid.")
+        self._validate_owner_generation(generation)
+        if (
+            type(change_id) is not str
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}", change_id)
+        ):
+            raise ValueError("Owner change identifier is invalid.")
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    """SELECT revision, generation FROM global_owner_config_state
+                       WHERE singleton_id = 1"""
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Global owner state row is missing.")
+                current_revision = int(row["revision"])
+                if current_revision != expected_revision:
+                    raise GlobalOwnerStateConflict("Global owner state revision changed.")
+                if row["generation"] == generation:
+                    raise ValueError("Owner generation change must alter the current value.")
+
+                new_revision = current_revision + 1
+                connection.execute(
+                    """UPDATE global_owner_config_state
+                       SET revision = ?, generation = ?, change_id = ?, updated_at = ?
+                       WHERE singleton_id = 1 AND revision = ?""",
+                    (new_revision, generation, change_id, timestamp, current_revision),
+                )
+
+                # Append the local hash-chain audit record in the SAME SQLite
+                # transaction as the generation update: no unaudited partial
+                # state transition can commit.
+                event = DurableAuditEvent(
+                    action="global_owner.generation.change",
+                    result="committed",
+                    reason_code="operator_cas_update",
+                    principal_fingerprint="external_operator_identity_not_verified",
+                    request_id=change_id,
+                )
+                event_data = self._canonical_event(event, timestamp)
+                previous_hash = self._verify_audit_connection(connection)
+                entry_hash = self._hash(previous_hash, event_data)
+                connection.execute(
+                    """INSERT INTO durable_audit_events
+                       (timestamp, action, result, reason_code, principal_fingerprint,
+                        request_id, previous_hash, entry_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (timestamp, event.action, event.result, event.reason_code,
+                     event.principal_fingerprint, event.request_id,
+                     previous_hash, entry_hash),
+                )
+                connection.commit()
+                return GlobalOwnerState(
+                    revision=new_revision,
+                    generation=generation,
+                    change_id=change_id,
+                    updated_at=timestamp,
+                )
             except Exception:
                 connection.rollback()
                 raise
