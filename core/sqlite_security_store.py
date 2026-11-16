@@ -511,6 +511,26 @@ class SQLiteSecurityStore:
         with closing(self._connect()) as connection:
             return self._verify_audit_connection(connection)
 
+    def read_audit_checkpoint(self):
+        """Return the verified local audit sequence/hash head.
+
+        Import is local to avoid coupling the core SQLite storage module to the
+        provider contract at module import time.
+        """
+        from core.audit_checkpoint import AuditCheckpoint, GENESIS_HASH
+
+        with closing(self._connect()) as connection:
+            entry_hash = self._verify_audit_connection(connection)
+            row = connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM durable_audit_events"
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("SQLite audit sequence is unavailable.")
+            sequence = int(row["sequence"])
+            if sequence == 0 and entry_hash != GENESIS_HASH:
+                raise ValueError("Empty SQLite audit log has a non-genesis hash.")
+            return AuditCheckpoint(sequence=sequence, entry_hash=entry_hash)
+
 
 class SQLiteExecutionAuditLog:
     """Adapter matching ExecutionGateway's append/verify audit-log contract.
