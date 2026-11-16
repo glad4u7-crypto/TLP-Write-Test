@@ -129,3 +129,26 @@ This is stronger than a unit-test-only result: CI exercised a real disposable ro
 - Latest exact implementation head `1009939c847a2fc3157e9715e79bacacad89ced0`: all four required CI workflows PASS; Foundation and Demo suites each report 1049 passed, 7 skipped; P23 and P20 rootless Podman qualification PASS.
 - The result `VERIFIED_ED25519` proves only that the exact manifest bytes verify under the supplied pinned public key. It does not prove who controls that key, protected hardware custody, real-host identity, truthful observations, or network isolation.
 - **Next:** define an independent reviewer-verification/disposition contract and test it against the manifest digest and signer fingerprint. Keep host qualification BLOCKED until owner-approved real host, out-of-band trust provisioning, protected signer, durable anti-rollback anchor and sink-side network evidence exist.
+
+
+## Signed independent reviewer disposition
+
+The repository includes `scripts/verify_apaa_p27_review.py` to verify a detached reviewer attestation after the evidence manifest has passed integrity and Ed25519 signature verification. The reviewer attestation is canonical JSON signed by a separate Ed25519 reviewer key and binds the exact SHA-256 digest of the raw manifest bytes, reviewer ID, UTC review time, disposition (PASS/FAIL/BLOCKED), reviewer-key fingerprint and findings. The attestation, signature and reviewer public key must be outside the evidence directory. The reviewer key fingerprint must be independently pinned out-of-band.
+
+The verifier reports `reviewer_identity=OUT_OF_BAND_IDENTITY_CHECK_REQUIRED` and `reviewer_independence=OUT_OF_BAND_INDEPENDENCE_CHECK_REQUIRED`. Even a cryptographically valid PASS disposition returns `qualification_approval=NOT_GRANTED_BY_CRYPTOGRAPHIC_VERIFICATION`; an owner must independently establish the reviewer identity and independence and approve the exact evidence/code. This verifier cannot prove the real host or the truth of observations.
+
+Example:
+
+```bash
+python -m scripts.verify_apaa_p27_review EVIDENCE_DIRECTORY \
+  --manifest-signature /secure/evidence/manifest.sig \
+  --manifest-public-key /secure/trust/host-evidence.pub \
+  --manifest-key-sha256 OUT_OF_BAND_HOST_KEY_FINGERPRINT \
+  --review-attestation /secure/review/review-attestation.json \
+  --review-signature /secure/review/review-attestation.sig \
+  --review-public-key /secure/trust/reviewer.pub \
+  --review-key-sha256 OUT_OF_BAND_REVIEWER_KEY_FINGERPRINT
+```
+
+
+P27 review-verifier tests cover digest binding, pinned reviewer key, tampering, PASS-with-findings rejection, UTC timestamp and detached sidecar placement. The verifier is a cryptographic evidence tool only; reviewer identity/independence and overall qualification approval remain owner-controlled external gates.
