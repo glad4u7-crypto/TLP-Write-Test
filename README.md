@@ -1,4 +1,4 @@
-# Autonomous Personal AI Agent (APAA)
+# Autonomous Personal AI Automation Agent (APAA)
 
 A safety-first, zero-cost foundation for a personal digital-task agent. The current product is a Streamlit web prototype; it is not yet a fully autonomous browser/device-control system or a native Android app.
 
@@ -74,7 +74,7 @@ See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md
 
 The active APAA security-hardening work is tracked in [Pull Request #11](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11), on branch `feature/apaa-s09-c01-p16-oci-lifecycle` targeting `feature/agent-v0.3-zero-cost-core`.
 
-At code commit `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4` (2026-11-16), all four PR-triggered workflows completed successfully: Agent Foundation CI, Python Demo CI, P20 Rootless Podman Runtime Qualification and P23 Rootless Podman Executor Integration. A later documentation-only commit records those results and adds the [authenticated Android test setup runbook](docs/APAA_S09_C01_AUTHENTICATED_ANDROID_TEST_SETUP.md); no new CI run is claimed for that documentation-only commit. These CI runs verify repository code and disposable CI environments only. They do not qualify an owner-controlled Linux host, protected signer, independent anti-rollback anchor, complete sink-side egress topology, physical devices or independent security review.
+Latest exact PR head verified: `6f8cc1e32e6464983dc9468487be2ed51c4f4791` (2026-11-16). All four required PR-triggered workflows completed **PASS** on this exact head: [Agent Foundation CI #1022](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000688), [Python Demo CI #1097](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000755), [P20 Rootless Podman Runtime Qualification #151](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000804), and [P23 Rootless Podman Executor Integration #133](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000800). Agent Foundation included the automated Android/desktop Chromium emulation matrix; P20/P23 ran disposable rootless Podman CI qualification. These are repository and disposable-CI results only, not physical Android, owner-controlled real-host, protected signer, independent anti-rollback, complete sink-side egress, or independent security-review evidence. The P32 report records the detailed job results. Subsequent commits updating the P32 report and README are documentation-only; no new CI result is implied for those later commits.
 
 S09 C01 remains **OPEN / NOT COMPLETE** until every mandatory P31 real-host gate is independently evidenced and approved. PR #11 remains Draft/Open/Unmerged. Auto-Run remains OFF; browser/worker execution remains disabled; do not merge or deploy without explicit owner authorization.
 
