@@ -1,6 +1,6 @@
 # APAA S09 C01 P32 — Android-First Bulk Qualification
 
-**Status:** Android automated viewport matrix added; all four required workflows PASS on exact head `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4`; physical Android qualification remains owner-operated and pending.  
+**Status:** Android automated viewport matrix added; all four required workflows PASS on latest verified exact head `6f8cc1e32e6464983dc9468487be2ed51c4f4791`; physical Android qualification remains owner-operated and pending.  
 **PC:** Optional. No physical PC test is required for Android-only qualification.  
 **Checkpoint:** `APAA-S09-C01-P32-ANDROID-FIRST-BULK-QUALIFICATION`
 
@@ -64,8 +64,8 @@ If no authenticated test deployment or two controlled OIDC accounts are availabl
 
 | Area | Evidence now available | Honest status |
 |---|---|---|
-| Android narrow-screen layout | Pixel profile smoke test plus new 5-viewport matrix | CI PASS on exact head; physical device pending |
-| Plan review without execution | Existing Playwright Android-emulation test | CI PASS on exact head; physical device pending |
+| Android narrow-screen layout | Pixel profile smoke test plus new 5-viewport matrix | CI PASS on latest verified exact head; physical device pending |
+| Plan review without execution | Existing Playwright Android-emulation test | CI PASS on latest verified exact head; physical device pending |
 | Owner/session identity isolation | Deterministic unit/regression tests and app integration review | Code coverage exists; live OIDC pending |
 | Grant/revoke enforcement | Existing ACL and reconstructed-reader tests | Code coverage exists; live two-account Android E2E pending |
 | Android keyboard, lifecycle and reconnect | Operator checklist only | Physical phone test pending |
@@ -84,14 +84,17 @@ The Android phone can validate the Android client experience and live owner/sess
 
 These remain separate external gates. Do not mark them PASS based on Android, mocks or GitHub CI.
 
-## 7. Exact verification rule
+## 7. Latest exact-head CI verification
 
-Exact-head verification completed for `1ab06a3daf8c27f7d7a84c0869ce06aa4f366fe4`. All four required workflows completed successfully:
-- [Agent Foundation CI #1019](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566848) — PASS.
-- [Python Demo CI #1094](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566820) — PASS.
-- [P20 Rootless Podman Runtime Qualification #148](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566908) — PASS.
-- [P23 Rootless Podman Executor Integration #130](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43827566850) — PASS.
+Latest verified exact PR head: `6f8cc1e32e6464983dc9468487be2ed51c4f4791`. All four required PR-triggered workflows and their listed jobs completed successfully on this exact head:
 
-The combined commit status endpoint returned no separate status entries; the four PR-triggered workflow runs above are the available exact-head evidence. These CI runs do not prove physical Android behavior or external real-host qualification. Physical Android remains pending until the owner-run checklist is completed and reviewed. PC physical testing remains optional.
+- [Agent Foundation CI #1022](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000688) — **PASS**. Foundation test job, dependency audit/compile, disposable Linux egress namespace qualification and Android/desktop Chromium browser smoke tests all passed.
+- [Python Demo CI #1097](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000755) — **PASS**. Test suite and demo smoke check passed.
+- [P20 Rootless Podman Runtime Qualification #151](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000804) — **PASS**. Disposable rootless Podman CREATE/INSPECT/START/STOP/REMOVE by immutable ID and no-orphan check passed.
+- [P23 Rootless Podman Executor Integration #133](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828000800) — **PASS**. APAA executor integration against disposable rootless Podman, attestation gate and cleanup checks passed.
+
+The Android/desktop browser job is Chromium/Playwright emulation, not physical-device evidence. Disposable Linux/Podman CI is not the owner's production or independently administered host and does not prove production key custody, durable anti-rollback, or sink-side enforcement. These results do not satisfy the external real-host qualification gates. The documentation updates that record these results are documentation-only; no new CI result is implied for those later documentation commits.
+
+Physical Android remains pending until the owner-run checklist is completed and reviewed. PC physical testing remains optional.
 
 **C01 stays OPEN / NOT COMPLETE. C02 must not start.**
