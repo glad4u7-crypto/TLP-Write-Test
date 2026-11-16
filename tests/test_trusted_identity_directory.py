@@ -178,8 +178,7 @@ def test_owner_grant_label_is_not_available_for_ungranted_or_foreign_issuer(tmp_
     assert directory.owner_grant_display_label(
         project.project_id, owner=OWNER, grantee=READER, access_control=access
     ) is None
-    with pytest.raises(PermissionError):
-        directory.owner_grant_display_label(
-            project.project_id, owner=OWNER, grantee=OTHER_ISSUER,
-            access_control=access,
-        )
+    assert directory.owner_grant_display_label(
+        project.project_id, owner=OWNER, grantee=OTHER_ISSUER,
+        access_control=access,
+    ) is None
