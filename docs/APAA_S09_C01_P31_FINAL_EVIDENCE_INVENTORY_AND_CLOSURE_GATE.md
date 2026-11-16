@@ -32,7 +32,7 @@ Every row must have a restricted evidence-record reference, exact tested code SH
 | G6 — Lifecycle and attestation | Actual CREATE/INSPECT/ATTEST/START/STOP/REMOVE; immutable identity binding; stale/replay/tamper/wrong-host negative tests | BLOCKED — CI lifecycle is not owner-host qualification |
 | G7 — Egress enforcement | Effective worker namespace rules plus sink-side evidence for IPv4/IPv6, DNS TCP/UDP, UDP/443/QUIC, WebSocket, alternate interfaces, DNS rebinding/pinned-IP dial-time and firewall hook precedence | BLOCKED — complete real topology not proven |
 | G8 — Failure and cleanup | Real daemon interruption, cancellation, timeout, signer/collector loss and bounded orphan cleanup | BLOCKED — no owner-host drill |
-| G9 — Android + PC assessment | Physical Android and PC browser tests; permission behavior, identity/session transitions, logout/revocation propagation, lifecycle/background limits and explicit boundary between Android control plane and isolated worker | BLOCKED — CI viewport emulation exists; physical-device/browser evidence absent |
+| G9 — Android primary-device assessment | Physical Android browser tests; permission behavior, identity/session transitions, logout/revocation propagation, lifecycle/background limits and explicit boundary between Android control plane and isolated worker | BLOCKED — CI Android viewport emulation exists; physical Android evidence absent. PC is an optional future client and is not a prerequisite for Android-only use or Android qualification. If the owner later elects to use/qualify PC, perform separate physical PC verification before making PC release claims |
 | G10 — Independent review | Independent reviewer verifies evidence authenticity, host identity, key custody, anchor, sink observations, cleanup, owner grant/revoke controls, resource authorization boundaries, two-user OIDC results and exact code/evidence digests | BLOCKED — no signed independent approval |
 
 ## 3. Evidence acceptance rules
@@ -42,13 +42,13 @@ Every row must have a restricted evidence-record reference, exact tested code SH
 3. Keep private keys, tokens, credentials, environment dumps and personal data out of the evidence bundle and repository.
 4. Sign the exact raw manifest bytes with the approved evidence signer. Verify against a public-key fingerprint provisioned independently out-of-band.
 5. Bind the independent review attestation to the exact manifest digest and verify it with a separately pinned reviewer key.
-6. The owner must independently establish reviewer identity and independence; cryptographic validity alone does not do this.
+6. The owner must independently establish reviewer identity and independence; cryptographic validity alone does not do this. PC physical-device testing is conditional on the owner choosing to use or qualify the optional PC client; it must not block Android-only delivery.
 7. Any missing prerequisite, missing artifact, skipped mandatory test, unexplained network observation, failed assertion or untrusted key is BLOCKED or FAIL, never PASS.
 8. After any code change, rerun mandatory CI and repeat every affected host gate against the new exact code SHA.
 
 ## 4. Android-first boundary
 
-Android remains the primary owner interface and control plane. Android/Termux is not accepted as a hostile-code isolation boundary and must not be used to claim Linux worker qualification. The current architecture decision does not prove a native Android app, PWA, physical-device test, or isolated worker is already operational.
+Android remains the primary owner interface and control plane. PC is an optional future client; PC ownership, setup and physical-device testing are not required for Android-only use. Android/Termux is not accepted as a hostile-code isolation boundary and must not be used to claim Linux worker qualification. The current architecture decision does not prove a native Android app, PWA, physical-device test, or isolated worker is already operational.
 
 ## 5. Release and scope locks
 
