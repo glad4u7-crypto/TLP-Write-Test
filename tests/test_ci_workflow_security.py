@@ -78,7 +78,7 @@ def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
     for workflow in ALL_SECURITY_WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
         references = re.findall(
-            r"^\\s*(?:-\\s*)?uses:\\s*([^\\s#]+)", source, re.MULTILINE
+            r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", source, re.MULTILINE
         )
         assert references, f"No external actions found in {workflow.name}"
         for reference in references:
@@ -87,7 +87,7 @@ def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
                 f"{workflow.name} uses an unpinned action: {reference}"
             )
         assert re.search(
-            r"^permissions:\\s*\\n\\s+contents:\\s+read\\s*$",
+            r"^permissions:\s*\n\s+contents:\s+read\s*$",
             source,
             re.MULTILINE,
         ), f"{workflow.name} must declare contents: read only"
@@ -98,6 +98,6 @@ def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
 def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeouts():
     for workflow in ALL_SECURITY_WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
-        assert re.search(r"^concurrency:\\s*$", source, re.MULTILINE), workflow.name
+        assert re.search(r"^concurrency:\s*$", source, re.MULTILINE), workflow.name
         assert "cancel-in-progress: false" in source, workflow.name
-        assert re.search(r"^\\s+timeout-minutes:\\s+\\d+\\s*$", source, re.MULTILINE), workflow.name
+        assert re.search(r"^\s+timeout-minutes:\s+\d+\s*$", source, re.MULTILINE), workflow.name
