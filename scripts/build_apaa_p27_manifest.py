@@ -27,7 +27,7 @@ _REQUIRED = (
     "anchor-recovery.json", "review.json",
 )
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
-_STAGING_NAME = re.compile(r"^\\.manifest-[0-9a-f]{32}\\.tmp$")
+_STAGING_NAME = re.compile(r"^\.manifest-[0-9a-f]{32}\.tmp$")
 _MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 class ManifestBuildError(ValueError):
     """Raised when the evidence directory cannot safely be inventoried."""
