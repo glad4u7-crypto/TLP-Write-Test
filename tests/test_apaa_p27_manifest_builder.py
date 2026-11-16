@@ -92,6 +92,20 @@ def test_rejects_missing_or_extra_artifacts(tmp_path):
         build_manifest(root, METADATA)
 
 
+@pytest.mark.parametrize("unexpected_name", [
+    ".manifest-not-a-token.tmp",
+    ".manifest-" + "A" * 32 + ".tmp",
+    ".manifest-" + "a" * 31 + ".tmp",
+    ".manifest-" + "a" * 32 + ".tmp.extra",
+])
+def test_rejects_unreserved_manifest_lookalike_files(tmp_path, unexpected_name):
+    root = tmp_path / "evidence"
+    _evidence(root)
+    (root / unexpected_name).write_text("not a reserved staging file", encoding="utf-8")
+    with pytest.raises(ManifestBuildError, match="inventory mismatch"):
+        build_manifest(root, METADATA)
+
+
 def test_rejects_symlink_artifact(tmp_path):
     root = tmp_path / "evidence"
     _evidence(root)
