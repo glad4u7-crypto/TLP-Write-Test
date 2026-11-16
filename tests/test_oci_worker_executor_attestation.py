@@ -24,7 +24,7 @@ NOW = 1000
 PROXY_IP = "172.20.0.2"
 
 
-def setup(tmp_path, *, corrupt_signature=False, revoked_key=False, wrong_worker=False):
+def setup(tmp_path, *, corrupt_signature=False, revoked_key=False, wrong_worker=False, replay_challenge=False, supplier_error=False):
     spec = build_worker_launch_spec(profile())
     plan = build_oci_worker_plan(
         spec, runtime="podman", image=IMAGE, network_name="apaa-egress-prod",
@@ -62,7 +62,16 @@ def setup(tmp_path, *, corrupt_signature=False, revoked_key=False, wrong_worker=
             }]), "")
         return CommandResult(0, "", "")
 
+    first_challenge = None
+
     def evidence_supplier(challenge, snapshot):
+        nonlocal first_challenge
+        if supplier_error:
+            raise RuntimeError('host inspector interrupted')
+        if replay_challenge:
+            if first_challenge is None:
+                first_challenge = challenge
+            challenge = first_challenge
         envelope, _ = signed_envelope(spec, private)
         envelope["payload"]["challenge"] = challenge
         envelope["payload"]["runtime_attestation"]["runtime_id"] = snapshot["container_id"]
@@ -132,5 +141,29 @@ def test_p22_signed_evidence_for_different_worker_blocks_start(tmp_path):
     assert [call[1] for call in calls] == ["create", "inspect", "rm"]
     assert report.started is False
     assert report.handle is None
+    assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
+
+
+
+def test_p22_replayed_challenge_from_previous_launch_blocks_second_start(tmp_path):
+    spec, plan, calls, executor = setup(tmp_path, replay_challenge=True)
+    first = executor.launch(plan, spec)
+    second = executor.launch(plan, spec)
+
+    assert first.started is True
+    assert second.started is False
+    assert second.cleaned is True
+    commands = [call[1] for call in calls]
+    assert commands == ["create", "inspect", "start", "create", "inspect", "rm"]
+    assert commands.count("start") == 1
+
+
+def test_p22_host_inspector_interruption_cleans_created_worker(tmp_path):
+    spec, plan, calls, executor = setup(tmp_path, supplier_error=True)
+    report = executor.launch(plan, spec)
+
+    assert [call[1] for call in calls] == ["create", "inspect", "rm"]
+    assert report.started is False
     assert report.cleaned is True
     assert "START" not in [event.stage for event in report.events]
