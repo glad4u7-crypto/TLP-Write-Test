@@ -178,7 +178,7 @@ def test_rejects_wrong_pinned_key_fingerprint(tmp_path):
 
 
 def test_rejects_signature_from_another_key(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir()
+    root = tmp_path / "evidence"
     pub, sig, fp = _signed_pack(root, tmp_path)
     wrong = Ed25519PrivateKey.generate()
     sig.write_text(base64.b64encode(wrong.sign((root / "manifest.json").read_bytes())).decode("ascii"))
@@ -198,6 +198,6 @@ def test_rejects_signature_inside_evidence_directory(tmp_path):
 
 
 def test_requires_signature_and_key_together(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir(); make_pack(root)
+    root = tmp_path / "evidence"; make_pack(root)
     with pytest.raises(EvidenceValidationError, match="supplied together"):
         validate_evidence_directory(root, signature_path=tmp_path / "manifest.sig")
