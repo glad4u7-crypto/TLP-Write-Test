@@ -21,6 +21,7 @@ from core.session_security import bind_session_identity, clear_session_identity,
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
+from core.project_checkpoint_access import OwnerProjectCheckpointAccess
 
 st.set_page_config(
     page_title="Autonomous AI Agent",
@@ -115,6 +116,7 @@ if principal is not None:
         project_store = SQLiteProjectStore(project_db_path)
         memory_db_path = apaa_settings.get("memory_db_path", ".apaa_memory/memory.sqlite3")
         memory_store = SQLiteMemoryStore(memory_db_path)
+        checkpoint_access = OwnerProjectCheckpointAccess(memory_store, project_store, principal)
     except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
         # A failed durable-store startup must not leave capabilities or
         # tenant-bound objects from an earlier successful run in this session.
@@ -154,6 +156,7 @@ if principal is not None:
         st.session_state["project_registry_tenant"] = session_identity
 else:
     memory_store = None
+    checkpoint_access = None
     if "approval_authority" not in st.session_state:
         st.session_state["approval_authority"] = ApprovalAuthority()
     audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
@@ -519,8 +522,8 @@ else:
                 checkpoint_submit = st.form_submit_button("Save checkpoint")
             if checkpoint_submit:
                 try:
-                    memory_store.save_checkpoint(
-                        tenant, project_id=checkpoint_project, label=checkpoint_label,
+                    checkpoint_access.save_checkpoint(
+                        project_id=checkpoint_project, label=checkpoint_label,
                         summary=checkpoint_summary, next_action=checkpoint_next,
                         status=checkpoint_status, consent=checkpoint_consent,
                     )
@@ -534,7 +537,7 @@ else:
                 format_func=lambda value: next(p.name for p in project_options if p.project_id == value),
                 key="recover_checkpoint_project",
             )
-            recovered = memory_store.latest_checkpoint(tenant, selected_checkpoint_project)
+            recovered = checkpoint_access.latest_checkpoint(selected_checkpoint_project)
             if recovered:
                 st.write(f"**{recovered.label} · {recovered.status}**")
                 st.write(recovered.summary)
