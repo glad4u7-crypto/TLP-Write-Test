@@ -8,9 +8,10 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import expect
 
-sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+playwright_api = pytest.importorskip("playwright.sync_api")
+sync_playwright = playwright_api.sync_playwright
+expect = playwright_api.expect
 
 
 ROOT = Path(__file__).resolve().parents[1]
