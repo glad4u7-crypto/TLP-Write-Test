@@ -187,6 +187,8 @@ class OfflineOwnerRecoveryService:
         if local_anchor == target:
             if anchor != target:
                 raise RecoveryDenied("Owner state and independent rollback anchor diverged.")
+            if not self._store.verify_audit_chain():
+                raise RecoveryDenied("Owner recovery audit integrity verification failed.")
             return local
         if local.revision != r.expected_revision or local.generation != r.old_generation:
             raise RecoveryDenied("Owner state changed; recovery request is stale.")

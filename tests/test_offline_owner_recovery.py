@@ -11,7 +11,7 @@ from core.offline_owner_recovery import (
 )
 from core.sqlite_security_store import SQLiteSecurityStore
 
-class TestOnlyMonotonicAnchor:
+class _InMemoryMonotonicAnchor:
     """In-memory test double; never suitable for deployment."""
     def __init__(self, state): self.state, self.fail_next = state, False
     def read(self): return self.state
@@ -36,7 +36,7 @@ def _setup(tmp_path):
         (RecoveryPublicKey("operator-key-01", op_pub),),
         (RecoveryPublicKey("approver-key-01", ap_pub),))
     store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
-    anchor = TestOnlyMonotonicAnchor(AnchorState(0, None, None))
+    anchor = _InMemoryMonotonicAnchor(AnchorState(0, None, None))
     return OfflineOwnerRecoveryService(store, policy, anchor), store, anchor, op, ap
 
 def _signed(op, ap, **overrides):
@@ -70,7 +70,7 @@ def test_same_key_cannot_be_operator_and_approver(tmp_path):
                             (RecoveryPublicKey("approver-key-01", public),))
     store = SQLiteSecurityStore(tmp_path / "same-key.sqlite3")
     with pytest.raises(RecoveryDenied):
-        OfflineOwnerRecoveryService(store, policy, TestOnlyMonotonicAnchor(AnchorState(0,None,None)))
+        OfflineOwnerRecoveryService(store, policy, _InMemoryMonotonicAnchor(AnchorState(0,None,None)))
 
 @pytest.mark.parametrize("field,value", [
     ("expires_at",999), ("expires_at",5000), ("issued_at",2000), ("nonce","short"),
@@ -108,6 +108,18 @@ def test_crash_after_anchor_advance_resumes_same_signed_request(tmp_path, monkey
     assert service.inspect().disposition == "ANCHOR_AHEAD_RESUMABLE"
     monkeypatch.setattr(store, "compare_and_set_global_owner_generation", original)
     assert service.apply(envelope, now=1100).revision == 1
+    assert service.inspect().disposition == "CONSISTENT"
+
+def test_expired_envelope_can_be_replaced_by_new_dual_signed_resume_envelope(tmp_path, monkeypatch):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    monkeypatch.setattr(store, "compare_and_set_global_owner_generation",
+                        lambda **kwargs: (_ for _ in ()).throw(OSError("simulated crash")))
+    original = _signed(op, ap)
+    with pytest.raises(RecoveryDenied): service.apply(original, now=1100)
+    monkeypatch.undo()
+    renewed = _signed(op, ap, nonce="c"*64, issued_at=2000, expires_at=2600)
+    result = service.apply(renewed, now=2100)
+    assert result.revision == 1
     assert service.inspect().disposition == "CONSISTENT"
 
 def test_tampered_envelope_cannot_resume_anchor_ahead(tmp_path, monkeypatch):

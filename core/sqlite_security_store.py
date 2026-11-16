@@ -230,7 +230,7 @@ class SQLiteSecurityStore:
             raise ValueError("Owner audit reason code is invalid.")
         if (
             type(change_id) is not str
-            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}", change_id)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{3,127}", change_id)
         ):
             raise ValueError("Owner change identifier is invalid.")
 
