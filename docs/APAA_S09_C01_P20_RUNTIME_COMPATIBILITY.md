@@ -12,7 +12,7 @@
 - `core/oci_runtime_probe.py`: bounded, read-only version, info and CLI-help probes.
 - `scripts/qualify_oci_runtime_preflight.py`: host-invokable read-only preflight; emits JSON and returns nonzero for missing/incompatible runtime. It never creates, starts, stops or removes containers and does not change host networking.
 - `core/oci_inspect_normalizer.py`: strict Docker/Podman inspect normalization; mismatches fail closed.
-- Lifecycle executor gates CREATE → INSPECT → signed ATTEST → START, with bounded command timeouts and cleanup handling.
+- Lifecycle executor gates CREATE → INSPECT → signed ATTEST → START, with bounded command timeouts. Explicit handle-bound STOP → force-REMOVE is now available; cleanup always attempts force-remove even when graceful stop fails, and reports an unremoved worker as a cleanup failure.
 - Positive/negative tests cover compatibility, version mismatch, runtime policy drift, inspect normalization and preflight output.
 
 ## Exact observed CI evidence
@@ -35,7 +35,7 @@ The egress job ran `sudo -n bash scripts/qualify_linux_egress_namespace.sh`, cre
 3. Actual inspect schema from each separately pinned runtime.
 4. End-to-end CREATE → INSPECT → signed ATTEST → START → STOP/REMOVE on a disposable daemon.
 5. Invalid, stale, replayed, revoked-key and mismatched attestation rejection against a real daemon.
-6. Timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain.
+6. Timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain. New STOP/force-REMOVE behavior has negative unit coverage but still requires real-daemon qualification.
 7. Runtime namespace inspection and no-host-port proof.
 8. Egress alternate-interface bypass resistance, external DNS policy, IPv6 UDP, host firewall hook precedence and full worker/proxy topology.
 9. Trusted host collector installation; out-of-band Ed25519 key provisioning, rotation, revocation and recovery.
