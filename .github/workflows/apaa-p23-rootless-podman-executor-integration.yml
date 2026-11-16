@@ -66,9 +66,9 @@ jobs:
             'COPY busybox /busybox' \
             'ENTRYPOINT ["/busybox","sleep","60"]' > .p23-image/Containerfile
           podman build --pull=never --network=none --tag localhost/apaa-p23-worker:ci .p23-image
-          IMAGE_ID="$(podman image inspect localhost/apaa-p23-worker:ci --format '{{.Id}}')"
-          [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "APAA_PODMAN_IMAGE=$IMAGE_ID" >> "$GITHUB_ENV"
+          IMAGE_DIGEST="$(podman image inspect localhost/apaa-p23-worker:ci --format '{{.Digest}}')"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "APAA_PODMAN_IMAGE=localhost/apaa-p23-worker@$IMAGE_DIGEST" >> "$GITHUB_ENV"
           podman network create --internal apaa-egress-ci
 
       - name: Install minimal Python test dependencies
