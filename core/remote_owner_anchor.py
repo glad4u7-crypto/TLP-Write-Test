@@ -52,6 +52,8 @@ def _state(raw: object) -> AnchorState:
 
 
 def _state_json(value: AnchorState) -> dict:
+    if not isinstance(value, AnchorState):
+        raise RemoteAnchorError("Anchor transition state type is invalid.")
     return {"revision": value.revision, "generation": value.generation, "change_id": value.change_id}
 
 
@@ -161,7 +163,8 @@ class HTTPSMonotonicAnchor:
                 document = json.loads(body.decode("utf-8"), object_pairs_hook=_unique_object)
             except (UnicodeError, json.JSONDecodeError):
                 raise RemoteAnchorError("Anchor response is not valid UTF-8 JSON.") from None
-            if not isinstance(document, dict) or document.get("schema_version") != 1:
+            if (not isinstance(document, dict) or type(document.get("schema_version")) is not int
+                    or document.get("schema_version") != 1):
                 raise RemoteAnchorError("Anchor response schema version is invalid.")
             return response.status, document
         except RemoteAnchorError:
