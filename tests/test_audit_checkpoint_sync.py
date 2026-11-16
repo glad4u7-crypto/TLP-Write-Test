@@ -149,3 +149,63 @@ def test_reconciliation_does_not_silently_checkpoint_two_events(tmp_path):
     with pytest.raises(AuditCheckpointDenied):
         reconcile_audit_checkpoint(store, provider)
     assert provider.read().sequence == 0
+
+
+def test_concurrent_reconciliation_of_same_pending_event_is_idempotent(tmp_path):
+    """Two workers may race, but both must converge on one exact checkpoint."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    store, provider, _ = _setup(tmp_path)
+    _append(store, 1)
+    first_two_reads = threading.Barrier(2)
+    read_lock = threading.Lock()
+    read_count = 0
+
+    class RacingReadProvider:
+        def read(self):
+            nonlocal read_count
+            with read_lock:
+                read_count += 1
+                should_wait = read_count <= 2
+            if should_wait:
+                first_two_reads.wait(timeout=5)
+            return provider.read()
+
+        def compare_and_advance(self, *, expected, target):
+            return provider.compare_and_advance(expected=expected, target=target)
+
+    racing = RacingReadProvider()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda _: reconcile_audit_checkpoint(store, racing), range(2)
+        ))
+    assert {result.disposition for result in results} == {"LOCAL_AHEAD_RECONCILED"}
+    assert results[0].local == results[1].local
+    assert provider.read() == results[0].local
+    assert provider.read().sequence == 1
+    assert reconcile_audit_checkpoint(store, provider).disposition == "CONSISTENT"
+
+
+def test_competing_external_checkpoint_winner_is_never_overwritten(tmp_path):
+    store, provider, state = _setup(tmp_path)
+    _append(store, 1)
+    foreign = AuditCheckpoint(1, "e" * 64)
+
+    class CompetingProvider:
+        def read(self):
+            return provider.read()
+
+        def compare_and_advance(self, *, expected, target):
+            # Model another authorized writer winning the same expected CAS.
+            with state.lock:
+                assert state.value == expected
+                state.value = foreign
+            return False
+
+    with pytest.raises(AuditCheckpointDenied):
+        reconcile_audit_checkpoint(store, CompetingProvider())
+    assert provider.read() == foreign
+    # The coordinator never rolls back or overwrites the external winner.
+    with pytest.raises(AuditCheckpointDenied):
+        reconcile_audit_checkpoint(store, provider)
+    assert provider.read() == foreign
