@@ -211,3 +211,20 @@ No G1–G10 status is promoted by the P32 CI results. No evidence is fabricated,
 - Auto-Run OFF; browser/worker execution disabled; no paid API/payment; no deployment, merge, host/firewall mutation or production activation.
 
 **Closure rule unchanged:** C01 cannot be declared complete until every mandatory G1–G10 gate has genuine evidence, signature/integrity checks, independent review and explicit owner acceptance against the exact final code SHA. This document update closes the repository-side evidence reconciliation task only.
+
+## 12. G1–G10 operator execution checklist prepared (2026-11-16)
+
+Added `docs/APAA_S09_C01_P27_G1_G10_OPERATOR_EXECUTION_AND_EVIDENCE_ACCEPTANCE_CHECKLIST.md` as the ordered operator-facing companion to the P27 evidence pack.
+
+The checklist now defines, for each G1–G10:
+- prerequisites and explicit stop conditions;
+- human operator actions;
+- objective PASS acceptance criteria;
+- BLOCKED/FAIL conditions;
+- required evidence artifacts and privacy boundaries;
+- dependency order and fail-closed behavior;
+- manifest, detached signature, independent reviewer and owner-acceptance sequence.
+
+It distinguishes physical Android/two-real-account OIDC qualification from Chromium emulation, and separates disposable CI results from owner-host evidence. It does not provision infrastructure, create identities, mutate firewall policy, launch workers or authorize deployment.
+
+**Disposition:** documentation/checklist prepared; no G1–G10 external test has been performed by this change. G1–G10 remain BLOCKED. C01 remains OPEN / NOT COMPLETE; C02 NOT STARTED. PR #11 remains Draft/Open/Unmerged; Auto-Run OFF; browser/worker disabled; no paid API/payment, deployment, merge, host/firewall mutation or production activation. The new documentation commit requires exact-head CI verification before its repository-side status is current.
