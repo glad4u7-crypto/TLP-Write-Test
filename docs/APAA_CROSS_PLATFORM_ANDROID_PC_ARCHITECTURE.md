@@ -1,37 +1,34 @@
-# APAA Cross-Platform Product Architecture — Android + PC
+# APAA Cross-Platform Architecture — Android Primary, PC Optional
 
-Status: PRODUCT REQUIREMENT RECORDED. IMPLEMENTATION AND END-TO-END VERIFICATION ARE NOT COMPLETE.
+Status: OWNER PRODUCT DIRECTION RECORDED; platform implementation and physical-device verification remain in progress.
 
 ## 1. Product decision
 
-APAA (Personal AI Automation Agent) must support both:
+Android is the primary device and primary hands-on development/verification target because it is the device the owner currently uses.
 
-1. Android phones/tablets.
-2. PC desktop environments, initially Windows and Linux.
+PC/desktop support is an OPTIONAL future-use path. The owner may use APAA only on Android and never use a PC; that choice must not block development, access to core features, or the Android roadmap. If the owner later has and chooses to use a PC, the same APAA account and platform-neutral core should be able to support a desktop browser client.
 
-"Android-first" means Android is the current development, usability and hands-on verification priority. It does not mean Android-only. PC support is a first-class product requirement and must be preserved in architecture and acceptance criteria.
+This is Android-first, PC-optional—not a requirement that the owner must own, configure, test, or regularly use a PC.
 
-## 2. Recommended delivery strategy
+## 2. Delivery strategy
 
-### Phase A — shared responsive web application
+### Primary path — Android browser experience
 
-Build one shared application experience that works in modern Android and desktop browsers. Use responsive layouts and adaptive interaction patterns:
-- Android: touch-first controls, compact navigation, readable forms and narrow-screen layouts.
-- PC: keyboard and mouse support, desktop-width workspace, accessible focus states and efficient multi-panel layouts where useful.
+- Continue improving the shared responsive web interface for Android Chrome.
+- Prioritize touch-friendly controls, readable forms, compact navigation, keyboard behavior, session expiry/reconnect and accessible approval/status states.
+- Consider PWA installation only after HTTPS, authentication, CSRF/session protections, update safety and service-worker cache boundaries are reviewed.
+- Consider a native Android shell only when validated requirements cannot be met safely by the browser experience.
 
-A responsive web application is the lowest-complexity shared starting point. Evaluate PWA installation only after browser compatibility, offline behavior, authentication and update safety have been tested.
+### Optional path — PC browser experience
 
-### Phase B — optional platform packaging
+- Preserve responsive desktop-browser compatibility for Windows and Linux.
+- Support keyboard/mouse interaction and desktop-width layouts without making PC packaging or PC ownership a dependency.
+- A desktop wrapper is optional future work, not required for Android delivery.
+- PC physical-device verification is required only before making a specific PC release/support qualification claim; it must not block Android-only use.
 
-- Android: consider a native wrapper/APK only if browser/PWA capabilities do not meet a validated requirement.
-- Windows/Linux: consider a desktop wrapper only if browser-based use is insufficient.
-- Do not create two independent agent cores or duplicate permission logic.
+## 3. Shared platform-neutral core
 
-Packaging is a later delivery choice, not a prerequisite for Android + PC browser access.
-
-## 3. Platform-neutral core
-
-The following must remain shared and independent of screen/device:
+Keep these capabilities independent of the client device:
 - authenticated identity and issuer + subject ownership
 - owner-first project access, explicit grants and revocation
 - task planning and task state model
@@ -39,77 +36,66 @@ The following must remain shared and independent of screen/device:
 - Ask First approval workflow and single-use approval receipts
 - execution gateway and registered capability handlers
 - audit events and retention rules
-- provider abstraction with free/offline default and paid-provider extension disabled
-- versioned project data and export/import migration rules
+- free/offline provider default with paid-provider extension disabled
+- versioned project/task data and export/import migration rules
 
-UI components must never be the security boundary. Every protected operation must be authorized server-side.
+The Android and optional PC clients must use the same server-side authorization and policy decisions. UI components are never the security boundary.
 
 ## 4. Platform adapters and permissions
 
-Device-specific capabilities must be isolated behind explicit platform adapters. Android permissions do not imply PC permissions and vice versa. A capability must remain unavailable unless its adapter exists, its security review passes, and the user separately authorizes it.
+Device-specific capabilities must be isolated behind explicit platform adapters. Android permissions do not imply PC permissions and vice versa. A capability remains unavailable unless its adapter exists, its security review passes, and the owner separately authorizes it.
 
 No silent access to local files, camera, microphone, notifications, shell, browser sessions, device controls or background execution. Browser/worker execution remains disabled unless separately authorized. Auto-Run remains OFF.
 
-## 5. Cross-platform security invariants
+## 5. Security and owner controls
 
-- The user is the primary owner/admin.
-- No public access or self-registration by default.
-- Owner explicitly grants and can revoke other-user access.
-- Collaborators cannot elevate privileges, invite others, or mutate owner resources unless a future separate permission model is designed and approved.
-- Ask First remains the default for consequential actions.
-- No payment, checkout, purchase, trading or money movement actions.
-- No paid API/provider use or charges by default; any future paid option requires separate explicit provider and cost approval.
+- The owner is the primary administrator; no public-by-default access or self-registration.
+- The owner explicitly grants and can revoke other-user access.
+- Collaborators cannot elevate privileges or mutate owner resources through a read grant.
+- Ask First remains the default for consequential mutations.
+- Payment, checkout, purchase, trading and money movement actions are denied.
+- No paid API/provider, paid hosting or charges by default; any future paid option requires separate explicit provider and cost approval.
 - Session identity changes and revocations take effect at server-side request boundaries.
 - No platform-specific UI can bypass core authorization.
 
-## 6. Data continuity between Android and PC
+## 6. Data continuity (only if PC is later used)
 
-The product should support the same account and authorized projects from Android and PC. Before claiming seamless sync:
-- define a versioned canonical project/task format;
-- define server-side storage and ownership boundaries;
-- define conflict handling and concurrent update behavior;
-- define export, import, backup and restore;
-- test session expiry and access revocation across devices.
+If the owner chooses to use APAA on both Android and PC, design and verify:
+- a versioned canonical project/task format;
+- secured server-side storage and ownership boundaries;
+- conflict handling and concurrent updates;
+- export, import, backup and restore;
+- session expiry and revocation across devices.
 
-Do not assume that the current SQLite local prototype is already a multi-device synchronization service. Multi-device sync requires an explicitly designed and secured server deployment and is not enabled by this requirement.
+Do not assume the current SQLite local prototype is already a multi-device synchronization service. Multi-device sync requires a separately designed and secured backend and is not enabled by this document.
 
-## 7. Required verification gates
+## 7. Verification gates
 
-Automated:
-- Android-sized and desktop-sized viewport tests.
-- keyboard navigation and touch-target checks.
-- shared permission and policy tests independent of platform.
-- platform-adapter permission tests.
-- session transition, revocation and cross-device identity tests.
-- data export/import compatibility tests.
+Automated CI should continue checking Android-sized and desktop-sized browser viewports, shared permission/policy behavior, keyboard navigation and touch targets.
 
-Hands-on:
-- real Android phone browser verification.
-- real Windows PC browser verification.
-- real Linux PC browser verification where supported.
-- verify login/logout, project ownership, approval, revocation and responsive layout on each platform.
+Hands-on Android verification is the primary product gate: real Android Chrome login/session, responsive layout, approval review, logout and revocation behavior must be checked before claiming Android release readiness.
 
-CI viewport emulation is not a substitute for physical device and desktop verification.
+PC hands-on verification is conditional: perform it if/when the owner chooses to use or qualify the optional PC client. It is not a prerequisite for Android progress.
+
+CI viewport emulation is not a substitute for physical-device verification.
 
 ## 8. Current truth / non-claims
 
-At the time this requirement is recorded:
-- APAA is a Streamlit web prototype foundation.
-- Android-responsive styling exists but real Android device verification is outstanding.
-- No native Android APK is complete.
-- No completed PWA install package is established.
-- No completed Windows or Linux desktop application is established.
-- No verified cross-device sync service is established.
-- Do not claim Android + PC support is fully delivered until the relevant build and verification gates pass.
+- APAA is currently a Streamlit web prototype.
+- Responsive Android styling and automated Pixel-profile browser emulation exist; physical Android verification remains outstanding.
+- No native Android APK or completed PWA package is claimed.
+- Desktop browser viewport smoke coverage exists; no completed Windows/Linux desktop app is claimed.
+- No verified multi-device sync service is claimed.
+- Android and optional PC release claims require their respective build and verification evidence.
 
 ## 9. Implementation order
 
-1. Preserve Android-first responsive web usability.
+1. Continue Android-first responsive web usability and physical Android verification.
 2. Keep core business logic and authorization platform-neutral.
 3. Complete S09 security and access-control gates before enabling sharing or deployment.
 4. Audit all routes and resource reads/writes through server-side authorization.
-5. Establish secured multi-device backend and versioned data migration design.
-6. Verify Android and PC browsers with real devices.
-7. Decide whether native Android or desktop packaging adds measurable value.
+5. Keep PC browser compatibility in CI and architecture, but do not make PC usage a dependency.
+6. Establish secured multi-device sync only if/when cross-device use is selected.
+7. Decide on native Android or desktop packaging only after measurable requirements exist.
 
 PR #11 remains Draft/Open/Unmerged. This requirement does not authorize deployment, merging, public access, paid services, Auto-Run, browser or worker activation.
