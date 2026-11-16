@@ -137,3 +137,17 @@ python -m scripts.validate_apaa_p27_evidence <EVIDENCE_DIRECTORY>
 The directory must contain `manifest.json` and all nine required artifacts listed above. The manifest uses schema version 1, UTC start/end timestamps, a SHA-256 digest-pinned test image, and a path-to-SHA-256 map for every artifact except the manifest itself. The validator rejects missing/unlisted files, symlinks, path traversal, mutable image tags, invalid timestamps and digest mismatches.
 
 A successful result means **artifact integrity only**. It explicitly reports `authenticity=NOT_CHECKED` and `host_qualification=NOT_ASSESSED`; it does not verify the detached signature, prove host identity, or turn BLOCKED/SKIPPED observations into PASS. Independent signature verification and review remain mandatory.
+
+
+## Detached manifest signature verification
+
+The P27 validator supports Ed25519 verification of the exact raw bytes of manifest.json. The detached signature is canonical base64 text in a sidecar stored outside the evidence directory. The raw 32-byte public key is also stored outside that directory and must be provisioned independently. Supply the independently pinned SHA-256 fingerprint:
+
+```bash
+python -m scripts.validate_apaa_p27_evidence EVIDENCE_DIRECTORY \
+  --signature /secure/evidence/manifest.sig \
+  --public-key /secure/trust/evidence-signing.pub \
+  --expected-key-sha256 OUT_OF_BAND_PINNED_SHA256
+```
+
+A successful check reports authenticity=VERIFIED_ED25519 and the signer fingerprint. Without all trust inputs, authenticity remains NOT_CHECKED. This does not prove that the key belongs to an approved real host, that the signer is hardware-protected, or that observations are truthful. Those remain separate provisioning and independent-review gates. Test signing keys are ephemeral and test-only.
