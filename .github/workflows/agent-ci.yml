@@ -30,3 +30,16 @@ jobs:
         run: python -m compileall -q app.py core tests
       - name: Run foundation tests
         run: python -m pytest -q
+
+  linux-egress-qualification:
+    name: Disposable Linux egress namespace qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Install isolated network test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes iproute2 nftables
+      - name: Exercise worker egress policy in disposable namespace
+        run: bash scripts/qualify_linux_egress_namespace.sh
