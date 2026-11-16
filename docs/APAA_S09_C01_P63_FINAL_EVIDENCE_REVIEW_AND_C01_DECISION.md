@@ -83,3 +83,17 @@ Some related repository and disposable-CI checks pass. They are not substitutes 
 - Owner-first access control and ask-first approval remain in force.
 
 This record closes the P59–P63 repository review sequence only. It does not grant production authorization or waive any external qualification gate.
+
+
+## 6. P63 exact-head CI verification (2026-11-16)
+
+The P63 evidence-review commit `7e040d95c5ffa1e7a1d309c627baede2659a8bc8` has now completed all four required PR workflows successfully:
+
+- Agent Foundation CI — PASS (run `43890209816`); foundation tests, disposable Linux live host-inspector, disposable Linux egress namespace, and Android/desktop Chromium browser verification all completed successfully.
+- Python Demo CI — PASS (run `43890210002`).
+- P20 Rootless Podman Runtime Qualification — PASS (run `43890209884`).
+- P23 Rootless Podman Executor Integration — PASS (run `43890210060`).
+
+This closes the P63 repository-CI verification item. The CI host and browser checks are disposable automation evidence, not owner-host, physical Android, physical HSM, independent-anchor, sink-side production network, live OIDC or independent-review evidence. Therefore the G1–G10 external blockers and C01 NO-GO decision remain unchanged.
+
+**Current state:** P59–P63 repository checkpoints and exact-head CI: COMPLETE / PASS; external qualification G1–G10: BLOCKED; C01: OPEN / NOT COMPLETE; C02: NOT STARTED. PR #11 remains Draft/Open/Unmerged.
