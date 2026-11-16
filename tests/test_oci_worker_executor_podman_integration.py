@@ -152,7 +152,13 @@ def test_executor_attests_then_starts_and_removes_real_rootless_podman_container
             "host_network_mode": host.get("NetworkMode"),
             "network_names": sorted((network_settings.get("Networks") or {}).keys()),
         }
-    assert report.started is True, (report.events, inspect_summary)
+    failure_context = "; ".join(
+        f"{event.stage}:{event.detail}" for event in report.events
+    )
+    assert report.started is True, (
+        f"{failure_context}; plan_runtime={plan.runtime}; "
+        f"plan_network={plan.network_name}; inspect={inspect_summary!r}"
+    )
     assert report.cleaned is False
     assert report.handle is not None
     assert report.handle.container_id
