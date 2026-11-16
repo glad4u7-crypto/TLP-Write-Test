@@ -80,3 +80,14 @@ PC physical verification remains optional. PR #11 stays Draft/Open/Unmerged; Aut
 Added `docs/APAA_S09_C01_TRUSTED_IDENTITY_DIRECTORY_DESIGN.md` as an implementation-ready, provider-neutral contract. It recommends a closed directory of identities that have already authenticated through an explicitly allowlisted OIDC issuer. Owner selection uses opaque server-resolved directory IDs; email and user-entered issuer/subject values are never authorization keys. It defines adapter boundaries, issuer rules, persistence/audit requirements, negative tests and activation gates.
 
 This is a documentation/design deliverable only. No directory database, provider adapter, invitation endpoint or collaborator UI was added or enabled. Owner-only behavior remains unchanged pending implementation and owner approval of the directory model.
+
+
+## Closed identity directory primitive implemented (2026-11-16)
+
+Added:
+- `core/trusted_identity_directory.py` — durable SQLite directory with explicit OIDC issuer allowlist, authenticated-principal enrollment, private-by-default discoverability, opt-in/out, exact-owner listing and opaque-ID resolution.
+- `tests/test_trusted_identity_directory.py` — tests for private-by-default behavior, explicit opt-in, opaque selector resolution, opt-out, issuer rejection and owner-only listing.
+
+The directory primitive is not wired into the Streamlit app. There is no OIDC sign-in hook, owner UI/API, grant confirmation screen or invitation endpoint. The trusted OIDC adapter must supply the Principal; owner resolution must still be followed by explicit owner confirmation and the existing `OwnerProjectAccessController`. Turning off discoverability prevents new selections but does not silently revoke existing ACL grants; those require explicit owner revocation.
+
+The new backend work is subject to the latest exact-head CI and has not yet been marked PASS.
