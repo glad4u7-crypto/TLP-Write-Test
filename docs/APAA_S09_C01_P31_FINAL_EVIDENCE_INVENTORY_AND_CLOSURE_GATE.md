@@ -32,8 +32,8 @@ Every row must have a restricted evidence-record reference, exact tested code SH
 | G6 — Lifecycle and attestation | Actual CREATE/INSPECT/ATTEST/START/STOP/REMOVE; immutable identity binding; stale/replay/tamper/wrong-host negative tests | BLOCKED — CI lifecycle is not owner-host qualification |
 | G7 — Egress enforcement | Effective worker namespace rules plus sink-side evidence for IPv4/IPv6, DNS TCP/UDP, UDP/443/QUIC, WebSocket, alternate interfaces, DNS rebinding/pinned-IP dial-time and firewall hook precedence | BLOCKED — complete real topology not proven |
 | G8 — Failure and cleanup | Real daemon interruption, cancellation, timeout, signer/collector loss and bounded orphan cleanup | BLOCKED — no owner-host drill |
-| G9 — Android assessment | Physical-device capability assessment, permission behavior, lifecycle/background limits and explicit boundary between Android control plane and isolated worker | BLOCKED — architecture exists; device qualification evidence absent |
-| G10 — Independent review | Independent reviewer verifies evidence authenticity, host identity, key custody, anchor, sink observations, cleanup and exact code/evidence digests | BLOCKED — no signed independent approval |
+| G9 — Android + PC assessment | Physical Android and PC browser tests; permission behavior, identity/session transitions, logout/revocation propagation, lifecycle/background limits and explicit boundary between Android control plane and isolated worker | BLOCKED — CI viewport emulation exists; physical-device/browser evidence absent |
+| G10 — Independent review | Independent reviewer verifies evidence authenticity, host identity, key custody, anchor, sink observations, cleanup, owner grant/revoke controls, resource authorization boundaries, two-user OIDC results and exact code/evidence digests | BLOCKED — no signed independent approval |
 
 ## 3. Evidence acceptance rules
 
@@ -69,3 +69,18 @@ C01 may be marked COMPLETE only when all G1–G10 are PASS, the restricted evide
 ## 7. Next executable action
 
 The next action is not another code-only checkpoint: an owner-approved disposable Linux host, local digest-pinned image, out-of-band trust provisioning, protected signer and durable independent anchor must be made available. Then execute the P27 runbook under a human operator and obtain independent review. If those prerequisites are unavailable, preserve the BLOCKED status and do not simulate the missing evidence.
+
+
+## 8. P36 owner-controlled access acceptance
+
+P36 adds a narrow owner-only read-grant/revoke controller and immutable grant/revoke event history. This is not permission to enable collaborator access in the application. Before any collaborator feature is activated, the owner and independent reviewer must verify:
+
+- The owner identity is the exact OIDC issuer + subject pair; no subject-only or client-supplied identity is accepted.
+- Grant/revoke operations are owner-only, read-only, append-only audited, and immediately enforced by all subsequent reads.
+- Revocation is tested from an already-open second session and after process/store reconstruction.
+- Project mutation/action, file/resource operations, memory, conversations, preferences and checkpoints remain denied to a read-only collaborator.
+- Project checkpoint association is independently bound to an owner-authorized project before any collaborator/API exposure.
+- Two distinct real OIDC accounts are used; synthetic principals and unit tests are not accepted as live OIDC evidence.
+- Android and PC browsers are both exercised physically for sign-in, sign-out, session switch, revocation, storage isolation and responsive behavior.
+
+Until those tests and the other mandatory gates are independently approved, the safe default remains owner-only application access; no collaborator UI/API is enabled.
