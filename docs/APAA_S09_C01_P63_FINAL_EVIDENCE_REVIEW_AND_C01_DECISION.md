@@ -127,3 +127,21 @@ The current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb` completed all
 | P23 Rootless Podman Executor Integration | #325 | PASS |
 
 Both pytest jobs reported 1,348 passed and 9 skipped. This verifies the latest repository regression state after owner-only OIDC fixture corrections. It does not waive any G1–G10 external gate. The repository remains Draft/Open/Unmerged; no production deployment or real hardware/service qualification has occurred. Therefore P59–P63 repository/software sequence is COMPLETE, but C01 closure remains NO-GO / OPEN and C02 remains NOT STARTED.
+
+## 9. Action-audit remediation evidence (2026-11-16)
+
+Remediation PR #12: https://github.com/glad4u7-crypto/TLP-Write-Test/pull/12
+
+The remediation source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` completed all five applicable pull-request workflows successfully:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [#1230](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078348) | PASS |
+| Python Demo CI | [#1315](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078310) | PASS |
+| APAA Security CI | [#1](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078234) | PASS |
+| P23 Rootless Podman Executor Integration | [#332](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078228) | PASS |
+| P20 Rootless Podman Runtime Qualification | [#350](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078150) | PASS |
+
+The foundation test job reported **1,352 passed, 9 skipped**. The changes cover audit-integrity disposition in recovery inspection, P62 tamper regression assertions, P61 separate protected-floor reference modeling, SHA pinning for APAA Security CI, and repository-wide workflow policy tests. This is software/CI evidence only. The P61 fixture does not qualify an actual independent durable anchor, and the five CI runs do not satisfy external G1–G10 qualification.
+
+The PR remains Draft / Open / Unmerged. C01 remains OPEN / NO-GO pending physical protected-key, independently administered production-anchor, owner-host, physical Android, and independent-review evidence. C02 remains NOT STARTED.
