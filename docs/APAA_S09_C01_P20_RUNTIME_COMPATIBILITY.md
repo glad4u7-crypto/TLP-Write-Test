@@ -3,7 +3,7 @@
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **PR:** [#11 — Gated OCI Worker and Proxy Isolation](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11)  
-**Latest observed CI:** [Agent Foundation CI run 43796026613](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43796026613) — PASS.  
+**Latest verified CI:** [Agent Foundation CI run 43800674712](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43800674712) — PASS; [Python Demo CI run 43800674679](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43800674679) — PASS.  
 **Release posture:** Draft only; no merge, deployment, live browser enablement or production claim.
 
 ## Delivered in P20
@@ -17,12 +17,13 @@
 
 ## Exact observed CI evidence
 
-Run [43796026613](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43796026613), observed 2026-11-16:
+Runs [43800674712](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43800674712) and [43800674679](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43800674679), observed 2026-11-16:
 
 - Agent Foundation CI: **PASS**.
 - Python 3.12 compile check: **PASS**.
 - Dependency audit: **PASS — no known vulnerabilities found**.
-- Foundation test suite: **995 passed**.
+- Foundation test suite: **1000 passed**.
+- Python Demo test suite: **1000 passed**; `demo.py` output check: **PASS**.
 - Disposable Linux egress namespace qualification: **PASS**.
 - Egress test output confirmed the exact TCP proxy destination was allowed and direct TCP, DNS, UDP/QUIC and IPv6 probes were blocked.
 
@@ -35,7 +36,7 @@ The egress job ran `sudo -n bash scripts/qualify_linux_egress_namespace.sh`, cre
 3. Actual inspect schema from each separately pinned runtime.
 4. End-to-end CREATE → INSPECT → signed ATTEST → START → STOP/REMOVE on a disposable daemon.
 5. Invalid, stale, replayed, revoked-key and mismatched attestation rejection against a real daemon.
-6. Timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain. ID-bound lifecycle and STOP/force-REMOVE behavior have new negative unit coverage but still require exact-head CI and real-daemon qualification.
+6. Timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain. ID-bound lifecycle and STOP/force-REMOVE behavior have negative unit coverage and exact-head CI PASS; real-daemon qualification remains pending.
 7. Runtime namespace inspection and no-host-port proof.
 8. Egress alternate-interface bypass resistance, external DNS policy, IPv6 UDP, host firewall hook precedence and full worker/proxy topology.
 9. Trusted host collector installation; out-of-band Ed25519 key provisioning, rotation, revocation and recovery.
