@@ -90,7 +90,11 @@ def load_global_owner_config(
     subject = source.get("subject")
     if type(issuer) is not str or not _valid_https_issuer(issuer):
         raise GlobalOwnerConfigurationError("Global owner issuer must be a valid HTTPS issuer.")
-    if (\n        not isinstance(trusted_issuers, Collection)\n        or isinstance(trusted_issuers, (str, bytes))\n        or issuer not in trusted_issuers\n    ):
+    if (
+        not isinstance(trusted_issuers, Collection)
+        or isinstance(trusted_issuers, (str, bytes))
+        or issuer not in trusted_issuers
+    ):
         raise GlobalOwnerConfigurationError("Global owner issuer is not in the trusted issuer allowlist.")
     if (
         type(subject) is not str
