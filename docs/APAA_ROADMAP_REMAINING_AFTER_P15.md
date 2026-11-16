@@ -154,3 +154,13 @@ python -m scripts.verify_apaa_p27_review EVIDENCE_DIRECTORY \
 
 
 P27 review-verifier tests cover digest binding, pinned reviewer key, tampering, PASS-with-findings rejection, UTC timestamp and detached sidecar placement. The verifier is a cryptographic evidence tool only; reviewer identity/independence and overall qualification approval remain owner-controlled external gates.
+
+
+## P27 operator usability increment — P28 manifest builder (2026-11-16)
+
+- Added `scripts/build_apaa_p27_manifest.py` to hash the exact bytes of the nine required operator-collected JSON evidence artifacts and create the closed-schema manifest.
+- The builder refuses missing/extra artifacts, symlinks, non-JSON payloads, invalid UTC intervals, mutable image references and overwriting an existing manifest. It uses exclusive file creation and restrictive file permissions.
+- Added `tests/test_apaa_p27_manifest_builder.py` for success, hash correctness, overwrite refusal, inventory errors, symlink rejection, metadata validation and CLI status.
+- The builder is a local file utility, not a host collector. It explicitly reports authenticity NOT_CHECKED and host qualification NOT_ASSESSED. No host tests or security gates are marked PASS by this increment.
+- Documentation added to the P27 evidence pack with operator command example.
+- C01 remains OPEN; real-host prerequisites, trust custody, independent durable anchor, full proxy topology, cleanup drills and independent review remain mandatory. C02 remains NOT STARTED.
