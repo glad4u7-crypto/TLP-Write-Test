@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from core.egress_policy import EgressAuthorizationError, EgressDestinationAuthorizer
 from core.pinned_ip_connector import PinnedIPConnector
+from core.proxy_worker_topology import ProxyWorkerTopology
 
 
 MAX_HEADER_BYTES = 16_384
@@ -102,6 +103,7 @@ class EgressConnectProxy:
         allowed_ports: frozenset[int] = DEFAULT_ALLOWED_PORTS,
         bind_host: str = "127.0.0.1",
         bind_port: int = 0,
+        topology: ProxyWorkerTopology | None = None,
     ) -> None:
         if not isinstance(authorizer, EgressDestinationAuthorizer):
             raise TypeError("authorizer must be an EgressDestinationAuthorizer.")
@@ -111,8 +113,16 @@ class EgressConnectProxy:
             bind_ip = ipaddress.ip_address(bind_host)
         except ValueError as exc:
             raise ValueError("Proxy must bind to a numeric loopback address.") from exc
-        if not bind_ip.is_loopback:
-            raise ValueError("Proxy must bind only to loopback.")
+        if topology is None:
+            if not bind_ip.is_loopback:
+                raise ValueError("Non-loopback proxy binding requires an explicit validated worker topology.")
+        else:
+            if not isinstance(topology, ProxyWorkerTopology):
+                raise TypeError("topology must be a validated ProxyWorkerTopology.")
+            if (bind_ip.compressed != topology.proxy_address
+                    or bind_port != topology.proxy_port
+                    or allowed_ports != frozenset({topology.proxy_port})):
+                raise ValueError("Proxy bind address, port and CONNECT allowlist must exactly match the topology.")
         if not allowed_ports or any(type(port) is not int or not 1 <= port <= 65535 for port in allowed_ports):
             raise ValueError("allowed_ports must contain valid TCP ports.")
         if type(bind_port) is not int or not 0 <= bind_port <= 65535:
