@@ -96,4 +96,4 @@ Both pytest jobs reported **1,348 passed, 9 skipped**. The skip count remains ex
 
 ## 7. Action-audit remediation CI (2026-11-16)
 
-Remediation PR #12 source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` completed Agent Foundation CI #1230, Python Demo CI #1315, APAA Security CI #1, P23 #332 and P20 #350 — **5/5 PASS**. Foundation pytest reported 1,352 passed and 9 skipped. This confirms the action-audit remediation tests and workflow policy checks at that exact source/test head. It does not qualify production HSM custody, an independently administered anchor, owner-host or physical Android evidence. C01 remains OPEN; C02 NOT STARTED.
+Remediation PR #12 source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` completed Agent Foundation CI #1224, Python Demo CI #1313, APAA Security CI #21, P23 #335 and P20 #353 — **5/5 PASS**. Foundation pytest reported 1,352 passed and 9 skipped. This confirms the action-audit remediation tests and workflow policy checks at that exact source/test head. It does not qualify production HSM custody, an independently administered anchor, owner-host or physical Android evidence. C01 remains OPEN; C02 NOT STARTED.
