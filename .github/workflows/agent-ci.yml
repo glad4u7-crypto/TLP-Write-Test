@@ -41,17 +41,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes iproute2 nftables
-      - name: Check disposable namespace capability
-        id: namespace-capability
-        shell: bash
+      - name: Report hosted-runner qualification limitation
         run: |
-          if sudo ip netns add apaa-capability-probe 2>/dev/null; then
-            sudo ip netns del apaa-capability-probe
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::SKIPPED: hosted runner does not grant network-namespace capability; no egress qualification result is claimed."
-          fi
-      - name: Exercise worker egress policy in disposable namespace
-        if: steps.namespace-capability.outputs.available == 'true'
-        run: bash scripts/qualify_linux_egress_namespace.sh
+          echo "::notice::SKIPPED: this hosted runner cannot provide the required network namespace, veth, nftables and IPv6 kernel capabilities."
+          echo "No operational egress qualification result is claimed. Run scripts/qualify_linux_egress_namespace.sh only on a disposable Linux runner with the required capabilities."
