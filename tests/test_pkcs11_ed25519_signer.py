@@ -152,3 +152,31 @@ def test_pkcs11_provider_rejects_extractable_private_key(tmp_path):
     )
     with pytest.raises(PKCS11SignerError, match="non-extractable"):
         signer.sign(b"evidence")
+
+def test_pkcs11_signer_integrates_with_host_evidence_collector(tmp_path):
+    from core.browser_inspector import verify_signed_inspector_evidence
+    from core.browser_nftables import collect_signed_inspector_evidence
+    from core.browser_runtime import build_worker_launch_spec
+    from tests.test_browser_nftables import FakeHostSource, NOW, PROXY_IP, profile
+
+    module = tmp_path / "pkcs11.so"
+    module.write_bytes(b"test")
+    key = Ed25519PrivateKey.generate()
+    fake = FakePKCS11(key)
+    signer = PKCS11Ed25519InspectorSigner(
+        module_path=module, token_label="APAA-TEST", key_id="inspector-01",
+        user_pin="test-pin-1234", pkcs11_loader=lambda _path: fake,
+    )
+    spec = build_worker_launch_spec(profile())
+    envelope = collect_signed_inspector_evidence(
+        FakeHostSource(spec), spec, challenge="d" * 64,
+        key_id="inspector:worker-001", signer=signer,
+        expected_proxy_addresses=[PROXY_IP], now=NOW,
+    )
+    verified = verify_signed_inspector_evidence(
+        spec, envelope,
+        trusted_public_keys={"inspector:worker-001": signer.public_key_bytes()},
+        expected_challenge="d" * 64,
+        expected_proxy_addresses=[PROXY_IP], now=NOW,
+    )
+    assert verified.firewall.default_egress_policy == "drop"
