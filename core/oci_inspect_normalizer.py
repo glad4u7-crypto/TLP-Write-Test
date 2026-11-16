@@ -12,6 +12,17 @@ from core.oci_errors import OCIExecutionError
 # Linux capability names known to the supported runtime contract. Podman may
 # expand --cap-drop=ALL into this explicit list in inspect JSON; Docker commonly
 # preserves the literal ALL token. Unknown/missing entries fail closed.
+# Podman 4.9.3 reports the default capability grant set in CapDrop when
+# --cap-drop=ALL is used. CapAdd must still be empty, and the P23 real-runtime
+# qualification independently verifies all live process capability masks are
+# zero after START. Unknown or partial sets remain rejected.
+_PODMAN_DEFAULT_CAPABILITIES = frozenset({
+    "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL",
+    "NET_BIND_SERVICE", "SETFCAP", "SETGID", "SETPCAP", "SETUID",
+    "SYS_CHROOT",
+})
+
+
 _LINUX_CAPABILITIES = frozenset({
     "AUDIT_CONTROL", "AUDIT_READ", "AUDIT_WRITE", "BLOCK_SUSPEND", "BPF",
     "CHECKPOINT_RESTORE", "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH",
@@ -38,11 +49,13 @@ class OCIInspectSnapshot:
     launch_spec_digest: str
 
 
-def _all_capabilities_dropped(value: Any) -> bool:
+def _all_capabilities_dropped(value: Any, *, runtime: str) -> bool:
     if not isinstance(value, list) or not value or not all(type(x) is str for x in value):
         return False
     normalized = {x.upper().removeprefix("CAP_") for x in value}
-    return normalized == {"ALL"} or normalized == _LINUX_CAPABILITIES
+    if normalized == {"ALL"} or normalized == _LINUX_CAPABILITIES:
+        return True
+    return runtime == "podman" and normalized == _PODMAN_DEFAULT_CAPABILITIES
 
 
 def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
@@ -99,7 +112,7 @@ def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
     if host.get("Privileged") is True or host.get("PidMode") == "host" or host.get("IpcMode") == "host":
         raise OCIExecutionError("inspect: privileged or host namespace mode detected.")
     caps = host.get("CapDrop")
-    if not _all_capabilities_dropped(caps):
+    if not _all_capabilities_dropped(caps, runtime=plan.runtime):
         raise OCIExecutionError("inspect: Linux capabilities are not fully dropped.")
     cap_add = host.get("CapAdd")
     if cap_add not in (None, []):
