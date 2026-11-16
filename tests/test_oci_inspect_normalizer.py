@@ -82,6 +82,29 @@ def test_inspect_policy_drift_fails_closed(overrides, message):
         normalize_oci_inspect(inspect_fixture(**overrides), plan("docker"))
 
 
+
+def test_podman_bridge_mode_requires_exact_named_network_attachment():
+    item = json.loads(inspect_fixture(podman=True))
+    item[0]["HostConfig"]["NetworkMode"] = "bridge"
+    item[0]["NetworkSettings"] = {
+        "Networks": {"apaa-egress-prod": {"NetworkID": "ci-network-id"}}
+    }
+    normalized = normalize_oci_inspect(json.dumps(item), plan("podman"))
+    assert normalized.network == "apaa-egress-prod"
+
+
+def test_podman_bridge_mode_rejects_additional_network_attachments():
+    item = json.loads(inspect_fixture(podman=True))
+    item[0]["HostConfig"]["NetworkMode"] = "bridge"
+    item[0]["NetworkSettings"] = {
+        "Networks": {
+            "apaa-egress-prod": {"NetworkID": "ci-network-id"},
+            "unapproved-extra": {"NetworkID": "extra-network-id"},
+        }
+    }
+    with pytest.raises(OCIExecutionError, match="network"):
+        normalize_oci_inspect(json.dumps(item), plan("podman"))
+
 def test_podman_wrong_image_name_fails_closed():
     item = json.loads(inspect_fixture(podman=True))
     item[0]["ImageName"] = "untrusted:latest"
