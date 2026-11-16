@@ -359,3 +359,62 @@ Extended the shared SQLite security store with a singleton owner-generation reco
 - Live OIDC, physical Android, production Linux host and independent review: BLOCKED.
 - Global Owner remains inactive; S09-C01 OPEN / NOT COMPLETE; S09-C02 NOT STARTED.
 - PR #11 remains Draft/Open/Unmerged; Auto-Run OFF; worker/browser OFF; no merge, deployment, paid API, payment or production activation.
+
+
+## 19. P36–P41 owner recovery and independent audit checkpoint work (2026-11-16)
+
+This section reconciles the later repository work with the earlier P31 inventory. It records repository implementation and exact-head CI only; it does not promote any external qualification gate.
+
+### P36 — Offline owner recovery and re-key
+
+Repository implementation adds a two-party Ed25519 operator/independent-approver authorization flow. The signed request binds the action, old/new generation, expected revision, change ID, nonce, validity interval and key identifiers. The implementation includes compare-and-set progression, replay/stale-request rejection, audit-chain checks, crash-resume behavior and an external monotonic-anchor interface.
+
+The anchor used by tests is synthetic/in-memory. No production anchor, protected signer, operator/approver enrollment or production key custody is provisioned. Therefore P36 is repository implementation, not production recovery qualification.
+
+### P37 — Adversarial recovery tests
+
+Added concurrency, SQLite backup/restore rollback, audit tampering/tail deletion, key rotation/revocation and crash/failure-injection tests. These tests exercise repository behavior and do not prove protection against a privileged production-host or external-anchor administrator.
+
+### P38 — Independent audit checkpoint contract
+
+Added a provider-neutral checkpoint value and conditional advance protocol with strict validation, one-step compare-and-set, stale-writer rejection, read-back confirmation and lost-ack reconciliation. The provider used in tests is synthetic and in-memory. The contract is not itself a qualified production anchor.
+
+### P39 — Crash-consistent audit checkpoint synchronization
+
+Added reconciliation between the verified local SQLite audit head and an independent checkpoint provider. Local append precedes external advancement; only a single-event lead may be advanced; exact read-back is required to confirm a lost acknowledgement. Provider-ahead, same-sequence hash mismatch and multi-event divergence fail closed.
+
+The SQLite audit-head reader and synchronization protocol do not establish provider durability or resistance to provider backup/restore rollback.
+
+### P40 — Concurrent reconciliation
+
+Added deterministic tests for concurrent reconciliation of the same pending event and competing external checkpoint writers. The tests ensure a losing writer does not overwrite the competing winner and that reconciliation is idempotent where appropriate.
+
+### P41 — Provider failure and trust-boundary tests
+
+Added fail-closed tests for revoked provider identity and stale provider replicas. The documented generic limitation remains: a provider rollback/recreation can be observationally indistinguishable from a legitimate pending local append unless the concrete provider independently guarantees durable monotonic history or supplies independently verifiable append-only receipts under a separate trust root.
+
+### Exact-head CI evidence
+
+Exact PR head recorded for this reconciliation: `4691956e2dfeed9f3911fca85b347743736e4da1`.
+
+All six check-runs completed successfully on that exact head:
+- Disposable Linux egress namespace qualification — PASS.
+- Android/PC Chromium browser verification — PASS (emulation/smoke coverage, not physical Android).
+- Foundation tests — PASS (`1252 passed, 9 skipped`).
+- Disposable rootless Podman runtime lifecycle — PASS.
+- Python demo — PASS.
+- Real Podman executor and durable attestation-gate plumbing — PASS.
+
+These results are repository and disposable CI evidence only. They are not physical Android, live OIDC, owner-operated Linux host, protected key custody, production monotonic-anchor, sink-side production egress or independent-review evidence.
+
+### Current disposition after P36–P41
+
+- P36–P41 repository implementation/tests/docs: **RECORDED**.
+- Exact-head CI at `4691956e2dfeed9f3911fca85b347743736e4da1`: **PASS (6/6 check-runs)**.
+- G1–G10 real-world qualification: **BLOCKED**; no external gate is promoted by these tests.
+- S09-C01: **OPEN / NOT COMPLETE**.
+- S09-C02: **NOT STARTED**.
+- PR #11: **Draft / Open / Unmerged**.
+- Auto-Run OFF; browser/worker OFF; no deployment, merge, host/firewall mutation, real credential, paid API, payment or production activation.
+
+**Next action for completing the first major phase:** an owner-approved disposable Linux host, local digest-pinned image, out-of-band trust provisioning, protected signer, independently administered durable monotonic anchor, and physical Android/live OIDC test accounts must be made available. A human operator must then execute the G1–G10 checklist and obtain independent review. These external prerequisites cannot be truthfully completed by repository-only changes or simulated CI.
