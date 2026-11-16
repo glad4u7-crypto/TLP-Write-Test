@@ -206,6 +206,15 @@ class OfflineOwnerRecoveryService:
         local = self._store.read_global_owner_state()
         local_anchor = AnchorState(local.revision, local.generation, local.change_id)
         target = AnchorState(r.expected_revision + 1, r.new_generation, r.change_id)
+        # Refuse to mutate the independent anchor when the local audit chain
+        # is already corrupt. The store re-verifies inside its write
+        # transaction as well, closing the ordinary preflight/write gap.
+        try:
+            audit_valid = self._store.verify_audit_chain()
+        except Exception:
+            audit_valid = False
+        if audit_valid is not True:
+            raise RecoveryDenied("Owner recovery audit integrity verification failed.")
         anchor = self._read_anchor()
         if local_anchor == target:
             if anchor != target:
