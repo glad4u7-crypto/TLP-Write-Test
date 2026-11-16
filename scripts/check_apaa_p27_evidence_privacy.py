@@ -88,6 +88,8 @@ def check_evidence_privacy(directory: str | Path) -> dict[str, Any]:
                 object_pairs_hook=_unique_object,
                 parse_constant=_reject_constant,
             )
+        except PrivacyCheckError:
+            raise
         except (OSError, UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
             raise PrivacyCheckError(f"{name} must contain valid UTF-8 JSON") from exc
         _walk(payload, name, findings)
