@@ -7,8 +7,16 @@ This is not owner-host or production qualification.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import subprocess
 import sys
+
+# Executing a file under scripts/ puts that directory, not the repository
+# root, at sys.path[0]. Add the project root so the core package is importable
+# both from a checkout and when invoked directly by the CI qualification job.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.linux_host_inspector import LinuxHostInspectorAdapter
 
