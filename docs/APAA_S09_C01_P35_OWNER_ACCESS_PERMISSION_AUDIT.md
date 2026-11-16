@@ -162,3 +162,32 @@ These are repository implementation and verification tasks. They do not authoriz
 - No deployment, merge, host/firewall mutation or C02 start is authorized.
 
 **Next checkpoint:** `APAA-S09-C01-P35-OWNER-ACCESS-PERMISSION-AUDIT-RECORDED`
+
+
+## 8. P42/P36 implementation reconciliation (2026-11-16)
+
+This section supersedes the earlier implementation-status statements in F-02, the P35-A–P35-D sequence, and Section 7 where they describe grant/revoke or sharing UI as not implemented. Those statements are retained above as the historical finding at the earlier audited code head; they are not the current branch disposition.
+
+**Current implementation inspected:** P42 owner-controlled read-only grant/revoke UI, core/project_access.py, core/persistent_projects.py, and the P36 Part 11 design record.
+
+The current branch now implements the narrow owner-controlled workflow:
+- The UI is gated on a server-validated authenticated Principal, an explicitly configured trusted OIDC issuer allowlist, and an owner-owned project.
+- Directory enrollment is private by default and requires explicit discoverability consent.
+- The browser selects an opaque server-issued directory ID. The server resolves it to a Principal and rechecks owner authority; issuer/subject claims are never accepted from browser input.
+- Grant and revoke each require explicit owner confirmation. Grants expose project metadata read only.
+- Active grants are listed for the owner. ACL-aware project list/detail reads recheck authorization; durable grant/revoke events are recorded.
+- Project mutation/deletion, task dispatch/execution, files/resources, memory/knowledge, conversations/preferences and checkpoints are not granted. No public invitation endpoint, email identity matching or generic role grant exists.
+
+**Current repository disposition:** owner-controlled read-only grant/revoke UI and backend primitive are IMPLEMENTED in the PR branch. This closes the earlier repository implementation gap F-02 for the narrow read-only scope only. It does not implement a general invitation system, broad collaborator roles, account-level administration, or a separately provisioned APAA-wide owner bootstrap. F-03 therefore remains OPEN: global owner bootstrap/recovery is not established by per-project ownership.
+
+**Required external acceptance remains BLOCKED:** live OIDC with two distinct real accounts, physical Android session/revocation testing, out-of-band identity validation, independent review and exact-head qualification. Unit tests and Chromium viewport emulation do not replace these checks. Keep the feature disabled unless trusted OIDC configuration is explicitly supplied by the owner.
+
+**Updated P35 status**
+- P35-A global owner bootstrap/recovery threat model: OPEN.
+- P35-B narrow persistent read grant/revoke: IMPLEMENTED; exact-head CI evidence tracked in P31.
+- P35-C owner-only controller and durable audit: IMPLEMENTED; live identity/host acceptance BLOCKED.
+- P35-D owner-confirmed Android-responsive UI: IMPLEMENTED in repository; physical Android qualification BLOCKED.
+- P35-E live two-user OIDC: BLOCKED.
+- P35-F independent review: BLOCKED.
+
+No deployment, merge, Auto-Run, worker activation, paid service, host/firewall mutation, payment or C02 start is authorized.
