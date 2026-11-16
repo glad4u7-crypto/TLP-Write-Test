@@ -129,11 +129,11 @@ The intermediate pending status in Section 2A is historical and is superseded by
 
 | Workflow | Run | Result |
 |---|---:|---|
-| Agent Foundation CI | [#1228](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944979) | PASS |
-| Python Demo CI | [#1317](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913945016) | PASS |
-| APAA Security CI | [#25](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944772) | PASS |
-| P23 Rootless Podman Executor Integration | [#339](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944791) | PASS |
-| P20 Rootless Podman Runtime Qualification | [#357](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944784) | PASS |
+| Agent Foundation CI | [#1229](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944979) | PASS |
+| Python Demo CI | [#1318](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913945016) | PASS |
+| APAA Security CI | [#26](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944772) | PASS |
+| P23 Rootless Podman Executor Integration | [#340](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944791) | PASS |
+| P20 Rootless Podman Runtime Qualification | [#358](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913944784) | PASS |
 
 The Agent Foundation and APAA Security pytest jobs each reported **1,352 passed, 9 skipped**. Skipped tests are reported separately and are not counted as passes. This verifies the repository software and disposable CI checks only; it does not close any external qualification gate.
 
