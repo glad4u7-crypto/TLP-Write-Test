@@ -16,6 +16,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Capture interpreter filesystem capabilities before tests or callers can wrap
+# os.open/os.link. Runtime monkeypatching must not change the platform contract.
+_OPEN_SUPPORTS_DIR_FD = os.open in os.supports_dir_fd
+_LINK_SUPPORTS_DIR_FD = os.link in os.supports_dir_fd
+
 _REQUIRED = (
     "host-preflight.json", "identity.json", "trust.json", "lifecycle.json",
     "egress.json", "negative-tests.json", "failure-cleanup.json",
@@ -42,7 +47,7 @@ def _utc(value: str, field: str) -> str:
 def _open_evidence_directory(root: Path) -> int:
     """Open the directory itself without following a final-component symlink."""
     required = ("O_NOFOLLOW", "O_DIRECTORY")
-    if any(not hasattr(os, flag) for flag in required) or os.open not in os.supports_dir_fd:
+    if any(not hasattr(os, flag) for flag in required) or not _OPEN_SUPPORTS_DIR_FD:
         raise ManifestBuildError("platform lacks safe directory-relative no-follow file access")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     if hasattr(os, "O_CLOEXEC"):
@@ -141,7 +146,7 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
         # Write to a unique private staging inode first. Publishing with link()
         # makes the complete, fsynced bytes visible in one atomic no-overwrite step;
         # O_EXCL on the final path alone would expose a partially-written manifest.
-        if os.link not in os.supports_dir_fd:
+        if not _LINK_SUPPORTS_DIR_FD:
             raise ManifestBuildError("platform lacks atomic directory-relative manifest publication")
         temp_name = f".manifest-{secrets.token_hex(16)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
