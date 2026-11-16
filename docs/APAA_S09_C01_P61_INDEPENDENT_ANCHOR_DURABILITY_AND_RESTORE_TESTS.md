@@ -2,7 +2,11 @@
 
 **Date:** 2026-11-16  
 **Scope:** Restart persistence, monotonic high-water mark, concurrent compare-and-swap, backup/restore rollback resistance.  
-**Status:** Reference-model tests and fail-closed adapter-path tests committed; latest exact-head CI pending.  
+**Status:** Reference-model and fail-closed adapter-path software tests verified by exact-commit CI (4/4 PASS on both the test commit and documentation commit); independent production anchor remains NOT QUALIFIED.
+
+**Verified commits:** test `84ccb0288102d19263c52817b99a25074543bfdf`; documentation `6eb76990ab3fcf6eb970d6f26f6bd0491736867d`.
+
+**CI evidence:** Agent Foundation CI #1188/#1189, Python Demo CI #1277/#1278, P20 Rootless Podman Qualification #317/#318, and P23 Executor Integration #299/#300 all completed successfully on the respective commits (4/4 each).  
 **Production anchor status:** NOT QUALIFIED. No independent remote anchor service or production credentials were accessed.
 
 ## Implemented tests
