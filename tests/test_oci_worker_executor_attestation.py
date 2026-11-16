@@ -46,6 +46,8 @@ def setup(tmp_path, *, corrupt_signature=False):
 
     def runner(argv, timeout):
         calls.append(tuple(argv))
+        if argv[1] == "create":
+            return CommandResult(0, "a" * 64, "")
         if argv[1] == "inspect":
             return CommandResult(0, json.dumps([{
                 "Id": "a" * 64,
