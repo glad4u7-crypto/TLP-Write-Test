@@ -81,7 +81,7 @@ P36 adds a narrow owner-only read-grant/revoke controller and immutable grant/re
 - Project mutation/action, file/resource operations, memory, conversations, preferences and checkpoints remain denied to a read-only collaborator.
 - Project checkpoint save and recovery must pass through `OwnerProjectCheckpointAccess`, which derives the tenant from the authenticated principal and verifies exact project ownership.
 - Two distinct real OIDC accounts are used; synthetic principals and unit tests are not accepted as live OIDC evidence.
-- Android and PC browsers are both exercised physically for sign-in, sign-out, session switch, revocation, storage isolation and responsive behavior.
+- The physical Android device is exercised for sign-in, sign-out, session switch, revocation, storage isolation and responsive behavior. PC physical verification is optional and only required before making PC-specific release claims.
 
 Until those tests and the other mandatory gates are independently approved, the safe default remains owner-only application access; no collaborator UI/API is enabled.
 
@@ -108,3 +108,47 @@ This updates repository-side CI status only. It does not change any G1–G10 ext
 The owner grant/revoke controller is a backend primitive, not an enabled collaborator feature. End-user access UI remains disabled until a trusted identity-directory/invitation-resolution design returns server-verified Principals and every project/resource read path enforces grant and immediate revocation. Do not accept user-entered issuer/subject identifiers or expose a public invitation endpoint. The owner-only default remains in force.
 
 **Current truthful status:** repository implementation and exact-head CI: PASS; end-user collaborator workflow: BLOCKED; live/physical/real-host qualification: BLOCKED; S09-C01: OPEN / NOT COMPLETE; C02: NOT STARTED.
+
+
+## 10. P42 owner-controlled read-only grant/revoke UI and P31 evidence refresh (2026-11-16)
+
+**P42 implementation disposition:** IMPLEMENTED in the PR work branch. The owner-facing controls are present in `app.py` and are gated on a validated authenticated Principal plus an explicitly configured trusted OIDC issuer allowlist and an owner-owned project.
+
+### P42 controls inspected
+
+- Directory enrollment is sourced only from the server-validated Streamlit OIDC Principal. An identity is private by default and must explicitly opt in to directory discoverability.
+- The owner selects an opaque server-issued directory ID; the browser does not submit issuer/subject values as identity claims.
+- The server resolves the opaque ID to an authenticated Principal and rechecks owner authority before grant.
+- Grant requires a separate confirmation checkbox and form submission; it grants project metadata read access only.
+- Active grants are listed for the owner. Revocation requires a separate confirmation and is persisted through the owner-only controller.
+- The read boundary uses ACL-aware project list/detail calls; the current grant does not authorize project edits/deletion, task approvals/dispatch/execution, files/resources, memory/knowledge, conversation history, preferences or checkpoints.
+- The directory-discoverability preference is separate from project permission. Opting out prevents new selection but does not silently revoke an existing grant; the owner can still identify an active grant for revocation.
+- No public invitation endpoint, email-based identity matching, client-supplied issuer/subject, generic role grant or collaborator privilege escalation is introduced.
+
+### Exact PR-head CI evidence
+
+The P42 state was checked on exact PR head `3d8c166628b5c7040d706d963ca69d12283aef7f`. All four required workflow runs completed successfully on that exact SHA:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Agent Foundation CI | [#1054](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834326479) | PASS |
+| Python Demo CI | [#1129](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834326471) | PASS |
+| P20 disposable rootless Podman lifecycle | [#183](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834326304) | PASS |
+| P23 disposable Podman executor integration | [#165](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43834326459) | PASS |
+
+Agent Foundation CI additionally completed its Android/desktop Chromium viewport-emulation job and disposable Linux egress namespace job successfully. P20 completed its disposable rootless Podman CREATE/INSPECT/START/STOP/REMOVE and no-leftover checks. P23 completed the disposable Podman executor/attestation-gate integration and no-worker-leftover checks.
+
+**Evidence scope:** These are exact-PR-head repository and disposable CI-runner results. Chromium viewport emulation is not a physical Android test. Disposable Linux namespace and Podman checks are not production-host qualification. These results do not establish live OIDC with two real identities, actual Android device behavior, protected production signer/key custody, an independently administered durable anti-rollback anchor, production worker/proxy sink-side enforcement, production Linux host qualification, or independent human approval.
+
+### P31 final disposition
+
+- Repository-side P31 evidence inventory: **UPDATED / RECORDED**.
+- P42 owner-controlled read-only grant/revoke UI: **IMPLEMENTED**.
+- P42 exact-head CI on the recorded SHA above: **PASS (4/4 workflows; all reported jobs successful)**.
+- PR #11: **Draft / Open / Unmerged** at the time of this evidence check.
+- G1–G10 external qualification gates: **BLOCKED / NOT EVIDENCED**; no gate is promoted to PASS by CI-only evidence.
+- Live OIDC, physical Android and production Linux host qualification: **NOT COMPLETED**.
+- S09-C01: **OPEN / NOT COMPLETE**.
+- S09-C02: **NOT STARTED**.
+
+This section closes the repository-side P31 evidence refresh only. It does not close S09-C01 or authorize collaborator access in any deployment, merge, release, worker activation, paid API, payment, Auto-Run, or production action. Recheck CI on any subsequent commit SHA before treating this evidence as current.
