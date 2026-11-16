@@ -14,7 +14,7 @@
 - `core/oci_inspect_normalizer.py`: strict Docker/Podman inspect normalization; mismatches fail closed.
 - Lifecycle executor gates CREATE → INSPECT → signed ATTEST → START, with bounded command timeouts. It captures the immutable ID returned by CREATE, then addresses INSPECT, START, STOP and force-REMOVE by that exact ID (and rejects an inspect-ID mismatch). Explicit handle-bound STOP → force-REMOVE is available; cleanup always attempts force-remove even when graceful stop fails, and reports an unremoved worker as a cleanup failure.
 - Regression tests cover compatibility, version mismatch, runtime policy drift, inspect normalization, preflight output, immutable-ID lifecycle, failed graceful stop/force-remove, inspect timeout and daemon-disconnect fail-closed cleanup.
-- Added a dedicated **disposable rootless Podman daemon CI qualification**. It installs Podman on an ephemeral GitHub-hosted Ubuntu runner, verifies non-root/rootless mode and cgroup v2, builds a local scratch+static-BusyBox image without pulling a base image, and runs CREATE → INSPECT → START → STOP → REMOVE by immutable container ID. Inspect assertions cover stopped pre-start state, read-only rootfs, all capabilities dropped, no-new-privileges, explicit seccomp, no network, and no privileged/host PID/IPC mode. A final orphan check and short-retention evidence artifact are included.
+- Added a dedicated **disposable rootless Podman runtime CI qualification**. Podman is daemonless; this is not a Podman daemon test. It installs Podman on an ephemeral GitHub-hosted Ubuntu runner, verifies non-root/rootless mode and cgroup v2, builds a local scratch+static-BusyBox image without pulling a base image, and runs CREATE → INSPECT → START → STOP → REMOVE by immutable container ID. Inspect assertions cover stopped pre-start state, read-only rootfs, all capabilities dropped, no-new-privileges, explicit seccomp, no network, and no privileged/host PID/IPC mode. A final orphan check and short-retention evidence artifact are included.
 
 ## Exact-head CI evidence
 
@@ -67,4 +67,16 @@ P21 commits currently on the PR branch:
 - `9e41b198e512d1850f768f0a444ebbc44316f530` — capability allowlist correction.
 - `b61ec319fe36894440527679ba83d99eaa230808` — regression fixture update.
 
-**Verification status:** P21 is implementation-pushed but CI is not yet confirmed for this exact head. The P20 three-workflow PASS applies only to its recorded P20 commit and must not be carried forward to P21. No integrated signed-attestation runtime qualification is claimed. Keep the worker disabled until P21 CI passes and the remaining host-trust, signed-attestation, egress and real-runtime rejection drills are completed.
+**Verification status:** P21 exact-head CI passed on `92c03c629230579be91fd052ee9fbd31bd88eb34` (2026-11-16):
+- [Agent Foundation CI #883](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804273609): **PASS** — both `test` and `Disposable Linux egress namespace qualification` jobs completed successfully; dependency audit, compile and foundation test steps passed.
+- [Python Demo CI #958](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804273602): **PASS**.
+- [Rootless Podman Runtime Qualification #12](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804273605): **PASS**.
+The workflow-run jobs for Agent Foundation CI #883 both completed successfully. The P21 inspect-normalization change is therefore CI-verified at this exact head. This does not constitute APAA-integrated signed-attestation qualification or full production egress qualification.
+
+## P22 — signed-attestation lifecycle integration qualification
+
+The repository contains an executor path in `core/oci_worker_executor.py` that is designed to perform CREATE → immutable-ID INSPECT → tenant-bound challenge issuance → Ed25519 evidence verification and one-time challenge consumption → START. It requires an `InspectorEvidenceControlPlane` and tenant; stateless launch is deliberately blocked. Supporting components include `core/inspector_control_plane.py`, `core/inspector_key_registry.py`, `core/browser_inspector.py` and the durable SQLite challenge store.
+
+The current executor unit tests mostly verify the fail-closed path when the control plane is absent, while the control-plane tests independently cover valid single-use evidence, wrong-tenant isolation, expiry and revoked/expired keys. P22 must add an end-to-end executor integration test that joins these components and proves the exact sequence against a disposable real OCI runtime, followed by invalid-signature, stale/replayed challenge, revoked-key, tenant/runtime/worker mismatch, cancellation and orphan-cleanup drills. Until those drills are evidenced, signed-attestation integration remains unqualified and the worker stays disabled.
+
+P21 CI evidence above supersedes the earlier P21 “CI pending” note.
