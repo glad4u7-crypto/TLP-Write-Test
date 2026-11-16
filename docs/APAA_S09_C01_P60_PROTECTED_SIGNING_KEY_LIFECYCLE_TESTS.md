@@ -2,7 +2,11 @@
 
 **Date:** 2026-11-16  
 **Scope:** Staged signer rotation, overlap, revocation, replay rejection and fail-closed anchor update tests.  
-**Status:** Implementation and test commit created; exact-head CI must pass before P60 software-test closure.  
+**Status:** Software lifecycle test scope verified by exact-commit CI (4/4 PASS on both the test commit and documentation commit); physical-token qualification remains BLOCKED.
+
+**Verified commits:** test `b1cabf206b2666cc1c4d4892544fd013010e4f3e`; documentation `66130651790b2e87f23d571ee6d02b0082bf905a`.
+
+**CI evidence:** Agent Foundation CI #1185/#1186, Python Demo CI #1274/#1275, P20 Rootless Podman Qualification #314/#315, and P23 Executor Integration #296/#297 all completed successfully on the respective commits (4/4 each).  
 **Production HSM status:** NOT QUALIFIED. No physical token was accessed or modified.
 
 ## Changes
