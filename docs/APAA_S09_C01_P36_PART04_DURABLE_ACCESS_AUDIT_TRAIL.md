@@ -10,6 +10,7 @@ Status: IMPLEMENTED; exact-head CI verification pending.
 - Revoke events are written in the same transaction as the active-grant revocation. Repeated revoke attempts that change no grant do not create false events.
 - Added `list_events_for_owner`; only the exact immutable project owner can read event history.
 - Event history is separate from the current grant row, so revoke/regrant history is retained rather than overwritten.
+- SQLite BEFORE UPDATE and BEFORE DELETE triggers reject attempts to alter or erase recorded access events; regression tests exercise both protections.
 - Added regression tests for grant/revoke event order and identity binding, no-op revoke behavior, non-owner denial, and persistence after reopening the SQLite store.
 
 ## Security boundary
@@ -20,7 +21,7 @@ This is an audit persistence primitive, not a collaborator-management UI or a pu
 
 Earlier P36 Part 03 exact head `392ec9168d59279ef6549040bf181136ef227dd9` completed all six checks successfully: Python Demo, main tests, Android-sized Chromium viewport, disposable Linux egress namespace, Podman executor plumbing and disposable rootless Podman lifecycle.
 
-The current Part 04 implementation head is `ac619138efc633d8e91966c9399e6d92db8fdcaa`. At the time of this report, no check runs had yet appeared for this exact head. Part 04 must remain CI PENDING until exact-head checks complete.
+The current Part 04 implementation has advanced through immutable-event enforcement and its regression tests. The exact latest head must be checked on GitHub before any PASS claim; earlier runs do not qualify as exact-head evidence.
 
 ## Remaining C01 gates
 
