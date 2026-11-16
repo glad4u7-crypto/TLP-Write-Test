@@ -8,6 +8,8 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import expect
+
 sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
 
 
@@ -122,10 +124,16 @@ def test_android_user_can_prepare_and_review_plan_without_execution(streamlit_se
         page = context.new_page()
         page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
-        page.get_by_label("Describe a task").fill(
+        task_input = page.get_by_label("Describe a task")
+        task_input.fill(
             "Review a Python repository and suggest a safe implementation plan."
         )
-        page.get_by_role("button", name="Prepare structured plan").click()
+        # Streamlit commits text-area edits on blur; wait for its rerun to
+        # update the server-derived disabled state before interacting.
+        task_input.press("Tab")
+        prepare_button = page.get_by_role("button", name="Prepare structured plan")
+        expect(prepare_button).to_be_enabled(timeout=15000)
+        prepare_button.click()
         page.get_by_text("Structured plan review").wait_for(timeout=30000)
         page.get_by_text("READY · Reviewable plan prepared. Nothing has been executed.").wait_for()
 
