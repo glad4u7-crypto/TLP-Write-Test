@@ -39,3 +39,8 @@ PR #11 remains Draft / Open / Unmerged. Auto-Run OFF; Worker and Browser DISABLE
 The P62 tests remain included in current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This validates the disposable software concurrency, injected SQLite crash and audit-chain tampering tests only. Real multi-host/power-loss/disaster-recovery and external immutable-audit qualification remain BLOCKED.
 
 **P62 software scope: COMPLETE. Production qualification: NOT QUALIFIED.**
+
+
+## 7. Remediation clarification — inspection status after audit tampering
+
+`OfflineOwnerRecoveryService.inspect()` now verifies the durable audit chain before reporting an owner/anchor disposition. An invalid or unavailable audit chain is reported as `AUDIT_INTEGRITY_BLOCKED`, rather than incorrectly presenting an otherwise matching owner state and anchor as `CONSISTENT`. P62 regression coverage asserts this disposition after audit field/hash/deletion tampering and sequence reordering. Recovery continues to fail closed before any subsequent anchor mutation.
