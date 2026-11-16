@@ -2,7 +2,8 @@
 
 **Repository:** glad4u7-crypto/TLP-Write-Test  
 **Current checkpoint:** APAA-S09-C01-P26 — external inspector signing-provider boundary implemented; exact-head four-workflow CI PASS on `8f1f41c17306e35cfea30e7b0b28115ef98c7dad`; production TPM/HSM, monotonic anchor, trusted host collector and full real-daemon/topology qualification remain pending  
-**Latest code commit at P26 verification:** 8f1f41c17306e35cfea30e7b0b28115ef98c7dad  
+**P26 code commit:** 8f1f41c17306e35cfea30e7b0b28115ef98c7dad  
+**Latest documentation/roadmap commit:** e590c46bb0e0fffcfa9abe6edf8e5043844b693c  
 **Release state:** Draft / not merged / live browser disabled
 
 ## Guardrails
@@ -86,3 +87,14 @@ Remaining hard acceptance gates (not replaceable by unit tests or documentation)
 7. Final exact-head CI after all code changes, independent security review and owner-controlled permission/access E2E.
 
 **No live browsing, production worker, host mutation, firewall change, deployment, PR merge, paid service, API key or Auto-Run is authorized by this roadmap.**
+
+
+## Latest exact-head verification — documentation commit `e590c46bb0e0fffcfa9abe6edf8e5043844b693c`
+
+All four workflows completed successfully on this exact commit:
+- Agent Foundation CI #43808654976 — **PASS** (both the main test job and disposable Linux egress namespace qualification passed).
+- Python Demo CI #43808654967 — **PASS**.
+- P20 Rootless Podman Runtime Qualification #43808654979 — **PASS**. The disposable GitHub-hosted runner completed rootless Podman setup, local digest-addressed image build without pulling, hardened container CREATE/INSPECT, START, running-state verification, STOP, REMOVE by immutable ID, no-leftover-container check and sanitized evidence upload.
+- P23 Rootless Podman Executor Integration #43808654973 — **PASS**.
+
+This is stronger than a unit-test-only result: CI exercised a real disposable rootless Podman daemon lifecycle. It still does not qualify the user's own host, a production host collector/key, TPM/HSM custody, durable independent monotonic storage, Docker rootless lifecycle, Android/Termux, or the full APAA worker/proxy egress topology. C01 remains open until those mandatory environment-dependent gates are independently satisfied.
