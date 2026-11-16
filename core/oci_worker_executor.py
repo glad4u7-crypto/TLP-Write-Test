@@ -237,7 +237,12 @@ class OCIWorkerExecutor:
             handle = OCIWorkerHandle(container_id, plan.container_name, plan.launch_spec_digest, plan.runtime)
             return OCIExecutionReport(handle, tuple(events), True, False)
         except Exception as exc:
-            events.append(LifecycleEvent("BLOCK", "PASS", type(exc).__name__))
+            # Keep a bounded, single-line reason code for audit/debugging. Runtime
+            # command stderr and arbitrary output are deliberately not exposed.
+            reason = " ".join(str(exc).split())[:160]
+            events.append(LifecycleEvent(
+                "BLOCK", "PASS", f"{type(exc).__name__}: {reason or 'launch gate rejected'}"
+            ))
             if created:
                 cleaned = self._cleanup(plan, events, started=started, container_id=container_id)
             else:
