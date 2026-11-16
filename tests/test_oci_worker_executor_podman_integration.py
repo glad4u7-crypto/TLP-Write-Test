@@ -151,6 +151,9 @@ def test_executor_attests_then_starts_and_removes_real_rootless_podman_container
         inspect_summary = {
             "host_network_mode": host.get("NetworkMode"),
             "network_names": sorted((network_settings.get("Networks") or {}).keys()),
+            "cap_drop": host.get("CapDrop"),
+            "cap_add": host.get("CapAdd"),
+            "security_options": host.get("SecurityOpt"),
         }
     failure_context = "; ".join(
         f"{event.stage}:{event.detail}" for event in report.events
