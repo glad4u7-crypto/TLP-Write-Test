@@ -200,3 +200,23 @@ restricted file permissions. It reports `authenticity=NOT_CHECKED` and
 `host_qualification=NOT_ASSESSED`; next run the integrity validator, then sign the
 manifest using the independently provisioned evidence-signing key and complete the
 separate reviewer workflow. The builder does not establish that any artifact is genuine.
+
+
+## Read-only evidence privacy preflight (P29)
+
+Before moving a completed evidence pack to its approved restricted store, run:
+
+```bash
+python -m scripts.check_apaa_p27_evidence_privacy EVIDENCE_DIRECTORY
+```
+
+This scans the manifest and nine required JSON artifacts for common credential field names,
+private-key headers, bearer-like values and common cloud/source-control token patterns. A
+finding returns a non-zero exit status and identifies only the file/path and pattern class,
+not the matched value. It is read-only and does not redact or rewrite evidence.
+
+A clean scan reports only `NO_KNOWN_PATTERN_MATCHES` and
+`PATTERN_SCAN_ONLY_HUMAN_REVIEW_REQUIRED`. It is not DLP, cannot detect every secret or
+personal identifier, and is not permission to publish evidence. Human review and the
+owner-approved restricted evidence store remain mandatory. Do not upload raw host evidence
+to this repository.
