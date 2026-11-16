@@ -57,9 +57,9 @@ The repository now contains [apaa-p20-rootless-podman-qualification.yml](../.git
 
 1. Installs Podman and rootless prerequisites; runs Podman as the non-root runner account and checks rootless mode plus cgroup v2.
 2. Builds a local scratch image containing the runner's static BusyBox binary. No external base image is pulled.
-3. Creates one stopped container using the local immutable image ID, `--network=none`, read-only rootfs, all capabilities dropped, no-new-privileges, an explicit seccomp profile and resource limits.
+3. Creates one stopped container using the local immutable image ID, `--network=none`, read-only rootfs, Podman's normalized capability-drop list with no added capabilities, no-new-privileges, an explicit seccomp profile and resource limits.
 4. Inspects the container before start and checks its immutable ID and effective security configuration.
-5. Starts, verifies running state, stops and force-removes using the exact immutable container ID.
+5. Starts, verifies running state, checks the actual process's CapInh/CapPrm/CapEff/CapBnd values are all zero, then stops and force-removes using the exact immutable container ID.
 6. Checks that no qualification container remains and uploads a short-retention CI evidence artifact.
 
 A green workflow is evidence for a real **rootless Podman runtime smoke lifecycle** on that disposable runner. It is not proof of APAA's signed-attestation integration, Docker compatibility, the production worker/proxy topology, alternate-interface egress resistance or Android support. Review the actual run and artifact before recording PASS. Do not describe an unobserved or failed run as qualified.
