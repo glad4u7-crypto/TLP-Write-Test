@@ -6,8 +6,8 @@ Status: implementation/test batch only; not a production qualification.
 
 P37 extends the synthetic offline-owner recovery test suite with:
 - Two simultaneous dual-signed recovery requests competing for one owner-state revision. A linearizable test anchor must permit exactly one transition.
-- SQLite backup/restore to an older owner-state snapshot while the independent monotonic anchor remains newer. Inspection must report `DIVERGED_BLOCKED`; another recovery must fail closed.
-- Audit event-field mutation and tail deletion detection. Recovery must not proceed when the local audit chain is invalid.
+- SQLite backup/restore to a revision-zero snapshot while the independent monotonic anchor has advanced two revisions. Inspection must report `DIVERGED_BLOCKED`; another recovery must fail closed. A one-revision lead is intentionally classified as potentially resumable because it is observationally indistinguishable from a crash after anchor CAS and before local SQLite CAS; only the exact still-valid dual-signed target envelope can resume it.
+- Audit event-field mutation and tail deletion detection. Recovery must not proceed when the local audit chain is invalid. On the idempotent already-committed target path, audit verification occurs before any anchor mutation, so a deleted audit tail leaves the anchor unchanged.
 - Operator and approver key rotation. A service configured only with the replacement trust set rejects the old signatures and accepts a new envelope signed by the replacement independent key pair.
 - Key revocation by removing the old key from the trusted policy.
 - Audit-commit failure injection. SQLite owner-state and audit writes roll back atomically; the external anchor remains ahead and the state is explicitly resumable only through the dual-control recovery protocol.
