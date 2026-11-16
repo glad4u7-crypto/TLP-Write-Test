@@ -13,6 +13,8 @@ WORKFLOWS = (
     ROOT / ".github" / "workflows" / "blank.yml",
 )
 
+ALL_SECURITY_WORKFLOWS = tuple(sorted((ROOT / ".github" / "workflows").glob("*.yml")))
+
 
 def test_all_external_workflow_actions_are_pinned_to_full_commit_shas():
     for workflow in WORKFLOWS:
@@ -68,3 +70,34 @@ def test_dependabot_checks_pip_and_github_actions_weekly_without_auto_merge():
     assert 'package-ecosystem: "github-actions"' in source
     assert source.count('interval: "weekly"') == 2
     assert "auto-merge" not in source.lower()
+
+
+
+def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
+    assert len(ALL_SECURITY_WORKFLOWS) >= 7
+    for workflow in ALL_SECURITY_WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        references = re.findall(
+            r"^\\s*(?:-\\s*)?uses:\\s*([^\\s#]+)", source, re.MULTILINE
+        )
+        assert references, f"No external actions found in {workflow.name}"
+        for reference in references:
+            action, separator, revision = reference.rpartition("@")
+            assert separator and action and re.fullmatch(r"[0-9a-f]{40}", revision), (
+                f"{workflow.name} uses an unpinned action: {reference}"
+            )
+        assert re.search(
+            r"^permissions:\\s*\\n\\s+contents:\\s+read\\s*$",
+            source,
+            re.MULTILINE,
+        ), f"{workflow.name} must declare contents: read only"
+        assert "pull_request_target:" not in source
+        assert "write-all" not in source.lower()
+
+
+def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeouts():
+    for workflow in ALL_SECURITY_WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        assert re.search(r"^concurrency:\\s*$", source, re.MULTILINE), workflow.name
+        assert "cancel-in-progress: false" in source, workflow.name
+        assert re.search(r"^\\s+timeout-minutes:\\s+\\d+\\s*$", source, re.MULTILINE), workflow.name
