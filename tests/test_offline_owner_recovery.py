@@ -321,12 +321,23 @@ def test_revoked_operator_or_approver_key_is_not_accepted(tmp_path):
 def test_audit_commit_failure_rolls_back_owner_state_and_audit_atomically(tmp_path, monkeypatch):
     service, store, anchor, op, ap = _setup(tmp_path)
     original = store._verify_audit_connection
-    monkeypatch.setattr(store, "_verify_audit_connection",
-        lambda connection: (_ for _ in ()).throw(ValueError("simulated audit integrity failure")))
+    calls = 0
+
+    def fail_only_inside_owner_transaction(connection):
+        nonlocal calls
+        calls += 1
+        # First call is the service preflight; second is the SQLite write
+        # transaction's in-transaction audit verification.
+        if calls == 2:
+            raise ValueError("simulated audit commit integrity failure")
+        return original(connection)
+
+    monkeypatch.setattr(store, "_verify_audit_connection", fail_only_inside_owner_transaction)
     with pytest.raises(RecoveryDenied):
         service.apply(_signed(op, ap), now=1100)
     monkeypatch.setattr(store, "_verify_audit_connection", original)
+    assert calls == 2
     assert store.read_global_owner_state().revision == 0
     assert store.verify_audit_chain()
-    assert anchor.read().revision == 0
-    assert service.inspect().disposition == "CONSISTENT"
+    assert anchor.read().revision == 1
+    assert service.inspect().disposition == "ANCHOR_AHEAD_RESUMABLE"
