@@ -3,7 +3,7 @@
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **PR:** [#11 — Gated OCI Worker and Proxy Isolation](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/11)  
-**P20 real-daemon workflow:** [apaa-p20-rootless-podman-qualification.yml](../.github/workflows/apaa-p20-rootless-podman-qualification.yml)  
+**P20 real-runtime workflow:** [apaa-p20-rootless-podman-qualification.yml](../.github/workflows/apaa-p20-rootless-podman-qualification.yml)  
 **Release posture:** Draft only; no merge, deployment, live browser enablement or production claim.
 
 ## Delivered in P20
@@ -28,17 +28,17 @@ The namespace egress PASS is not proof of the full OCI worker/proxy topology or 
 ## Operational qualification still pending
 
 1. The new CI workflow must complete successfully and its actual rootless Podman evidence must be reviewed.
-2. Real rootless Docker daemon qualification.
+2. Real rootless Docker runtime qualification.
 3. Actual inspect schema from each separately pinned runtime.
 4. APAA-integrated CREATE → INSPECT → signed ATTEST → START → STOP/REMOVE on a disposable daemon. The Podman CI smoke verifies runtime lifecycle and inspect hardening, but deliberately does not simulate or bypass APAA's trusted attestation gate.
-5. Invalid, stale, replayed, revoked-key and mismatched attestation rejection against a real daemon.
-6. Real-daemon timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain. Timeout and daemon-disconnect at INSPECT have unit regression coverage, not real-daemon drills.
+5. Invalid, stale, replayed, revoked-key and mismatched attestation rejection against a real runtime.
+6. Real-daemon timeout, cancellation, daemon interruption and bounded cleanup drills; prove no orphaned containers remain. Timeout and daemon-disconnect at INSPECT have unit regression coverage, not real-runtime drills.
 7. Runtime namespace inspection and no-host-port proof for the integrated worker topology.
 8. Egress alternate-interface bypass resistance, external DNS policy, IPv6 UDP, host firewall hook precedence and full worker/proxy topology.
 9. Trusted host collector installation; out-of-band Ed25519 key provisioning, rotation, revocation and recovery.
 10. Android/Termux OCI support.
 
-Runtime probe tests use injected command runners. They prove deterministic policy behavior, not live daemon lifecycle. The namespace egress test is not a substitute for the daemon-integrated worker topology.
+Runtime probe tests use injected command runners. They prove deterministic policy behavior, not live runtime lifecycle. The namespace egress test is not a substitute for the daemon-integrated worker topology.
 
 ## Host preflight
 
