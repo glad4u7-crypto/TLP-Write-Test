@@ -252,6 +252,39 @@ with st.sidebar:
     st.success("No paid API requests")
     st.success("External execution disabled")
 
+# Directory visibility is a separate, explicit consent. It never grants access.
+if principal is not None and trusted_identity_directory is not None:
+    st.divider()
+    st.header("Private identity directory")
+    st.caption(
+        "This controls whether other authenticated users from the same explicitly "
+        "approved OIDC provider may find your account when an owner selects a "
+        "read-only project collaborator. It does not share projects or grant access."
+    )
+    try:
+        current_discoverability = trusted_identity_directory.is_discoverable(principal)
+        with st.form("identity_discoverability_form"):
+            allow_directory_discovery = st.checkbox(
+                "Allow project owners to find my account in the private APAA directory",
+                value=current_discoverability,
+                help=(
+                    "Off by default. Only your authenticated identity from the "
+                    "same allowlisted OIDC issuer is discoverable; email and tokens "
+                    "are not used as identity keys."
+                ),
+            )
+            save_directory_choice = st.form_submit_button("Save directory privacy choice")
+        if save_directory_choice:
+            trusted_identity_directory.set_discoverability(
+                principal, discoverable=allow_directory_discovery
+            )
+            st.success(
+                "Directory privacy choice saved. This does not grant anyone project access."
+            )
+            st.rerun()
+    except (ValueError, PermissionError, LookupError, OSError, sqlite3.Error) as exc:
+        st.error(f"Directory privacy setting could not be loaded or saved: {exc}")
+
 st.header("Project Manager")
 st.caption("Authenticated projects are saved in tenant-scoped SQLite storage. Local prototype projects remain session-only.")
 with st.form("prepare_project_form", clear_on_submit=True):
