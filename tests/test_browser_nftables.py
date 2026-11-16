@@ -180,7 +180,8 @@ def test_parser_rejects_wrong_proxy_ip_or_port():
 def test_collector_emits_p06_compatible_signed_evidence():
     spec = build_worker_launch_spec(profile())
     source = FakeHostSource(spec)
-    key = Ed25519PrivateKey.generate()\n    signer = TestSigningProvider(key)
+    key = Ed25519PrivateKey.generate()
+    signer = TestSigningProvider(key)
     envelope = collect_signed_inspector_evidence(
         source, spec, challenge="d" * 64, key_id="host-inspector-prod",
         signer=signer, expected_proxy_addresses=[PROXY_IP], now=NOW,
