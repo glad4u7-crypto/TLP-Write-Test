@@ -168,3 +168,160 @@ def test_audit_records_key_fingerprints_not_owner_credentials(tmp_path):
     assert row[0] == "offline_owner_rekey_approved"
     assert len(row[1]) == 64
     assert row[2] == "offline-change-001"
+
+
+def test_concurrent_recovery_requests_only_one_transition_wins(tmp_path):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    class LinearizableAnchor(_InMemoryMonotonicAnchor):
+        def __init__(self, state):
+            super().__init__(state)
+            self._lock = threading.Lock()
+        def read(self):
+            with self._lock:
+                return self.state
+        def compare_and_advance(self, *, expected, target):
+            with self._lock:
+                if self.state != expected or target.revision != expected.revision + 1:
+                    return False
+                self.state = target
+                return True
+
+    service, store, _, op, ap = _setup(tmp_path)
+    anchor = LinearizableAnchor(AnchorState(0, None, None))
+    service = OfflineOwnerRecoveryService(store, service._operators_policy if hasattr(service, "_operators_policy") else
+        RecoveryPolicy((RecoveryPublicKey("operator-key-01", op.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)),),
+        (RecoveryPublicKey("approver-key-01", ap.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)),)), anchor)
+    envelopes = [
+        _signed(op, ap, change_id="concurrent-change-001",
+                new_generation=hashlib.sha256(b"concurrent-a").hexdigest(), nonce="1"*64),
+        _signed(op, ap, change_id="concurrent-change-002",
+                new_generation=hashlib.sha256(b"concurrent-b").hexdigest(), nonce="2"*64),
+    ]
+    barrier = threading.Barrier(2)
+    def attempt(envelope):
+        barrier.wait(timeout=5)
+        try:
+            return ("ok", service.apply(envelope, now=1100).change_id)
+        except RecoveryDenied:
+            return ("denied", None)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(attempt, envelopes))
+    assert sum(status == "ok" for status, _ in outcomes) == 1
+    assert sum(status == "denied" for status, _ in outcomes) == 1
+    assert store.read_global_owner_state().revision == 1
+    assert anchor.read().revision == 1
+    assert store.verify_audit_chain()
+
+
+def test_restored_older_sqlite_backup_is_blocked_by_newer_anchor(tmp_path):
+    import sqlite3
+    import hashlib
+
+    service, store, anchor, op, ap = _setup(tmp_path)
+    first = service.apply(_signed(op, ap), now=1100)
+    backup_path = tmp_path / "owner-state-backup.sqlite3"
+    with sqlite3.connect(store._database_path) as source, sqlite3.connect(backup_path) as backup:
+        source.backup(backup)
+    second = _signed(op, ap, change_id="backup-restore-change-002",
+        expected_revision=first.revision, old_generation=first.generation,
+        new_generation=hashlib.sha256(b"second-generation").hexdigest(),
+        nonce="d"*64)
+    service.apply(second, now=1100)
+    with sqlite3.connect(backup_path) as backup, sqlite3.connect(store._database_path) as restored:
+        backup.backup(restored)
+    assert store.read_global_owner_state().revision == 1
+    assert anchor.read().revision == 2
+    assert service.inspect().disposition == "DIVERGED_BLOCKED"
+    retry = _signed(op, ap, change_id="backup-restore-retry-003",
+        expected_revision=1, old_generation=first.generation,
+        new_generation=hashlib.sha256(b"retry-generation").hexdigest(),
+        nonce="e"*64)
+    with pytest.raises(RecoveryDenied):
+        service.apply(retry, now=1100)
+    assert store.read_global_owner_state().revision == 1
+    assert anchor.read().revision == 2
+
+
+def test_audit_event_field_tampering_is_detected_and_blocks_recovery(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    service.apply(_signed(op, ap), now=1100)
+    with sqlite3.connect(store._database_path) as db:
+        db.execute("UPDATE durable_audit_events SET reason_code = ? WHERE sequence = 1",
+                   ("operator_override",))
+        db.commit()
+    assert not store.verify_audit_chain()
+    with pytest.raises(RecoveryDenied):
+        service.apply(_signed(op, ap, change_id="audit-tamper-retry-002",
+            expected_revision=1,
+            old_generation=hashlib.sha256(b"synthetic-owner-config").hexdigest(),
+            new_generation=hashlib.sha256(b"next-generation").hexdigest(),
+            nonce="f"*64), now=1100)
+    assert store.read_global_owner_state().revision == 1
+    assert anchor.read().revision == 1
+
+
+def test_audit_tail_deletion_is_detected_by_sequence_high_water_mark(tmp_path):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    service.apply(_signed(op, ap), now=1100)
+    with sqlite3.connect(store._database_path) as db:
+        db.execute("DELETE FROM durable_audit_events")
+        db.commit()
+    assert not store.verify_audit_chain()
+    with pytest.raises(RecoveryDenied):
+        service.apply(_signed(op, ap), now=1100)
+    assert store.read_global_owner_state().revision == 1
+    assert anchor.read().revision == 1
+
+
+def test_key_rotation_accepts_new_dual_control_keys_and_rejects_old_keys(tmp_path):
+    service, store, anchor, old_op, old_ap = _setup(tmp_path)
+    old_envelope = _signed(old_op, old_ap)
+    new_op, new_op_pub = _keypair()
+    new_ap, new_ap_pub = _keypair()
+    rotated_policy = RecoveryPolicy(
+        (RecoveryPublicKey("operator-key-02", new_op_pub),),
+        (RecoveryPublicKey("approver-key-02", new_ap_pub),))
+    rotated_service = OfflineOwnerRecoveryService(store, rotated_policy, anchor)
+    with pytest.raises(RecoveryDenied):
+        rotated_service.apply(old_envelope, now=1100)
+    assert store.read_global_owner_state().revision == 0
+    rotated_envelope = _signed(new_op, new_ap,
+        operator_key_id="operator-key-02", approver_key_id="approver-key-02",
+        change_id="key-rotation-change-002", nonce="9"*64)
+    result = rotated_service.apply(rotated_envelope, now=1100)
+    assert result.revision == 1
+    assert anchor.read().revision == 1
+    assert store.verify_audit_chain()
+
+
+def test_revoked_operator_or_approver_key_is_not_accepted(tmp_path):
+    service, store, anchor, old_op, old_ap = _setup(tmp_path)
+    revoked_envelope = _signed(old_op, old_ap)
+    new_op, new_op_pub = _keypair()
+    new_ap, new_ap_pub = _keypair()
+    policy_without_old_keys = RecoveryPolicy(
+        (RecoveryPublicKey("operator-key-02", new_op_pub),),
+        (RecoveryPublicKey("approver-key-02", new_ap_pub),))
+    revoked_service = OfflineOwnerRecoveryService(store, policy_without_old_keys, anchor)
+    with pytest.raises(RecoveryDenied):
+        revoked_service.apply(revoked_envelope, now=1100)
+    assert store.read_global_owner_state().revision == 0
+    assert anchor.read() == AnchorState(0, None, None)
+
+
+def test_audit_commit_failure_rolls_back_owner_state_and_audit_atomically(tmp_path, monkeypatch):
+    service, store, anchor, op, ap = _setup(tmp_path)
+    original = store._verify_audit_connection
+    monkeypatch.setattr(store, "_verify_audit_connection",
+        lambda connection: (_ for _ in ()).throw(ValueError("simulated audit integrity failure")))
+    with pytest.raises(RecoveryDenied):
+        service.apply(_signed(op, ap), now=1100)
+    monkeypatch.setattr(store, "_verify_audit_connection", original)
+    assert store.read_global_owner_state().revision == 0
+    assert store.verify_audit_chain()
+    assert anchor.read().revision == 1
+    assert service.inspect().disposition == "ANCHOR_AHEAD_RESUMABLE"
