@@ -136,11 +136,11 @@ The remediation source/test head `69d05e4d0ed3fef3c4c46ab4c17dbf09e82d2aa7` comp
 
 | Workflow | Run | Result |
 |---|---:|---|
-| Agent Foundation CI | [#1230](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078348) | PASS |
-| Python Demo CI | [#1315](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078310) | PASS |
-| APAA Security CI | [#1](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078234) | PASS |
-| P23 Rootless Podman Executor Integration | [#332](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078228) | PASS |
-| P20 Rootless Podman Runtime Qualification | [#350](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078150) | PASS |
+| Agent Foundation CI | [#1224](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078348) | PASS |
+| Python Demo CI | [#1313](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078310) | PASS |
+| APAA Security CI | [#21](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078234) | PASS |
+| P23 Rootless Podman Executor Integration | [#335](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078228) | PASS |
+| P20 Rootless Podman Runtime Qualification | [#353](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43913078150) | PASS |
 
 The foundation test job reported **1,352 passed, 9 skipped**. The changes cover audit-integrity disposition in recovery inspection, P62 tamper regression assertions, P61 separate protected-floor reference modeling, SHA pinning for APAA Security CI, and repository-wide workflow policy tests. This is software/CI evidence only. The P61 fixture does not qualify an actual independent durable anchor, and the five CI runs do not satisfy external G1–G10 qualification.
 
