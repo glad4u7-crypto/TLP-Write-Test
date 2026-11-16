@@ -31,6 +31,11 @@ class FakeConnection:
         pass
 
 
+class FakeSSLContext:
+    def load_cert_chain(self, **_kwargs):
+        pass
+
+
 def make_anchor(tmp_path, response, calls):
     files = []
     for name, mode in (("ca.pem", 0o644), ("client.pem", 0o644), ("client.key", 0o600)):
@@ -45,7 +50,7 @@ def make_anchor(tmp_path, response, calls):
     return HTTPSMonotonicAnchor(
         endpoint="https://anchor.example.test/prefix", ca_file=str(files[0]),
         client_cert=str(files[1]), client_key=str(files[2]), anchor_id="owner:primary",
-        connection_factory=factory,
+        connection_factory=factory, ssl_context_factory=lambda _ca: FakeSSLContext(),
     )
 
 
@@ -104,6 +109,7 @@ def test_remote_anchor_rejects_http_redirects_and_unsafe_tls_key_permissions(tmp
             endpoint="https://anchor.example.test", ca_file=str(tmp_path / "ca.pem"),
             client_cert=str(tmp_path / "client.pem"), client_key=str(key),
             anchor_id="owner:primary", connection_factory=lambda *_a, **_k: None,
+            ssl_context_factory=lambda _ca: FakeSSLContext(),
         )
 
 
@@ -112,7 +118,7 @@ def test_remote_anchor_rejects_non_https_and_bad_transitions(tmp_path):
         HTTPSMonotonicAnchor(
             endpoint="http://anchor.example.test", ca_file=str(tmp_path / "ca.pem"),
             client_cert=str(tmp_path / "client.pem"), client_key=str(tmp_path / "client.key"),
-            anchor_id="owner:primary",
+            anchor_id="owner:primary", ssl_context_factory=lambda _ca: FakeSSLContext(),
         )
     calls = []
     anchor = make_anchor(
