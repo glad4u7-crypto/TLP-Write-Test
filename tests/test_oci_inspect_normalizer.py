@@ -9,6 +9,17 @@ from core.oci_worker_plan import build_oci_worker_plan
 
 
 IMAGE = "registry.example.invalid/apaa/worker@sha256:" + "a" * 64
+# Podman expands --cap-drop=ALL into an explicit Linux capability list.
+PODMAN_ALL_CAPS = [
+    "AUDIT_CONTROL", "AUDIT_READ", "AUDIT_WRITE", "BLOCK_SUSPEND", "BPF",
+    "CHECKPOINT_RESTORE", "CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH",
+    "FOWNER", "FSETID", "IPC_LOCK", "IPC_OWNER", "KILL", "LEASE",
+    "LINUX_IMMUTABLE", "MAC_ADMIN", "MAC_OVERRIDE", "MKNOD", "NET_ADMIN",
+    "NET_BIND_SERVICE", "NET_BROADCAST", "NET_RAW", "SETFCAP", "SETGID",
+    "SETPCAP", "SETUID", "SYS_ADMIN", "SYS_BOOT", "SYS_CHROOT", "SYS_MODULE",
+    "SYS_NICE", "SYS_PACCT", "SYS_PTRACE", "SYS_RAWIO", "SYS_RESOURCE",
+    "SYS_TIME", "SYS_TTY_CONFIG", "SYSLOG", "WAKE_ALARM",
+]
 PROFILE = {
     "schema_version": 1, "uid": 10001, "gid": 10001,
     "privileged": False, "read_only_root": True, "no_new_privileges": True,
@@ -34,19 +45,14 @@ def inspect_fixture(*, podman=False, **host_overrides):
     host = {
         "NetworkMode": "apaa-egress-prod", "ReadonlyRootfs": True,
         "Privileged": False, "PidMode": "private", "IpcMode": "private",
-        "CapDrop": ["ALL"],
+        "CapDrop": PODMAN_ALL_CAPS if podman else ["ALL"],
+        "CapAdd": [],
         "SecurityOpt": ["no-new-privileges:true", "seccomp=/etc/apaa/seccomp.json"],
     }
     host.update(host_overrides)
-    item = {
-        "Id": "a" * 64, "State": {"Status": "created"},
-        "HostConfig": host,
-    }
-    if podman:
-        item["ImageName"] = IMAGE
-        item["Config"] = {}
-    else:
-        item["Config"] = {"Image": IMAGE}
+    item = {"Id": "a" * 64, "State": {"Status": "created"}, "HostConfig": host}
+    item["ImageName"] = IMAGE if podman else None
+    item["Config"] = {} if podman else {"Image": IMAGE}
     return json.dumps([item])
 
 
@@ -56,7 +62,6 @@ def test_known_runtime_inspect_shapes_normalize(runtime):
     assert normalized.container_id == "a" * 64
     assert normalized.image == IMAGE
     assert normalized.readonly_rootfs is True
-    assert normalized.cap_drop == ("ALL",)
 
 
 @pytest.mark.parametrize(
@@ -67,6 +72,9 @@ def test_known_runtime_inspect_shapes_normalize(runtime):
         ({"CapDrop": []}, "capabilities"),
         ({"SecurityOpt": ["no-new-privileges:true"]}, "seccomp"),
         ({"Privileged": True}, "privileged"),
+        ({"CapAdd": ["NET_ADMIN"]}, "adds Linux capabilities"),
+        ({"CapDrop": PODMAN_ALL_CAPS[:-1]}, "capabilities"),
+        ({"CapDrop": PODMAN_ALL_CAPS + ["FUTURE_UNKNOWN_CAP"]}, "capabilities"),
     ],
 )
 def test_inspect_policy_drift_fails_closed(overrides, message):
