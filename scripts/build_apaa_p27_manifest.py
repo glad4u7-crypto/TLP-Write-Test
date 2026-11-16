@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import stat
 import sys
 from datetime import datetime, timezone
@@ -137,25 +138,38 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
             "files": hashes,
         }
         encoded = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        # Write to a unique private staging inode first. Publishing with link()
+        # makes the complete, fsynced bytes visible in one atomic no-overwrite step;
+        # O_EXCL on the final path alone would expose a partially-written manifest.
+        if os.link not in os.supports_dir_fd:
+            raise ManifestBuildError("platform lacks atomic directory-relative manifest publication")
+        temp_name = f".manifest-{secrets.token_hex(16)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         if hasattr(os, "O_CLOEXEC"):
             flags |= os.O_CLOEXEC
+        published = False
         try:
-            fd = os.open("manifest.json", flags, 0o600, dir_fd=root_fd)
-        except FileExistsError as exc:
-            raise ManifestBuildError("manifest.json already exists; refusing to overwrite") from exc
-        try:
+            fd = os.open(temp_name, flags, 0o600, dir_fd=root_fd)
             with os.fdopen(fd, "wb") as stream:
                 stream.write(encoded)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.fsync(root_fd)
-        except Exception:
             try:
-                os.unlink("manifest.json", dir_fd=root_fd)
-            except OSError:
+                os.link(
+                    temp_name, "manifest.json",
+                    src_dir_fd=root_fd, dst_dir_fd=root_fd,
+                    follow_symlinks=False,
+                )
+            except FileExistsError as exc:
+                raise ManifestBuildError("manifest.json already exists; refusing to overwrite") from exc
+            published = True
+            os.fsync(root_fd)
+        finally:
+            try:
+                os.unlink(temp_name, dir_fd=root_fd)
+                os.fsync(root_fd)
+            except FileNotFoundError:
                 pass
-            raise
         return manifest
     finally:
         os.close(root_fd)
