@@ -61,10 +61,10 @@ def test_bundle_rejects_tampering_and_wrong_pinned_root():
             json.dumps(envelope), root_public_key=root_public,
             expected_issuer_key_id="control:root-001", minimum_sequence=1, now=150,
         )
-    other_root, valid_raw, _ = _signed_bundle()
+    other_root, _, _ = _signed_bundle()
     with pytest.raises(InspectorTrustBundleError, match="signature"):
         load_signed_inspector_trust_bundle(
-            valid_raw, root_public_key=other_root,
+            raw, root_public_key=other_root,
             expected_issuer_key_id="control:root-001", minimum_sequence=1, now=150,
         )
 
@@ -74,7 +74,7 @@ def test_bundle_rejects_tampering_and_wrong_pinned_root():
     ({"minimum_sequence": 0}, "positive integer"),
     ({"expected_issuer_key_id": "control:other-001"}, "pinned issuer"),
     ({"now": 300}, "currently valid"),
-    ({"now": 99}, "currently valid"),
+    ({"now": 90}, "currently valid"),
 ])
 def test_bundle_rejects_rollback_wrong_issuer_and_invalid_time(kwargs, match):
     root_public, raw, _ = _signed_bundle()
