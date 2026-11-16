@@ -155,7 +155,7 @@ def _signed_pack(root: Path, tmp_path: Path):
 
 
 def test_detached_ed25519_manifest_signature_verifies(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir()
+    root = tmp_path / "evidence"
     pub, sig, fp = _signed_pack(root, tmp_path)
     result = validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256=fp)
     assert result["authenticity"] == "VERIFIED_ED25519"
@@ -171,7 +171,7 @@ def test_rejects_manifest_changed_after_signing(tmp_path):
 
 
 def test_rejects_wrong_pinned_key_fingerprint(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir()
+    root = tmp_path / "evidence"
     pub, sig, _ = _signed_pack(root, tmp_path)
     with pytest.raises(EvidenceValidationError, match="fingerprint"):
         validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256="0" * 64)
@@ -187,8 +187,11 @@ def test_rejects_signature_from_another_key(tmp_path):
 
 
 def test_rejects_signature_inside_evidence_directory(tmp_path):
-    root = tmp_path / "evidence"; root.mkdir(); make_pack(root)
+    root = tmp_path / "evidence"
+    manifest = make_pack(root)
     sig = root / "manifest.sig"; sig.write_text("invalid")
+    manifest["files"]["manifest.sig"] = hashlib.sha256(sig.read_bytes()).hexdigest()
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     pub = tmp_path / "trusted.pub"; pub.write_bytes(b"x" * 32)
     with pytest.raises(EvidenceValidationError, match="outside the evidence directory"):
         validate_evidence_directory(root, signature_path=sig, public_key_path=pub, expected_key_sha256="0" * 64)
