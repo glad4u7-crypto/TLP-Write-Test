@@ -87,10 +87,23 @@ class FakeHost:
         return self.rules
 
 
+class EphemeralSigningProvider:
+    """Test-only adapter around an ephemeral Ed25519 key."""
+
+    def __init__(self, private_key):
+        self._private_key = private_key
+
+    def public_key_bytes(self):
+        return self._private_key.public_key().public_bytes_raw()
+
+    def sign(self, message):
+        return self._private_key.sign(message)
+
+
 def signed_evidence(spec, key):
     return collect_signed_inspector_evidence(
         FakeHost(spec), spec, challenge=CHALLENGE, key_id="host-inspector-prod",
-        signing_key=key, expected_proxy_addresses=[PROXY_IP], now=NOW,
+        signer=EphemeralSigningProvider(key), expected_proxy_addresses=[PROXY_IP], now=NOW,
     )
 
 
