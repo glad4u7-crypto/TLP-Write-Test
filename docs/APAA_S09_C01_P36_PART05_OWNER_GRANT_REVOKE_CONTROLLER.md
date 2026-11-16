@@ -73,3 +73,10 @@ The repository-side controller and regression tests are implemented and CI-verif
 4. **Real-host worker qualification — BLOCKED.** The P31 G1–G10 evidence gates remain mandatory; CI does not substitute for owner-host evidence, out-of-band signer trust, durable anti-rollback, sink-side network observations or independent review.
 
 PC physical verification remains optional. PR #11 stays Draft/Open/Unmerged; Auto-Run OFF; browser/worker disabled; no paid services, host mutation, firewall changes, merge, deployment or C02 start.
+
+
+## Trusted identity directory preparation (2026-11-16)
+
+Added `docs/APAA_S09_C01_TRUSTED_IDENTITY_DIRECTORY_DESIGN.md` as an implementation-ready, provider-neutral contract. It recommends a closed directory of identities that have already authenticated through an explicitly allowlisted OIDC issuer. Owner selection uses opaque server-resolved directory IDs; email and user-entered issuer/subject values are never authorization keys. It defines adapter boundaries, issuer rules, persistence/audit requirements, negative tests and activation gates.
+
+This is a documentation/design deliverable only. No directory database, provider adapter, invitation endpoint or collaborator UI was added or enabled. Owner-only behavior remains unchanged pending implementation and owner approval of the directory model.
