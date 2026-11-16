@@ -153,3 +153,33 @@ def test_discoverability_status_rejects_unallowlisted_identity(tmp_path):
     _, _, directory = setup(tmp_path)
     with pytest.raises(PermissionError):
         directory.is_discoverable(OTHER_ISSUER)
+
+
+def test_owner_can_identify_active_grantee_for_revocation_after_opt_out(tmp_path):
+    project, access, directory = setup(tmp_path)
+    directory.record_authenticated_principal(READER, provider_display_label="Reader Name")
+    directory.set_discoverability(READER, discoverable=True)
+    access.grant_read(project.project_id, OWNER, READER)
+
+    # Opting out prevents new discovery but does not hide an existing grant
+    # from the owner who must retain the ability to revoke it.
+    directory.set_discoverability(READER, discoverable=False)
+    assert directory.list_owner_selectable_identities(
+        project.project_id, owner=OWNER, access_control=access
+    ) == []
+    assert directory.owner_grant_display_label(
+        project.project_id, owner=OWNER, grantee=READER, access_control=access
+    ) == "Reader Name"
+
+
+def test_owner_grant_label_is_not_available_for_ungranted_or_foreign_issuer(tmp_path):
+    project, access, directory = setup(tmp_path)
+    directory.record_authenticated_principal(READER, provider_display_label="Reader Name")
+    assert directory.owner_grant_display_label(
+        project.project_id, owner=OWNER, grantee=READER, access_control=access
+    ) is None
+    with pytest.raises(PermissionError):
+        directory.owner_grant_display_label(
+            project.project_id, owner=OWNER, grantee=OTHER_ISSUER,
+            access_control=access,
+        )
