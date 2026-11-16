@@ -27,3 +27,18 @@ The exact-head CI result must be checked after the complete P36 batch. No PASS i
 ## Release boundary
 
 PR #11 remains Draft/Open/Unmerged. Auto-Run OFF. Browser and worker disabled. No merge, deployment, host mutation, firewall change, paid service or C02 start is authorized.
+
+
+## Exact-head follow-up (2026-11-16)
+
+The six check-runs on PR head `d56697513b3dc7e0d18c3c976977462ac59552f2` subsequently completed successfully, including foundation tests, Android/PC Chromium viewport smoke, disposable Linux egress namespace, P20 rootless Podman lifecycle, P23 real Podman executor integration and demo CI. This verifies the automated repository state at that exact head only.
+
+The three remaining release activities are deliberately not marked complete:
+
+1. **Owner access UI integration:** blocked pending a trusted identity-directory / invitation-resolution design. A free-form issuer/subject text field would let an owner mistype or target an unverified identity and is not an acceptable authorization boundary. The existing controller must only receive a server-verified Principal; no user-entered identity is trusted.
+2. **Live OIDC two-identity grant/revoke:** requires an owner-controlled private HTTPS non-production instance, configured OIDC test tenant, and two owner-controlled test identities. No provider credentials or private deployment were supplied; no public unauthenticated deployment is permitted as a workaround.
+3. **Physical Android verification:** requires the owner to operate Android Chrome against that private test instance and record redacted evidence using `docs/APAA_S09_C01_AUTHENTICATED_ANDROID_TEST_SETUP.md`. CI viewport emulation is not a substitute.
+
+PC physical verification remains optional. Do not weaken authentication or expose a public invitation endpoint to make these tests appear complete.
+
+**Current decision:** P36 backend primitives and automated tests are implemented; end-user owner grant/revoke workflow and live/physical qualification remain OPEN. S09-C01 remains OPEN / NOT COMPLETE; C02 is blocked.
