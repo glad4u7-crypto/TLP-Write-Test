@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from core.identity import Principal, require_authenticated
 from core.sqlite_project_store import SQLiteProjectStore
@@ -22,6 +23,18 @@ class ProjectAccessGrant:
     granted_by_subject: str
     granted_at: str
     revoked_at: str | None
+
+
+@dataclass(frozen=True)
+class ProjectAccessEvent:
+    event_id: str
+    project_id: str
+    action: str
+    grantee_issuer: str
+    grantee_subject: str
+    actor_issuer: str
+    actor_subject: str
+    occurred_at: str
 
 
 class ProjectAccessControl:
@@ -47,6 +60,22 @@ class ProjectAccessControl:
             connection.execute(
                 """CREATE INDEX IF NOT EXISTS idx_project_access_active
                    ON project_access_grants(grantee_issuer, grantee_subject, revoked_at)"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS project_access_events (
+                    event_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    action TEXT NOT NULL CHECK(action IN ('grant', 'revoke')),
+                    grantee_issuer TEXT NOT NULL,
+                    grantee_subject TEXT NOT NULL,
+                    actor_issuer TEXT NOT NULL,
+                    actor_subject TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL
+                )"""
+            )
+            connection.execute(
+                """CREATE INDEX IF NOT EXISTS idx_project_access_events_project_time
+                   ON project_access_events(project_id, occurred_at, event_id)"""
             )
 
     @staticmethod
@@ -82,6 +111,14 @@ class ProjectAccessControl:
                          granted_at=excluded.granted_at, revoked_at=NULL""",
                     (project_id, grantee_issuer, grantee_subject, owner_issuer,
                      owner_subject, now),
+                )
+                connection.execute(
+                    """INSERT INTO project_access_events
+                       (event_id, project_id, action, grantee_issuer, grantee_subject,
+                        actor_issuer, actor_subject, occurred_at)
+                       VALUES (?, ?, 'grant', ?, ?, ?, ?, ?)""",
+                    (str(uuid4()), project_id, grantee_issuer, grantee_subject,
+                     owner_issuer, owner_subject, now),
                 )
                 row = connection.execute(
                     """SELECT * FROM project_access_grants WHERE project_id = ?
@@ -121,8 +158,18 @@ class ProjectAccessControl:
                     (datetime.now(timezone.utc).isoformat(), project_id,
                      grantee_issuer, grantee_subject),
                 )
+                changed = cursor.rowcount == 1
+                if changed:
+                    connection.execute(
+                        """INSERT INTO project_access_events
+                           (event_id, project_id, action, grantee_issuer, grantee_subject,
+                            actor_issuer, actor_subject, occurred_at)
+                           VALUES (?, ?, 'revoke', ?, ?, ?, ?, ?)""",
+                        (str(uuid4()), project_id, grantee_issuer, grantee_subject,
+                         owner_issuer, owner_subject, datetime.now(timezone.utc).isoformat()),
+                    )
                 connection.commit()
-                return cursor.rowcount == 1
+                return changed
             except Exception:
                 connection.rollback()
                 raise
@@ -184,6 +231,31 @@ class ProjectAccessControl:
                 row["project_id"], row["grantee_issuer"], row["grantee_subject"],
                 row["granted_by_issuer"], row["granted_by_subject"],
                 row["granted_at"], row["revoked_at"],
+            )
+            for row in rows
+        ]
+
+    def list_events_for_owner(self, project_id: str, owner: Principal) -> list[ProjectAccessEvent]:
+        """Return immutable grant/revoke history only to the exact project owner."""
+        issuer, subject = self._identity(owner)
+        with self._store._connect() as connection:
+            project = connection.execute(
+                """SELECT 1 FROM projects WHERE project_id = ?
+                   AND tenant_issuer = ? AND tenant_subject = ?""",
+                (project_id, issuer, subject),
+            ).fetchone()
+            if project is None:
+                raise PermissionError("Only the project owner may view access history.")
+            rows = connection.execute(
+                """SELECT * FROM project_access_events WHERE project_id = ?
+                   ORDER BY occurred_at, event_id""",
+                (project_id,),
+            ).fetchall()
+        return [
+            ProjectAccessEvent(
+                row["event_id"], row["project_id"], row["action"],
+                row["grantee_issuer"], row["grantee_subject"],
+                row["actor_issuer"], row["actor_subject"], row["occurred_at"],
             )
             for row in rows
         ]
