@@ -231,7 +231,7 @@ class SQLiteTrustedIdentityDirectory:
         It never returns issuer, subject, email, or token material.
         """
         verified_owner = self._require_project_owner(owner, project_id, access_control)
-        verified_grantee = self._principal(grantee)
+        verified_grantee = require_authenticated(grantee)
         if (
             verified_grantee.issuer != verified_owner.issuer
             or (verified_grantee.issuer, verified_grantee.subject)
