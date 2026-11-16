@@ -27,6 +27,7 @@ _REQUIRED = (
     "anchor-recovery.json", "review.json",
 )
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_STAGING_NAME = re.compile(r"^\\.manifest-[0-9a-f]{32}\\.tmp$")
 _MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 class ManifestBuildError(ValueError):
     """Raised when the evidence directory cannot safely be inventoried."""
@@ -125,7 +126,7 @@ def build_manifest(directory: str | Path, metadata: dict[str, str]) -> dict:
             # Staging files are ignored by inventory and are not authoritative.
             raise ManifestBuildError("manifest.json already exists; refusing to overwrite")
 
-        present = {name for name in os.listdir(root_fd) if not (name.startswith(".manifest-") and name.endswith(".tmp"))}
+        present = {name for name in os.listdir(root_fd) if not _STAGING_NAME.fullmatch(name)}
         expected = set(_REQUIRED)
         if present != expected:
             missing, extra = sorted(expected - present), sorted(present - expected)
