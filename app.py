@@ -4,6 +4,7 @@ import os
 import secrets
 import sqlite3
 import streamlit as st
+from core.mobile_ui import apply_mobile_ui
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from core.models import Task
@@ -21,7 +22,13 @@ from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 
-st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
+st.set_page_config(
+    page_title="Autonomous AI Agent",
+    page_icon="🤖",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+apply_mobile_ui(st)
 st.title("Autonomous AI Agent")
 st.caption("Version 0.4.0 · Zero-cost core + Project Manager")
 
