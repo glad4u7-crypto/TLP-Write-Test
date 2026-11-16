@@ -18,12 +18,13 @@
 
 ## Exact-head CI evidence
 
-The latest code head before the Podman workflow addition was `cc73d761945fcc8329d052816b69abccd3bd0740`:
-- [Agent Foundation CI #871](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43801811437): **PASS** — tests, compile, dependency audit and disposable namespace egress job.
-- [Python Demo CI #946](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43801811398): **PASS** — tests and demo smoke.
-- The new rootless Podman workflow was added after those runs; its own run must be observed on the new PR head before it can be marked PASS.
+For PR head `ee1b181fe5d048cc18f4d8f6f9b8407c201b884f`, observed 2026-11-16:
+- [Agent Foundation CI #878](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43803510263): **PASS** — dependency audit found no known vulnerabilities, Python 3.12 compile passed, **1002 tests passed**, and disposable namespace egress qualification passed.
+- [Python Demo CI #953](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43803510287): **PASS** — **1002 tests passed** and demo output matched `Hello TradeLab Pro`.
+- [Rootless Podman Runtime Qualification #7](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43803510418): **PASS** — real rootless Podman 4.9.3 on Ubuntu 24.04, rootless=true, cgroup v2; local image built without pulling; CREATE, stopped INSPECT, START, live process capability check, STOP and REMOVE all passed by immutable ID; final orphan check passed. The stop operation reached its 2-second timeout and used SIGKILL fallback; it completed and the container was removed. This is recorded as bounded stop/cleanup evidence, not graceful-stop evidence.
+- [Evidence artifact](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43803510418/artifacts/14197467322): sanitized Podman info, image ID, container ID, inspect JSON and process capability status; 7-day retention.
 
-The namespace egress PASS is not proof of the full OCI worker/proxy topology or alternate-interface bypass resistance. Earlier code snapshot `e669a8767fa7471056e3695fca36d413d435675a` reported 1002 tests passed; that count is not asserted for later heads.
+The namespace egress PASS is not proof of the full OCI worker/proxy topology or alternate-interface bypass resistance.
 
 ## Operational qualification still pending
 
