@@ -1,0 +1,102 @@
+name: APAA P23 Rootless Podman Executor Integration
+
+on:
+  pull_request:
+    branches: [feature/agent-v0.3-zero-cost-core]
+  push:
+    branches: [feature/agent-v0.3-zero-cost-core]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-p23-podman-executor-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  executor-real-runtime:
+    name: Real Podman executor and durable attestation-gate plumbing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      APAA_PODMAN_INTEGRATION: "1"
+    steps:
+      - name: Check out exact PR revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+
+      - name: Install disposable rootless Podman dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes podman busybox-static uidmap slirp4netns fuse-overlayfs
+          python3 --version
+          podman version
+
+      - name: Configure rootless Podman and verify cgroup v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            sudo usermod --add-subuids 100000-165535 "$(id -un)"
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            sudo usermod --add-subgids 100000-165535 "$(id -un)"
+          fi
+          podman info --format json > podman-info.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          info = json.loads(Path("podman-info.json").read_text())
+          host = info.get("host") or {}
+          security = host.get("security") or {}
+          assert security.get("rootless") is True, "Podman must be rootless"
+          assert str(host.get("cgroupVersion", "")).removeprefix("v") == "2", "cgroup v2 required"
+          print("PASS: rootless Podman and cgroup v2")
+          PY
+
+      - name: Build local static BusyBox image without pulling and create internal network
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .p23-image
+          install -m 0755 "$(command -v busybox)" .p23-image/busybox
+          printf '%s\n' \
+            'FROM scratch' \
+            'COPY busybox /busybox' \
+            'ENTRYPOINT ["/busybox","sleep","60"]' > .p23-image/Containerfile
+          podman build --pull=never --network=none --tag localhost/apaa-p23-worker:ci .p23-image
+          IMAGE_ID="$(podman image inspect localhost/apaa-p23-worker:ci --format '{{.Id}}')"
+          [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "APAA_PODMAN_IMAGE=$IMAGE_ID" >> "$GITHUB_ENV"
+          podman network create --internal apaa-egress-ci
+
+      - name: Install minimal Python test dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check 'pytest>=8,<10' 'cryptography>=50,<51'
+
+      - name: Exercise APAA executor against real Podman
+        run: |
+          python3 -m pytest -q tests/test_oci_worker_executor_podman_integration.py
+
+      - name: Verify no APAA integration worker remains
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEFT="$(podman ps --all --filter label=apaa.managed=true --format '{{.ID}}' || true)"
+          if [[ -n "$LEFT" ]]; then
+            printf '%s\n' "$LEFT" | while read -r cid; do podman rm --force "$cid"; done
+          fi
+          test -z "$(podman ps --all --filter label=apaa.managed=true --format '{{.ID}}')"
+          podman network rm apaa-egress-ci >/dev/null 2>&1 || true
+          echo "PASS: no APAA managed container remains"
+
+      - name: Upload sanitized runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apaa-p23-rootless-podman-executor-evidence
+          path: podman-info.json
+          if-no-files-found: ignore
+          retention-days: 7
