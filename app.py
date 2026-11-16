@@ -12,12 +12,13 @@ from core.planner import PlanStatus, StepCategory, create_structured_plan
 from core.projects import ProjectRegistry
 from core.persistent_projects import PersistentProjectRegistry
 from core.project_access import ProjectAccessControl
+from core.project_access_controller import OwnerProjectAccessController
 from core.sqlite_project_store import SQLiteProjectStore
 from core.approvals import ApprovalAuthority
 from core.audit import JsonlAuditLog
 from core.project_actions import build_project_gateway
 from core.streamlit_auth import principal_from_oidc_claims
-from core.identity import AuthorizationDenied
+from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
@@ -117,6 +118,7 @@ if principal is not None:
         security_store = SQLiteSecurityStore(security_db_path)
         project_store = SQLiteProjectStore(project_db_path)
         project_access_control = ProjectAccessControl(project_store)
+        project_access_controller = OwnerProjectAccessController(project_access_control)
         # Optional closed-directory enrollment. This is deliberately inert
         # unless the owner explicitly configures an issuer allowlist. Only the
         # Principal produced above by Streamlit's validated OIDC claims enters.
@@ -134,7 +136,12 @@ if principal is not None:
                 identity_db_path, allowed_issuers=set(trusted_identity_issuers)
             )
             if st.session_state.get("trusted_directory_enrolled_session") != session_identity:
-                trusted_identity_directory.record_authenticated_principal(principal)
+                provider_display_label = oidc_claims.get("name")
+                if not isinstance(provider_display_label, str):
+                    provider_display_label = None
+                trusted_identity_directory.record_authenticated_principal(
+                    principal, provider_display_label=provider_display_label
+                )
                 st.session_state["trusted_directory_enrolled_session"] = session_identity
         else:
             trusted_identity_directory = None
@@ -289,6 +296,125 @@ if principal is not None and trusted_identity_directory is not None:
             st.rerun()
     except (ValueError, PermissionError, LookupError, OSError, sqlite3.Error) as exc:
         st.error(f"Directory privacy setting could not be loaded or saved: {exc}")
+
+# Owner controls are limited to project metadata read grants. No write,
+# execution, file, memory, conversation, preference, or checkpoint access is shared.
+if principal is not None and trusted_identity_directory is not None:
+    owner_projects = registry.list_projects_for_owner(principal)
+    if owner_projects:
+        st.divider()
+        st.header("Owner-controlled read-only project sharing")
+        st.caption(
+            "Only identities from the same allowlisted OIDC provider that opted "
+            "into directory discovery can be selected. A grant exposes project "
+            "metadata only; it does not grant editing, execution, files, memory, "
+            "conversation history, preferences, or checkpoints."
+        )
+        selected_share_project = st.selectbox(
+            "Project to manage sharing",
+            options=[item.project_id for item in owner_projects],
+            format_func=lambda value: next(
+                item.name for item in owner_projects if item.project_id == value
+            ),
+            key="owner_share_project_id",
+        )
+        try:
+            selectable_identities = trusted_identity_directory.list_owner_selectable_identities(
+                selected_share_project, owner=principal,
+                access_control=project_access_control,
+            )
+            if selectable_identities:
+                identity_labels = {
+                    item.directory_id: (
+                        f"{item.display_label} · {item.directory_id[:8]}"
+                        if item.display_label else f"Verified account · {item.directory_id[:8]}"
+                    )
+                    for item in selectable_identities
+                }
+                with st.form("owner_project_read_grant_form"):
+                    selected_directory_id = st.selectbox(
+                        "Opted-in account",
+                        options=[item.directory_id for item in selectable_identities],
+                        format_func=lambda value: identity_labels[value],
+                    )
+                    confirm_read_grant = st.checkbox(
+                        "I confirm this account may view this project's metadata only"
+                    )
+                    submit_read_grant = st.form_submit_button(
+                        "Grant read-only project access"
+                    )
+                if submit_read_grant:
+                    if not confirm_read_grant:
+                        st.error("Confirm the exact read-only permission before granting access.")
+                    else:
+                        selected_principal = trusted_identity_directory.resolve_owner_selection(
+                            selected_share_project, selected_directory_id,
+                            owner=principal, access_control=project_access_control,
+                        )
+                        project_access_controller.grant_read(
+                            selected_share_project, actor=principal,
+                            grantee=selected_principal,
+                        )
+                        st.success("Read-only project metadata access granted.")
+                        st.rerun()
+            else:
+                st.caption(
+                    "No opted-in identities are available. Other users must sign in "
+                    "through the same approved provider and explicitly enable discovery."
+                )
+
+            active_grants = [
+                grant for grant in project_access_controller.list_grants(
+                    selected_share_project, actor=principal
+                ) if grant.revoked_at is None
+            ]
+            if active_grants:
+                st.subheader("Active read-only grants")
+                revoke_principals = {}
+                revoke_labels = {}
+                for grant in active_grants:
+                    grantee = Principal(
+                        subject=grant.grantee_subject,
+                        issuer=grant.grantee_issuer,
+                        authenticated=True,
+                        roles=(),
+                    )
+                    fingerprint = hashlib.sha256(
+                        (grant.grantee_issuer + "\\0" + grant.grantee_subject).encode("utf-8")
+                    ).hexdigest()
+                    revoke_principals[fingerprint] = grantee
+                    display_label = trusted_identity_directory.owner_grant_display_label(
+                        selected_share_project, owner=principal,
+                        grantee=grantee, access_control=project_access_control,
+                    )
+                    revoke_labels[fingerprint] = (
+                        f"{display_label} · {fingerprint[:8]}"
+                        if display_label else f"Account · {fingerprint[:8]}"
+                    )
+                with st.form("owner_project_read_revoke_form"):
+                    selected_grant_fingerprint = st.selectbox(
+                        "Account to revoke",
+                        options=list(revoke_principals),
+                        format_func=lambda value: revoke_labels[value],
+                    )
+                    confirm_read_revoke = st.checkbox(
+                        "I confirm revoking this account's project metadata access"
+                    )
+                    submit_read_revoke = st.form_submit_button("Revoke read-only access")
+                if submit_read_revoke:
+                    if not confirm_read_revoke:
+                        st.error("Confirm the exact revocation before continuing.")
+                    else:
+                        project_access_controller.revoke_read(
+                            selected_share_project, actor=principal,
+                            grantee=revoke_principals[selected_grant_fingerprint],
+                        )
+                        st.success("Project read-only access revoked.")
+                        st.rerun()
+            else:
+                st.caption("This project has no active read-only collaborator grants.")
+        except (ValueError, PermissionError, LookupError, OSError, sqlite3.Error) as exc:
+            st.error(f"Project sharing controls are unavailable: {exc}")
 
 st.header("Project Manager")
 st.caption("Authenticated projects are saved in tenant-scoped SQLite storage. Local prototype projects remain session-only.")
