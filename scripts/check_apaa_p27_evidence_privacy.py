@@ -35,6 +35,21 @@ class PrivacyCheckError(ValueError):
     """Raised when the evidence directory cannot be safely checked."""
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON keys instead of silently hiding earlier values."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise PrivacyCheckError("duplicate JSON object keys are not permitted")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> None:
+    """Reject NaN and Infinity, which are not valid JSON values."""
+    raise PrivacyCheckError("non-standard JSON constants are not permitted")
+
+
 def _walk(value: Any, path: str, findings: list[dict[str, str]]) -> None:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -68,8 +83,12 @@ def check_evidence_privacy(directory: str | Path) -> dict[str, Any]:
         if path.stat().st_size > 16 * 1024 * 1024:
             raise PrivacyCheckError(f"{name} exceeds the 16 MiB scan limit")
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            payload = json.loads(
+                path.read_text(encoding="utf-8"),
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_constant,
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
             raise PrivacyCheckError(f"{name} must contain valid UTF-8 JSON") from exc
         _walk(payload, name, findings)
     # Deduplicate stable path/code pairs while retaining deterministic order.
