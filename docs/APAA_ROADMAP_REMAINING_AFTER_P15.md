@@ -1,7 +1,7 @@
 # APAA — Remaining Roadmap After P15
 
 **Repository:** glad4u7-crypto/TLP-Write-Test  
-**Current implementation checkpoint:** APAA-S09-C01-P16 — gated OCI lifecycle executor  
+**Current implementation checkpoint:** APAA-S09-C01-P18 — durable identity-bound attestation (CI pending)  
 **Release state:** Draft / not merged / live browser disabled
 
 ## Guardrails
@@ -19,9 +19,9 @@ P15 added immutable OCI command-plan construction. It is not an operational work
 
 | Checkpoint | Work | Acceptance evidence | Current state |
 |---|---|---|---|
-| P16 | OCI lifecycle executor | fake-runner tests prove CREATE → INSPECT → ATTEST → START; failures never start; cleanup attempted | Implemented; P18 durable identity-bound gate integrated; exact-head CI pending |
+| P16 | OCI lifecycle executor | fake-runner tests prove CREATE → INSPECT → ATTEST → START; failures never start; cleanup attempted | Implemented; exact-head CI pending |
 | P17 | Proxy–Worker topology (P12 reconciliation) | explicit RFC1918 network contract, topology-scoped proxy bind and endpoint tests | Implementation/tests committed; real OCI network not created or qualified |
-| P18 | Post-create signed attestation binding | durable tenant-bound single-use challenge; exact inspected container ID + worker name + launch digest; signature/freshness/firewall checks | Control-plane integration committed; key provisioning and trusted host collector qualification pending |
+| P18 | Post-create signed attestation binding | durable tenant-bound single-use challenge; exact inspected container ID + worker name + launch digest; signature/freshness/firewall checks; executor integration tests | Implementation and integration tests committed; exact-head CI pending; trusted host collector and out-of-band key provisioning remain external qualification |
 | P19 | Egress isolation proof | strict nftables evidence parser and negative tests for direct TCP/DNS, UDP, QUIC, IPv6 and unknown ruleset objects | Parser/tests committed; actual kernel/namespace bypass tests pending |
 | P20 | Runtime compatibility | pinned Podman and Docker versions; rootless disposable Linux integration; verify inspect-schema compatibility and cleanup after timeout/cancel | Not started |
 | P21 | Browser integration | isolated ephemeral browser only after P16–P20 gates; request/redirect/DNS rebinding policy enforced at network boundary; downloads/profile/CDP blocked | Not started; browsing disabled |
@@ -35,13 +35,14 @@ P17 → P18 → P19 → P20 → P21 → P22 → P23. P16 can be tested in isolat
 A checkpoint is complete only when implementation, negative tests, exact-head CI and its stated environment qualification all pass. A mock test is not proof of real host isolation. A documentation item is not runtime evidence. A queued CI run is pending, not PASS.
 
 ## Current blockers
-1. No trusted host inspector/collector is installed or qualified.
-2. No out-of-band Ed25519 signing-key provisioning and durable one-time challenge store.
-3. Proxy–worker network topology has not been reconciled.
-4. No real TCP/DNS/UDP/QUIC bypass test on a disposable Linux namespace.
-5. No pinned Docker/Podman host integration.
-6. No browser launch is enabled.
-7. Android/Termux OCI and browser support is unqualified.
+1. Trusted host inspector/collector installation and qualification.
+2. Out-of-band Ed25519 signing-key provisioning and operational key rotation/revocation procedure.
+3. Dedicated internal OCI network creation and qualification.
+4. Real TCP/DNS/UDP/QUIC bypass test on a disposable Linux namespace.
+5. Pinned Docker/Podman host integration.
+6. Exact-head CI for the current P18 test commit.
+7. No browser launch is enabled.
+8. Android/Termux OCI and browser support is unqualified.
 
-**Current checkpoint:** APAA-S09-C01-P16-IMPLEMENTED-CI-PENDING.  
-**Next:** APAA-S09-C01-P17 — Proxy–Worker topology contract and test design.
+**Current checkpoint:** APAA-S09-C01-P18-IMPLEMENTED-CI-PENDING.  
+**Next:** Verify exact-head CI, then complete P19/P20 qualification in dependency order.
