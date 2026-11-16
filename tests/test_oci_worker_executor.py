@@ -4,7 +4,8 @@ import pytest
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_isolation import validate_worker_profile
 from core.oci_worker_plan import build_oci_worker_plan
-from core.oci_worker_executor import CommandResult, OCIWorkerExecutor
+from core.oci_worker_executor import CommandResult, OCIWorkerExecutor, OCIWorkerHandle
+from core.oci_errors import OCIExecutionError
 
 
 IMAGE = "registry.example.invalid/apaa/worker@sha256:" + "a" * 64
@@ -21,11 +22,11 @@ PROFILE = {
 }
 
 
-def setup_runner(inspect=None, fail_at=None):
+def setup_runner(inspect=None, fail_at=None, fail_commands=()):
     calls = []
     def runner(argv, timeout):
         calls.append(tuple(argv))
-        if fail_at == argv[1]:
+        if argv[1] == fail_at or argv[1] in fail_commands:
             return CommandResult(1, "", "failure")
         if argv[1] == "inspect":
             return CommandResult(0, json.dumps([inspect or {
@@ -101,3 +102,37 @@ def test_plan_spec_digest_mismatch_is_rejected_before_command():
     with pytest.raises(Exception, match="digest do not match"):
         make_executor(runner).launch(plan, other)
     assert calls == []
+
+
+def test_stop_always_attempts_force_remove_when_graceful_stop_fails():
+    spec, plan = make_plan()
+    calls, runner = setup_runner(fail_at="stop")
+    executor = make_executor(runner)
+    handle = OCIWorkerHandle("a" * 64, plan.container_name, plan.launch_spec_digest, plan.runtime)
+    report = executor.stop(handle, plan)
+    assert [call[1] for call in calls] == ["stop", "rm"]
+    assert report.cleaned is True
+    assert report.started is False
+    assert [(event.stage, event.outcome) for event in report.events] == [
+        ("STOP_REQUEST", "PASS"), ("STOP", "FAIL"), ("CLEANUP", "PASS")
+    ]
+
+
+def test_stop_rejects_handle_for_different_plan_without_runtime_calls():
+    spec, plan = make_plan()
+    calls, runner = setup_runner()
+    executor = make_executor(runner)
+    wrong = OCIWorkerHandle("b" * 64, "apaa-worker-other-job", plan.launch_spec_digest, plan.runtime)
+    with pytest.raises(OCIExecutionError, match="does not match"):
+        executor.stop(wrong, plan)
+    assert calls == []
+
+
+def test_stop_reports_cleanup_failure_when_force_remove_fails():
+    spec, plan = make_plan()
+    calls, runner = setup_runner(fail_commands=("stop", "rm"))
+    executor = make_executor(runner)
+    handle = OCIWorkerHandle("a" * 64, plan.container_name, plan.launch_spec_digest, plan.runtime)
+    report = executor.stop(handle, plan)
+    assert [call[1] for call in calls] == ["stop", "rm"]
+    assert report.cleaned is False
