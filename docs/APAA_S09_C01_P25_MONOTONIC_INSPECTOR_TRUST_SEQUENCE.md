@@ -1,6 +1,6 @@
 # APAA-S09-C01-P25 — Monotonic inspector trust-sequence acceptance gate
 
-**Status:** implementation committed; exact-head CI verification pending  
+**Status:** implementation and exact-head CI verification passed on commit `7f4992b3a9f83daff8ba592390254488db25aee4`  
 **Branch:** `feature/apaa-s09-c01-p16-oci-lifecycle`  
 **PR:** #11 (Draft/Open/Unmerged)  
 **Deployment / merge / Auto-Run:** not authorized
@@ -31,6 +31,6 @@ A production adapter must be backed by an independently protected monotonic prim
 
 ## Verification
 
-CI tests use an in-memory fake only to validate the protocol contract. They do not qualify a production anchor. Exact-head CI must pass before this checkpoint is marked implementation-verified.
+CI tests use an in-memory fake only to validate the protocol contract. They do not qualify a production anchor. Exact-head CI passed on `7f4992b3a9f83daff8ba592390254488db25aee4`: Agent Foundation CI #43807833149, Python Demo CI #43807833236, P20 Rootless Podman Runtime Qualification #43807833106 and P23 Rootless Podman Executor Integration #43807833067. This verifies the software contract only, not a production anti-rollback backend.
 
 No production keys, credentials, paid services, network endpoints, deployment, firewall mutation, worker launch, browser activation, merge or Auto-Run are introduced.
