@@ -1,5 +1,7 @@
 import hashlib
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -155,3 +157,74 @@ def test_no_follow_open_rejects_symlink_swap_after_inventory(tmp_path, monkeypat
         build_manifest(root, METADATA)
     assert swapped is True
     assert not (root / "manifest.json").exists()
+
+
+
+def test_concurrent_builders_publish_exactly_one_complete_manifest(tmp_path, monkeypatch):
+    import scripts.build_apaa_p27_manifest as builder
+
+    root = tmp_path / "evidence"
+    _evidence(root)
+    barrier = threading.Barrier(2)
+    real_read = builder._read_artifact
+
+    def synchronized_read(root_fd, name):
+        raw = real_read(root_fd, name)
+        if name == "review.json":
+            barrier.wait(timeout=5)
+        return raw
+
+    monkeypatch.setattr(builder, "_read_artifact", synchronized_read)
+
+    def attempt():
+        try:
+            return ("created", build_manifest(root, METADATA))
+        except ManifestBuildError:
+            return ("rejected", None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: attempt(), range(2)))
+
+    assert sorted(item[0] for item in outcomes) == ["created", "rejected"]
+    published = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    assert set(published["files"]) == set(FILES)
+    assert not list(root.glob(".manifest-*.tmp"))
+
+
+def test_manifest_is_fully_staged_before_atomic_publication(tmp_path, monkeypatch):
+    import scripts.build_apaa_p27_manifest as builder
+
+    root = tmp_path / "evidence"
+    _evidence(root)
+    real_link = builder.os.link
+    observed = []
+
+    def inspect_then_publish(src, dst, **kwargs):
+        assert dst == "manifest.json"
+        assert not (root / "manifest.json").exists()
+        staged = (root / src).read_bytes()
+        parsed = json.loads(staged.decode("utf-8"))
+        assert set(parsed["files"]) == set(FILES)
+        observed.append(len(staged))
+        return real_link(src, dst, **kwargs)
+
+    monkeypatch.setattr(builder.os, "link", inspect_then_publish)
+    build_manifest(root, METADATA)
+    assert observed and (root / "manifest.json").stat().st_size == observed[0]
+    assert not list(root.glob(".manifest-*.tmp"))
+
+
+def test_failed_manifest_publication_leaves_no_partial_final_file(tmp_path, monkeypatch):
+    import scripts.build_apaa_p27_manifest as builder
+
+    root = tmp_path / "evidence"
+    _evidence(root)
+
+    def fail_link(*args, **kwargs):
+        raise OSError("simulated publication interruption")
+
+    monkeypatch.setattr(builder.os, "link", fail_link)
+    with pytest.raises(OSError, match="simulated publication interruption"):
+        build_manifest(root, METADATA)
+    assert not (root / "manifest.json").exists()
+    assert not list(root.glob(".manifest-*.tmp"))
