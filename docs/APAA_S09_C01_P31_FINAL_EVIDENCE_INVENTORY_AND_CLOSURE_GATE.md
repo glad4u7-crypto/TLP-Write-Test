@@ -95,3 +95,16 @@ Until those tests and the other mandatory gates are independently approved, the 
 - Android and PC browser smoke suites: `tests/test_android_viewport_smoke.py`, `tests/test_pc_browser_smoke.py`.
 
 Repository tests and CI remain separate from live OIDC and physical-device evidence. Recheck the exact latest PR head before marking any code-side P36 verification PASS.
+
+
+## 9. P36 exact-head CI refresh (2026-11-16)
+
+The P36 owner grant/revoke backend/controller and its repository regressions were included in PR head `ae23970b281aa94e7a7c0412af889623e9e8b62b`. All six PR check-runs on that exact head completed successfully: Agent Foundation CI, Python Demo CI, P20 disposable rootless Podman lifecycle, P23 disposable rootless Podman executor integration, Android/PC Chromium viewport verification and disposable Linux egress namespace qualification.
+
+Workflow runs: [Agent Foundation #1026](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828928803), [Python Demo #1101](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828928850), [P20 #155](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828928935), [P23 #137](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43828928800).
+
+This updates repository-side CI status only. It does not change any G1–G10 external qualification status. In particular, live OIDC, physical Android, real-host signer/anti-rollback/egress evidence and independent review remain BLOCKED.
+
+The owner grant/revoke controller is a backend primitive, not an enabled collaborator feature. End-user access UI remains disabled until a trusted identity-directory/invitation-resolution design returns server-verified Principals and every project/resource read path enforces grant and immediate revocation. Do not accept user-entered issuer/subject identifiers or expose a public invitation endpoint. The owner-only default remains in force.
+
+**Current truthful status:** repository implementation and exact-head CI: PASS; end-user collaborator workflow: BLOCKED; live/physical/real-host qualification: BLOCKED; S09-C01: OPEN / NOT COMPLETE; C02: NOT STARTED.
