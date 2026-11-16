@@ -11,12 +11,13 @@ Added `core/pkcs11_ed25519_signer.py` implementing the existing `InspectorSignin
 - Requires a PKCS#11 module at an explicit absolute regular-file path, token label, object ID and caller-supplied PIN.
 - Looks up an Ed25519 public-key object and checks the Ed25519 curve OID before returning the 32-byte public key.
 - Looks up the corresponding private-key object and requests `CKM_EDDSA` signing; private-key bytes are never requested or exported.
+- Before each signing operation, requires `CKA_SENSITIVE=true`, `CKA_EXTRACTABLE=false`, `CKA_ALWAYS_SENSITIVE=true`, `CKA_NEVER_EXTRACTABLE=true` and `CKA_SIGN=true`; unsupported or weaker token attributes fail closed.
 - Bounds message size and validates the returned 64-byte signature.
 - PIN is not accepted from environment variables or command-line arguments and is not written to disk/logs by this adapter.
 - Fails closed for missing token, missing key, unsupported curve/mechanism, invalid point, malformed signature and module errors.
 - Does not provision, generate, rotate or delete token keys; those ceremonies remain under separate token administration.
 
-Added `tests/test_pkcs11_ed25519_signer.py` with an injected PKCS#11 contract fake to test public-key extraction, signature verification, absence of a private-key export API, bounds, invalid module and unavailable-token failure.
+Added `tests/test_pkcs11_ed25519_signer.py` with an injected PKCS#11 contract fake to test public-key extraction, signature verification, absence of a private-key export API, bounds, invalid module, unavailable-token failure and rejection of an extractable private key.
 
 ## Deployment requirements
 
