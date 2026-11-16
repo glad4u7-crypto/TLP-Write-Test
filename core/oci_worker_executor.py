@@ -19,6 +19,8 @@ from typing import Protocol
 from core.browser_inspector import verify_signed_inspector_evidence
 from core.browser_runtime import WorkerLaunchSpec
 from core.oci_worker_plan import OCIWorkerPlan
+from core.inspector_control_plane import InspectorEvidenceControlPlane
+from core.storage import TenantKey
 
 
 class OCIExecutionError(RuntimeError):
@@ -89,6 +91,8 @@ class OCIWorkerExecutor:
         evidence_supplier: Callable[[str, Mapping[str, object]], object],
         trusted_public_keys: Mapping[str, bytes],
         expected_proxy_addresses: Sequence[str],
+        inspector_control_plane: InspectorEvidenceControlPlane | None = None,
+        tenant: TenantKey | None = None,
         clock: Callable[[], int] = lambda: int(time.time()),
         challenge_factory: Callable[[], str] = lambda: secrets.token_hex(32),
         command_timeout_seconds: int = 15,
@@ -105,6 +109,14 @@ class OCIWorkerExecutor:
         self._evidence_supplier = evidence_supplier
         self._keys = dict(trusted_public_keys)
         self._proxy_ips = tuple(expected_proxy_addresses)
+        if (inspector_control_plane is None) != (tenant is None):
+            raise TypeError('Inspector control plane and tenant must be configured together.')
+        if inspector_control_plane is not None and not isinstance(inspector_control_plane, InspectorEvidenceControlPlane):
+            raise TypeError('A trusted InspectorEvidenceControlPlane is required.')
+        if tenant is not None and not isinstance(tenant, TenantKey):
+            raise TypeError('A validated TenantKey is required.')
+        self._control_plane = inspector_control_plane
+        self._tenant = tenant
         self._clock = clock
         self._challenge_factory = challenge_factory
         self._timeout = command_timeout_seconds
@@ -184,21 +196,28 @@ class OCIWorkerExecutor:
             container_id, snapshot = self._inspect_snapshot(inspect_result.stdout, plan)
             events.append(LifecycleEvent("INSPECT", "PASS", "effective stopped configuration checked"))
 
-            challenge = self._challenge_factory()
-            if type(challenge) is not str or len(challenge) != 64:
-                raise OCIExecutionError("attestation: challenge must be a 256-bit hex token.")
-            try:
-                int(challenge, 16)
-            except ValueError as exc:
-                raise OCIExecutionError("attestation: challenge is not hexadecimal.") from exc
-            evidence = self._evidence_supplier(challenge, snapshot)
-            verify_signed_inspector_evidence(
-                spec, evidence, trusted_public_keys=self._keys,
-                expected_challenge=challenge,
+            if self._control_plane is None or self._tenant is None:
+                raise OCIExecutionError(
+                    "attestation: durable tenant-bound challenge control plane is required; stateless launch is blocked."
+                )
+            challenge = self._control_plane.issue_challenge(
+                self._tenant, runtime_id=container_id,
+                worker_id=plan.container_name, ttl_seconds=60, now=self._clock(),
+            )
+            evidence = self._evidence_supplier(challenge.value, snapshot)
+            accepted = self._control_plane.verify_and_consume(
+                self._tenant, spec, evidence,
+                expected_challenge=challenge.value,
+                expected_runtime_id=container_id,
+                expected_worker_id=plan.container_name,
                 expected_proxy_addresses=self._proxy_ips,
                 now=self._clock(), max_age_seconds=60,
             )
-            events.append(LifecycleEvent("ATTEST", "PASS", "signed runtime and exact proxy-only firewall evidence verified"))
+            if (accepted.evidence.runtime.launch_spec_digest != plan.launch_spec_digest
+                    or accepted.evidence.runtime.runtime_id != container_id
+                    or accepted.evidence.runtime.worker_id != plan.container_name):
+                raise OCIExecutionError("attestation: signed evidence is not bound to this exact OCI worker.")
+            events.append(LifecycleEvent("ATTEST", "PASS", "signed evidence, exact OCI identity and single-use challenge verified"))
 
             self._run(plan.start_argv, "start")
             started = True
