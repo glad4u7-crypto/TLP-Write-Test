@@ -119,13 +119,13 @@ def _write_secrets_file(tmp_path, data_dir):
         'require_auth = true\\n'
         'approval_signing_secret_hex = "' + ("ab" * 32) + '"\\n'
         'trusted_identity_issuers = ["https://identity.example.test"]\\n'
-        '[apaa.global_owner]\\n'
-        'issuer = "https://identity.example.test"\\n'
-        'subject = "owner-subject-test"\\n'
         f'security_db_path = "{data_dir / "security.sqlite3"}"\\n'
         f'project_db_path = "{data_dir / "projects.sqlite3"}"\\n'
         f'memory_db_path = "{data_dir / "memory.sqlite3"}"\\n'
-        f'trusted_identity_directory_db_path = "{data_dir / "identities.sqlite3"}"\\n',
+        f'trusted_identity_directory_db_path = "{data_dir / "identities.sqlite3"}"\\n'
+        '[apaa.global_owner]\\n'
+        'issuer = "https://identity.example.test"\\n'
+        'subject = "owner-subject-test"\\n',
         encoding="utf-8",
     )
     return secrets_file
@@ -150,7 +150,8 @@ def test_cli_accepts_owner_only_secrets_and_never_prints_them(tmp_path, capsys):
     from scripts.preflight_android_deployment import main
 
     data_dir = tmp_path / "private-data"
-    data_dir.mkdir()
+    data_dir.mkdir(mode=0o700)
+    data_dir.chmod(0o700)
     secrets_file = _write_secrets_file(tmp_path, data_dir)
     secrets_file.chmod(0o600)
     assert main(["--secrets", str(secrets_file)]) == 0
