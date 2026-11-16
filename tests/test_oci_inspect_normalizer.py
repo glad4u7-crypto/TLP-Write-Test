@@ -105,6 +105,26 @@ def test_podman_bridge_mode_rejects_additional_network_attachments():
     with pytest.raises(OCIExecutionError, match="network"):
         normalize_oci_inspect(json.dumps(item), plan("podman"))
 
+
+def test_podman_default_capability_drop_representation_is_accepted():
+    item = json.loads(inspect_fixture(podman=True))
+    item[0]["HostConfig"]["CapDrop"] = [
+        "CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID",
+        "CAP_KILL", "CAP_NET_BIND_SERVICE", "CAP_SETFCAP", "CAP_SETGID",
+        "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT",
+    ]
+    normalized = normalize_oci_inspect(json.dumps(item), plan("podman"))
+    assert normalized.cap_drop == tuple(item[0]["HostConfig"]["CapDrop"])
+
+
+def test_podman_incomplete_default_capability_drop_is_rejected():
+    item = json.loads(inspect_fixture(podman=True))
+    item[0]["HostConfig"]["CapDrop"] = [
+        "CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER"
+    ]
+    with pytest.raises(OCIExecutionError, match="capabilities"):
+        normalize_oci_inspect(json.dumps(item), plan("podman"))
+
 def test_podman_wrong_image_name_fails_closed():
     item = json.loads(inspect_fixture(podman=True))
     item[0]["ImageName"] = "untrusted:latest"
