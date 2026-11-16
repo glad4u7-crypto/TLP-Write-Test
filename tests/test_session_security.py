@@ -217,3 +217,27 @@ def test_every_literal_app_session_state_key_is_identity_cleanup_covered():
 
     # The active identity marker is cleared separately by clear_session_identity.
     assert referenced <= set(_IDENTITY_BOUND_KEYS) | {"active_identity_subject"}
+
+
+def test_identity_switch_and_logout_clear_global_owner_capabilities():
+    from core.session_security import clear_session_identity
+
+    owner_keys = (
+        "global_owner_generation",
+        "global_owner_principal",
+        "global_owner_authorized",
+        "global_owner_admin_context",
+        "global_owner_pending_action",
+        "global_owner_approval_receipt",
+    )
+    state = {
+        "active_identity_subject": "https://issuer.example\\nalice",
+        **{key: object() for key in owner_keys},
+    }
+
+    assert bind_session_identity(state, "https://issuer.example\\nbob") is True
+    assert not any(key in state for key in owner_keys)
+
+    state.update({key: object() for key in owner_keys})
+    clear_session_identity(state)
+    assert state == {}
