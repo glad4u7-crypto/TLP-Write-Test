@@ -171,3 +171,32 @@ python -m scripts.verify_apaa_p27_review EVIDENCE_DIRECTORY \
   --review-public-key /secure/trust/reviewer.pub \
   --review-key-sha256 OUT_OF_BAND_REVIEWER_KEY_FINGERPRINT
 ```
+
+
+## Operator manifest builder (P28 usability increment)
+
+After an operator has collected all nine real evidence artifacts, the repository provides
+`scripts/build_apaa_p27_manifest.py` to inventory and hash them consistently. It is a
+local file utility only: it does not inspect a host, run tests, create containers, alter
+firewall rules, sign evidence, or approve qualification.
+
+Example (replace every value with facts from the approved run; never use these example
+values as evidence):
+
+```bash
+python -m scripts.build_apaa_p27_manifest EVIDENCE_DIRECTORY \
+  --run-id RUN_ID --operator OPERATOR_ID \
+  --approval-reference CHANGE_APPROVAL_ID --host-alias DISPOSABLE_HOST_ALIAS \
+  --started-at-utc 2026-11-16T10:00:00Z --ended-at-utc 2026-11-16T10:30:00Z \
+  --runtime-name podman --runtime-version OWNER_APPROVED_VERSION \
+  --collector-version REVIEWED_COLLECTOR_VERSION --signer-version APPROVED_SIGNER_VERSION \
+  --test-image-digest sha256:ACTUAL_64_HEX_DIGEST --proxy-policy-id APPROVED_POLICY_ID
+```
+
+The directory must contain exactly the nine required JSON artifacts, each a regular
+non-symlink file containing a JSON object. The command refuses to overwrite an existing
+manifest and records SHA-256 for the exact artifact bytes. It creates the manifest with
+restricted file permissions. It reports `authenticity=NOT_CHECKED` and
+`host_qualification=NOT_ASSESSED`; next run the integrity validator, then sign the
+manifest using the independently provisioned evidence-signing key and complete the
+separate reviewer workflow. The builder does not establish that any artifact is genuine.
