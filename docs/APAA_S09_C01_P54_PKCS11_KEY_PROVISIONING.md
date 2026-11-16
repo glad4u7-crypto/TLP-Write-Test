@@ -11,6 +11,7 @@ Added `scripts/provision_apaa_pkcs11_signer.py`:
 - Prompts for the user PIN without echo; never accepts PIN on command line or from environment.
 - Requires an absolute, regular, non-symlink PKCS#11 module path and validates token label, key ID, label and PIN length before opening a write session.
 - Refuses to create a key if any existing token object already uses the requested object ID.
+- Requires the token's PKCS#11 mechanism metadata to report the EdDSA signing mechanism as hardware-performed (`MechanismFlag.HW`); refuses to provision when this flag is absent. It records the slot's `HW_SLOT` flag as supplementary self-reported evidence.
 - Generates an Ed25519 keypair inside the token using `CKK_EC_EDWARDS` / `CKM_EC_EDWARDS_KEY_PAIR_GEN`.
 - Requests a persistent token object with private-key attributes `CKA_PRIVATE=true`, `CKA_SENSITIVE=true`, `CKA_EXTRACTABLE=false`, `CKA_SIGN=true`; public key is verify-enabled.
 - Does not import or export private key bytes. It never deletes an existing key or performs rotation.
