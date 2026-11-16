@@ -9,6 +9,7 @@ on:
       - main
       - master
       - feature/apaa-s09-c01-p01-browser-launch
+      - feature/agent-v0.3-zero-cost-core
   workflow_dispatch:
 
 permissions:
