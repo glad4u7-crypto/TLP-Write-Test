@@ -343,3 +343,19 @@ This correction is part of the same P35-A startup/configuration task. Exact late
 ### Startup ordering review
 
 A subsequent control-flow review moved owner-config generation handling after the central authenticated-session identity binding. This ensures account-switch/logout cleanup runs first, then the current server-side owner configuration generation is recorded for that authenticated session. Added an AppTest regression that switches between two authenticated subjects and verifies owner authorization/context/receipt keys do not survive. Exact-head CI remains pending.
+
+
+## 18. P35-B/P35-C Global Admin request guard and durable generation gate (2026-11-16)
+
+Added a framework-neutral per-request Global Admin authorization guard. Repository inspection found no separate HTTP API router or Global Admin API endpoint, so this is a reusable guard primitive, not endpoint integration. The guard requires trusted Principal input, a fresh server-side owner-config loader and a fresh durable generation reader; any missing, stale or failed input denies the request.
+
+Extended the shared SQLite security store with a singleton owner-generation record, monotonic-in-database revision, compare-and-set re-key/revocation, and a local audit-chain entry committed in the same transaction. Concurrent stale revisions are rejected. Tests cover shared-store visibility, re-key/revocation progression, concurrent CAS single-winner behavior, malformed input, audit tamper rollback, and stale-generation denial in the API guard.
+
+**Evidence boundary:** these are code and CI test additions only. The SQLite generation state is same-host coordination, not an independently administered anti-rollback anchor; a privileged database/backup attacker can roll it and the local audit chain back together. The CAS storage primitive does not authenticate an operator and must never be exposed to browser/task/model/API callers. The audit explicitly records that external operator identity is not verified. An out-of-band approved operator workflow and external monotonic anchor remain mandatory.
+
+- P35-B guard primitive: IMPLEMENTED; no API route exists to wire.
+- P35-C SQLite owner-generation CAS/revocation and local audit: IMPLEMENTED IN CODE; exact-head CI PENDING.
+- External anti-rollback, authenticated operator workflow, protected audit retention, recovery/re-key rehearsal: NOT IMPLEMENTED / BLOCKED.
+- Live OIDC, physical Android, production Linux host and independent review: BLOCKED.
+- Global Owner remains inactive; S09-C01 OPEN / NOT COMPLETE; S09-C02 NOT STARTED.
+- PR #11 remains Draft/Open/Unmerged; Auto-Run OFF; worker/browser OFF; no merge, deployment, paid API, payment or production activation.
