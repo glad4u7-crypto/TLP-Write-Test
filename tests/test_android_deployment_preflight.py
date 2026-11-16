@@ -10,7 +10,8 @@ def deployment_settings(tmp_path):
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     data = tmp_path / "private-data"
-    data.mkdir()
+    data.mkdir(mode=0o700)
+    data.chmod(0o700)
     return checkout, {
         "auth": {
             "client_id": "test-client",
@@ -22,9 +23,12 @@ def deployment_settings(tmp_path):
         "apaa": {
             "require_auth": True,
             "approval_signing_secret_hex": "ab" * 32,
+            "trusted_identity_issuers": ["https://identity.example.test"],
+            "global_owner": {"issuer": "https://identity.example.test", "subject": "owner-subject-test"},
             "security_db_path": str(data / "security.sqlite3"),
             "project_db_path": str(data / "projects.sqlite3"),
             "memory_db_path": str(data / "memory.sqlite3"),
+            "trusted_identity_directory_db_path": str(data / "identities.sqlite3"),
         },
     }
 
@@ -33,6 +37,7 @@ def test_preflight_accepts_complete_private_deployment_configuration(deployment_
     checkout, settings = deployment_settings
     results = validate_settings(settings, cwd=checkout)
     assert any("persistent storage" in item for item in results)
+    assert any("Exact owner identity" in item for item in results)
 
 
 @pytest.mark.parametrize("bad_value", [False, "true", 1, None])
@@ -125,7 +130,8 @@ def test_cli_rejects_world_readable_secrets_without_printing_values(tmp_path, ca
     from scripts.preflight_android_deployment import main
 
     data_dir = tmp_path / "private-data"
-    data_dir.mkdir()
+    data_dir.mkdir(mode=0o700)
+    data_dir.chmod(0o700)
     secrets_file = _write_secrets_file(tmp_path, data_dir)
     secrets_file.chmod(0o644)
     assert main(["--secrets", str(secrets_file)]) == 2
@@ -147,3 +153,24 @@ def test_cli_accepts_owner_only_secrets_and_never_prints_them(tmp_path, capsys):
     assert "CONFIGURATION PASS" in output.out
     assert "do-not-print-this" not in output.out
     assert "also-do-not-print" not in output.out
+
+
+def test_preflight_requires_global_owner(deployment_settings):
+    checkout, settings = deployment_settings
+    settings["apaa"].pop("global_owner")
+    with pytest.raises(PreflightError, match="global_owner"):
+        validate_settings(settings, cwd=checkout)
+
+
+def test_preflight_requires_owner_issuer_in_allowlist(deployment_settings):
+    checkout, settings = deployment_settings
+    settings["apaa"]["trusted_identity_issuers"] = ["https://other.example.test"]
+    with pytest.raises(PreflightError, match="must be in trusted_identity_issuers"):
+        validate_settings(settings, cwd=checkout)
+
+
+def test_preflight_rejects_shared_database_directory(deployment_settings):
+    checkout, settings = deployment_settings
+    Path(settings["apaa"]["security_db_path"]).parent.chmod(0o755)
+    with pytest.raises(PreflightError, match="owner-only"):
+        validate_settings(settings, cwd=checkout)
