@@ -209,6 +209,8 @@ class SQLiteSecurityStore:
         expected_revision: int,
         generation: str | None,
         change_id: str,
+        audit_principal_fingerprint: str = "external_operator_identity_not_verified",
+        audit_reason_code: str = "operator_cas_update",
     ) -> GlobalOwnerState:
         """Atomically advance/revoke owner generation and append local audit.
 
@@ -220,6 +222,12 @@ class SQLiteSecurityStore:
         if type(expected_revision) is not int or expected_revision < 0:
             raise ValueError("Expected owner-state revision is invalid.")
         self._validate_owner_generation(generation)
+        if (type(audit_principal_fingerprint) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}|external_operator_identity_not_verified", audit_principal_fingerprint)):
+            raise ValueError("Owner audit principal fingerprint is invalid.")
+        if (type(audit_reason_code) is not str
+                or not re.fullmatch(r"[a-z][a-z0-9_]{2,63}", audit_reason_code)):
+            raise ValueError("Owner audit reason code is invalid.")
         if (
             type(change_id) is not str
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}", change_id)
@@ -256,8 +264,8 @@ class SQLiteSecurityStore:
                 event = DurableAuditEvent(
                     action="global_owner.generation.change",
                     result="committed",
-                    reason_code="operator_cas_update",
-                    principal_fingerprint="external_operator_identity_not_verified",
+                    reason_code=audit_reason_code,
+                    principal_fingerprint=audit_principal_fingerprint,
                     request_id=change_id,
                 )
                 event_data = self._canonical_event(event, timestamp)
