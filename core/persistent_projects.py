@@ -94,7 +94,10 @@ class PersistentProjectRegistry(ProjectRegistry):
     ) -> Project:
         if _capability is not _PROJECT_MUTATION_CAPABILITY:
             raise PermissionError("Project updates must go through a trusted controller.")
-        self._check_principal(principal)
+        verified = require_authenticated(principal)
+        if self._access_control is not None and not self._access_control.is_owner(project_id, verified):
+            raise AuthorizationDenied("Only the exact project owner may update this project.")
+        self._check_principal(verified)
         stored = self._store.update_for_tenant(
             self._tenant, project_id, name=name, description=description
         )
@@ -107,7 +110,10 @@ class PersistentProjectRegistry(ProjectRegistry):
     ) -> bool:
         if _capability is not _PROJECT_MUTATION_CAPABILITY:
             raise PermissionError("Project deletion must go through a trusted controller.")
-        self._check_principal(principal)
+        verified = require_authenticated(principal)
+        if self._access_control is not None and not self._access_control.is_owner(project_id, verified):
+            raise AuthorizationDenied("Only the exact project owner may delete this project.")
+        self._check_principal(verified)
         return self._store.delete_for_tenant(self._tenant, project_id)
 
     def delete(self, project_id: str, *, _capability: object | None = None) -> bool:
