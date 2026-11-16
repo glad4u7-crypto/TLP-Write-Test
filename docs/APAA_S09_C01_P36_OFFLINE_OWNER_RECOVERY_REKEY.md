@@ -35,3 +35,18 @@ A test anchor is never a deployment option. Production activation remains blocke
 ## Safety
 
 Global Owner remains inactive. No real credentials, private keys, tokens, paid providers, payment, deployment, merge, worker activation or Auto-Run were used or enabled. PR #11 remains Draft/Open/Unmerged. S09-C01 remains OPEN / NOT COMPLETE.
+
+
+## Adversarial anchor-input hardening (follow-up)
+
+The recovery coordinator now validates every independent-anchor read before using it:
+- revision must be a non-negative exact integer (booleans rejected);
+- generation must be absent or a lowercase SHA-256 digest;
+- change ID must be absent or a valid bounded identifier;
+- revision zero cannot claim an existing generation/change ID;
+- positive revisions must carry a change ID;
+- anchor read exceptions and malformed states fail closed without local mutation.
+
+Added tests for malformed negative revision, unavailable anchor reads, and impossible revision-zero claims. These are synthetic unit tests; the production monotonic-anchor adapter and its restart/concurrency/backup-restore qualification remain unimplemented and blocked.
+
+Follow-up commit: \`c2532130ba6c9b43a19095728c388a2893b2755e\`. Exact-head CI has not yet produced a run/status for this commit; it remains **CI PENDING**. Previous head \`d8187c62f7785ea945a01c0fa6eeb89d1462854a\` passed all six reported checks, but that does not transfer to this new head.
