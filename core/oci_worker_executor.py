@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import secrets
 import shutil
 import subprocess
@@ -143,16 +144,22 @@ class OCIWorkerExecutor:
         }
         return normalized.container_id, snapshot
 
-    def _cleanup(self, plan: OCIWorkerPlan, events: list[LifecycleEvent], *, started: bool) -> bool:
-        """Always attempt force-remove, even if graceful stop fails."""
+    def _cleanup(
+        self, plan: OCIWorkerPlan, events: list[LifecycleEvent], *, started: bool,
+        container_id: str | None,
+    ) -> bool:
+        """Always attempt force-remove by immutable ID, even if graceful stop fails."""
+        target = container_id or plan.container_name
+        stop_argv = (plan.runtime, "stop", "--time", "2", target)
+        remove_argv = (plan.runtime, "rm", "--force", target)
         if started:
             try:
-                self._run(plan.stop_argv, "cleanup-stop")
+                self._run(stop_argv, "cleanup-stop")
                 events.append(LifecycleEvent("STOP", "PASS", "graceful stop completed"))
             except Exception as exc:
                 events.append(LifecycleEvent("STOP", "FAIL", type(exc).__name__))
         try:
-            self._run(plan.remove_argv, "cleanup-remove")
+            self._run(remove_argv, "cleanup-remove")
             events.append(LifecycleEvent("CLEANUP", "PASS", "force-remove completed"))
             # A successful force-remove is the authoritative no-container result.
             return True
@@ -169,11 +176,11 @@ class OCIWorkerExecutor:
             or handle.container_name != plan.container_name
             or handle.launch_spec_digest != plan.launch_spec_digest
             or type(handle.container_id) is not str
-            or len(handle.container_id) < 12
+            or re.fullmatch(r"[0-9a-fA-F]{12,64}", handle.container_id) is None
         ):
             raise OCIExecutionError("Worker handle does not match the supplied immutable OCI plan.")
         events: list[LifecycleEvent] = [LifecycleEvent("STOP_REQUEST", "PASS", "exact plan/handle binding validated")]
-        cleaned = self._cleanup(plan, events, started=True)
+        cleaned = self._cleanup(plan, events, started=True, container_id=handle.container_id)
         return OCIExecutionReport(None, tuple(events), False, cleaned)
 
     def launch(self, plan: OCIWorkerPlan, spec: WorkerLaunchSpec) -> OCIExecutionReport:
@@ -187,12 +194,19 @@ class OCIWorkerExecutor:
         started = False
         container_id: str | None = None
         try:
-            self._run(plan.create_argv, "create")
+            create_result = self._run(plan.create_argv, "create")
             created = True
-            events.append(LifecycleEvent("CREATE", "PASS", "container created stopped"))
-            inspect_result = self._run(plan.inspect_argv, "inspect")
-            container_id, snapshot = self._inspect_snapshot(inspect_result.stdout, plan)
-            events.append(LifecycleEvent("INSPECT", "PASS", "effective stopped configuration checked"))
+            created_id = create_result.stdout.strip()
+            if re.fullmatch(r"[0-9a-fA-F]{12,64}", created_id) is None:
+                raise OCIExecutionError("create: runtime did not return a valid immutable container ID.")
+            container_id = created_id
+            events.append(LifecycleEvent("CREATE", "PASS", "stopped container created; immutable ID captured"))
+            inspect_argv = (plan.runtime, "inspect", container_id)
+            inspect_result = self._run(inspect_argv, "inspect")
+            inspected_id, snapshot = self._inspect_snapshot(inspect_result.stdout, plan)
+            if inspected_id.lower() != container_id.lower():
+                raise OCIExecutionError("inspect: immutable container ID differs from CREATE result.")
+            events.append(LifecycleEvent("INSPECT", "PASS", "effective stopped configuration checked by immutable ID"))
 
             if self._control_plane is None or self._tenant is None:
                 raise OCIExecutionError(
@@ -225,7 +239,7 @@ class OCIWorkerExecutor:
         except Exception as exc:
             events.append(LifecycleEvent("BLOCK", "PASS", type(exc).__name__))
             if created:
-                cleaned = self._cleanup(plan, events, started=started)
+                cleaned = self._cleanup(plan, events, started=started, container_id=container_id)
             else:
                 cleaned = True
             return OCIExecutionReport(None, tuple(events), False, cleaned)
