@@ -20,6 +20,7 @@ _IDENTITY_BOUND_KEYS = (
     "structured_task_input",
     "approval_session_scope",
     "approval_authority_config_id",
+    "trusted_directory_enrolled_session",
 )
 
 
