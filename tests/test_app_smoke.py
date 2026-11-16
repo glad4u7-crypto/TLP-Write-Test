@@ -500,3 +500,73 @@ def test_explicit_logout_clears_identity_state_before_provider_logout(tmp_path, 
             "draft_task",
         )
     )
+
+
+def test_global_owner_is_not_bootstrapped_when_server_config_is_absent(monkeypatch):
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": "ab" * 32,
+                "trusted_identity_issuers": ["https://accounts.example.test"],
+            },
+        },
+    )
+    _authenticated_test_user(monkeypatch)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    assert app.session_state["global_owner_generation"] is None
+    assert not any("Global Owner configuration is invalid" in item.value for item in app.error)
+
+
+def test_invalid_global_owner_config_disables_admin_without_stopping_project_app(monkeypatch):
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": "ab" * 32,
+                "trusted_identity_issuers": ["https://accounts.example.test"],
+                "global_owner": {
+                    "issuer": "https://untrusted.example",
+                    "subject": "owner-subject",
+                },
+            },
+        },
+    )
+    _authenticated_test_user(monkeypatch)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    assert app.session_state["global_owner_generation"] is None
+    assert any("Global Owner configuration is invalid" in item.value for item in app.error)
+
+
+def test_valid_global_owner_config_is_loaded_but_not_activated(monkeypatch):
+    monkeypatch.setattr(
+        st,
+        "secrets",
+        {
+            "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+            "apaa": {
+                "require_auth": True,
+                "approval_signing_secret_hex": "ab" * 32,
+                "trusted_identity_issuers": ["https://accounts.example.test"],
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "different-out-of-band-owner-subject",
+                },
+            },
+        },
+    )
+    _authenticated_test_user(monkeypatch)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    assert isinstance(app.session_state["global_owner_generation"], str)
+    assert len(app.session_state["global_owner_generation"]) == 64
+    assert "global_owner_authorized" not in app.session_state
+    assert not any("Global Owner configuration is invalid" in item.value for item in app.error)
