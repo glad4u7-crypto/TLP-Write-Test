@@ -221,7 +221,7 @@ def test_collector_rejects_invalid_challenge_key_and_source():
     spec = build_worker_launch_spec(profile())
     args = dict(
         spec=spec, key_id="host-inspector-prod",
-        signing_key=Ed25519PrivateKey.generate(),
+        signer=TestSigningProvider(Ed25519PrivateKey.generate()),
         expected_proxy_addresses=[PROXY_IP], now=NOW,
     )
     with pytest.raises(HostCollectionError):
