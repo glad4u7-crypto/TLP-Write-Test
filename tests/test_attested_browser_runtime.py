@@ -260,19 +260,26 @@ def test_gate_blocks_unknown_evidence_fields_before_worker_adapter():
 
 
 def test_gate_blocks_future_dated_evidence_before_worker_adapter():
+    import base64
+    import json
+
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
     calls = []
-    future_envelope = collect_signed_inspector_evidence(
-        FakeHost(spec), spec, challenge=CHALLENGE, key_id="host-inspector-prod",
-        signing_key=key, expected_proxy_addresses=[PROXY_IP], now=NOW + 120,
-    )
+    envelope = signed_evidence(spec, key)
+    envelope["payload"]["runtime_attestation"]["observed_at"] = NOW + 120
+    envelope["payload"]["firewall"]["observed_at"] = NOW + 120
+    signed_content = json.dumps(
+        {"schema_version": 1, "key_id": "host-inspector-prod", "payload": envelope["payload"]},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
+    ).encode("utf-8")
+    envelope["signature"] = base64.b64encode(key.sign(signed_content)).decode("ascii")
     gate = AttestedBrowserRuntime(
         spec, trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP], worker_start=lambda *_: calls.append(True),
     )
     with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
-        gate.launch(future_envelope, challenge=CHALLENGE, now=NOW)
+        gate.launch(envelope, challenge=CHALLENGE, now=NOW)
     assert calls == []
 
 
