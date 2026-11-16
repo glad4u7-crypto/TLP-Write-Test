@@ -99,3 +99,36 @@ def test_grants_survive_store_reconstruction_and_revocation_is_immediate(tmp_pat
     assert not ProjectAccessControl(SQLiteProjectStore(path)).has_access(
         project.project_id, READER
     )
+
+ 
+def test_grant_and_revoke_write_owner_only_immutable_audit_events(tmp_path):
+    _, project, access = setup_access(tmp_path)
+    access.grant_read(project.project_id, OWNER, READER)
+    access.revoke_read(project.project_id, OWNER, READER)
+    events = access.list_events_for_owner(project.project_id, OWNER)
+    assert [event.action for event in events] == ["grant", "revoke"]
+    assert all(event.grantee_issuer == READER.issuer for event in events)
+    assert all(event.grantee_subject == READER.subject for event in events)
+    assert all(event.actor_issuer == OWNER.issuer for event in events)
+    assert all(event.actor_subject == OWNER.subject for event in events)
+    assert events[0].event_id != events[1].event_id
+    assert not access.revoke_read(project.project_id, OWNER, READER)
+    assert len(access.list_events_for_owner(project.project_id, OWNER)) == 2
+
+
+def test_non_owner_cannot_read_access_audit_events(tmp_path):
+    _, project, access = setup_access(tmp_path)
+    access.grant_read(project.project_id, OWNER, READER)
+    with pytest.raises(PermissionError):
+        access.list_events_for_owner(project.project_id, READER)
+
+
+def test_access_audit_events_survive_store_reconstruction(tmp_path):
+    path = tmp_path / "projects.sqlite3"
+    store = SQLiteProjectStore(path)
+    project = store.create(
+        TenantKey(OWNER.issuer, OWNER.subject), name="Audit", description=""
+    )
+    ProjectAccessControl(store).grant_read(project.project_id, OWNER, READER)
+    reopened = ProjectAccessControl(SQLiteProjectStore(path))
+    assert [event.action for event in reopened.list_events_for_owner(project.project_id, OWNER)] == ["grant"]
