@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 NS="apaa-egress-qual"
-HOST_VETH="apaa-egress-host"
-WORKER_VETH="apaa-egress-peer"
+HOST_VETH="apaa-host"
+WORKER_VETH="apaa-peer"
 HOST_IP="198.18.0.1"
 WORKER_IP="198.18.0.2"
 HOST_V6="fd42:aa:19::1"
