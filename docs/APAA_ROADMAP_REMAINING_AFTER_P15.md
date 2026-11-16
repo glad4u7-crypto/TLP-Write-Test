@@ -1,7 +1,7 @@
 # APAA — Remaining Roadmap After P15
 
 **Repository:** glad4u7-crypto/TLP-Write-Test  
-**Current checkpoint:** APAA-S09-C01-P20 — CI verification in progress for the read-only host preflight addition; real OCI daemon qualification pending  
+**Current checkpoint:** APAA-S09-C01-P20 — read-only host preflight and tests added; hosted live-egress attempt failed due IPv6/network capability limits; real daemon qualification pending  
 **Release state:** Draft / not merged / live browser disabled
 
 ## Guardrails
@@ -20,10 +20,14 @@
 | P17 | Proxy–Worker topology | explicit RFC1918 network contract, topology-scoped proxy bind and endpoint tests | Code/tests delivered; actual OCI network deployment not qualified |
 | P18 | Post-create signed attestation | durable tenant-bound single-use challenge; exact container ID + worker name + launch digest; signature/freshness/firewall checks | Code/tests delivered; trusted host collector and out-of-band key provisioning remain external |
 | P19 | Egress isolation proof | strict nftables evidence parser and negative tests for direct TCP/DNS, UDP, QUIC, IPv6 and unknown ruleset objects | Parser/tests delivered. Namespace workflow has previously reported a hosted-runner limitation; no live egress PASS |
-| P20 | Runtime compatibility | pinned Docker/Podman versions; read-only runtime probes; strict inspect normalization; disposable rootless daemon lifecycle and timeout/cancel qualification | Added read-only host preflight command and tests; latest commit CI is running. Real Docker/Podman daemon lifecycle and timeout/cancel qualification remain pending |
+| P20 | Runtime compatibility | pinned Docker/Podman versions; read-only runtime probes; strict inspect normalization; disposable rootless daemon lifecycle and timeout/cancel qualification | Added read-only host preflight command and tests (995 tests passed on code head `b4b2d3bf`); the first live egress attempt on hosted Ubuntu failed because IPv6/network capabilities were unavailable. Script now fails early with actionable diagnostics; latest-head CI pending. Real Docker/Podman daemon lifecycle and timeout/cancel qualification remain pending |
 | P21 | Browser integration | isolated ephemeral browser only after P16–P20 operational gates; request/redirect/DNS rebinding policy enforced at network boundary; downloads/profile/CDP blocked | Not started; browsing disabled |
 | P22 | Android / Termux qualification | device capability matrix; OCI availability, storage, process, network and browser constraints | Not started |
 | P23 | Integration and release verification | full tests, exact-head CI, security review, threat model, recovery/cleanup drill, owner permission E2E; draft-only report | Not started |
+
+## P20 live egress qualification attempt
+
+The hosted runner attempt failed to bind the IPv6 sink and could not create a required IPv6 socket (`Operation not permitted`). This is not an egress PASS. See [failed run 43795768030](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43795768030). The script now preflights IPv6 addresses/sockets and namespace-local nftables permissions; a capable disposable Linux runner is still required.
 
 ## P20 host-side preflight
 
@@ -61,5 +65,5 @@ P17 → P18 → P19 → P20 → P21 → P22 → P23. P16 can be tested in isolat
 ## Definition of complete
 A checkpoint is complete only when implementation, negative tests, exact-head CI and its stated environment qualification all pass. Mock tests are not proof of real host isolation. Documentation is not runtime evidence. A queued or explicitly skipped CI step is not PASS.
 
-**Current checkpoint:** APAA-S09-C01-P20-HOST-PREFLIGHT-ADDED-CI-PENDING-DAEMON-QUALIFICATION.  
+**Current checkpoint:** APAA-S09-C01-P20-HOST-PREFLIGHT-ADDED-EGRESS-RUNNER-LIMITED-DAEMON-QUALIFICATION-PENDING.  
 **Next:** Review the new exact-head CI, then run the read-only preflight and lifecycle/timeout qualification on a capable disposable Linux host. Keep worker/browser disabled until all gates pass.
