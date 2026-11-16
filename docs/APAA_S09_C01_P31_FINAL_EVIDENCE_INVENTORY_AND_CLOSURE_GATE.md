@@ -331,3 +331,10 @@ Tests cover absent/malformed/untrusted settings, exact issuer validation, duplic
 **Disposition:** P35-A settings adapter/startup fail-closed loading IMPLEMENTED; CI PENDING; Global Admin API integration NOT IMPLEMENTED; owner recovery/re-key and durable audit NOT IMPLEMENTED; live OIDC, physical Android and independent review BLOCKED. Global Owner remains inactive. S09-C01 remains OPEN / NOT COMPLETE; S09-C02 NOT STARTED.
 
 All locks remain unchanged: PR #11 Draft/Open/Unmerged; Auto-Run OFF; browser/worker OFF; no merge, deployment, host/firewall mutation, paid API, payment or production activation.
+
+
+### P35-A session-transition cleanup correction
+
+A follow-up review found that the reserved global-owner session keys also needed to be included in the central identity-transition/logout cleanup inventory. Added the owner configuration generation and owner-bound capability keys to `core/session_security.py`, plus a regression test proving account switch and logout clear them. The existing AST-based test that requires every literal app session-state key to be covered remains in place.
+
+This correction is part of the same P35-A startup/configuration task. Exact latest-head CI remains PENDING; do not claim this correction verified until all required workflows complete successfully on the final branch SHA.
