@@ -72,7 +72,8 @@ sockets = []
 for family, host, ports, kind in [
     (socket.AF_INET, "198.18.0.1", (443, 53, 3129), socket.SOCK_STREAM),
     (socket.AF_INET, "198.18.0.1", (53, 443), socket.SOCK_DGRAM),
-    (socket.AF_INET6, "fd42:aa:19::1", (3128,), socket.SOCK_STREAM),
+    (socket.AF_INET6, "fd42:aa:19::1", (53, 443, 3128), socket.SOCK_STREAM),
+    (socket.AF_INET6, "fd42:aa:19::1", (53, 443), socket.SOCK_DGRAM),
 ]:
     for port in ports:
         s = socket.socket(family, kind)
@@ -147,7 +148,11 @@ probes = [
     (socket.AF_INET, socket.SOCK_STREAM, "198.18.0.1", 3129),
     (socket.AF_INET, socket.SOCK_DGRAM, "198.18.0.1", 53),
     (socket.AF_INET, socket.SOCK_DGRAM, "198.18.0.1", 443),
+    (socket.AF_INET6, socket.SOCK_STREAM, "fd42:aa:19::1", 53),
+    (socket.AF_INET6, socket.SOCK_STREAM, "fd42:aa:19::1", 443),
     (socket.AF_INET6, socket.SOCK_STREAM, "fd42:aa:19::1", 3128),
+    (socket.AF_INET6, socket.SOCK_DGRAM, "fd42:aa:19::1", 53),
+    (socket.AF_INET6, socket.SOCK_DGRAM, "fd42:aa:19::1", 443),
 ]
 for family, kind, host, port in probes:
     try:
