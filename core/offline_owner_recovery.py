@@ -228,7 +228,21 @@ class OfflineOwnerRecoveryService:
             try:
                 advanced = self._anchor.compare_and_advance(expected=anchor, target=target)
             except Exception:
-                raise RecoveryDenied("Independent rollback anchor update failed.") from None
+                # A transport timeout may occur after the provider durably
+                # committed the CAS but before its acknowledgement reached us.
+                # Reconcile only by an authoritative exact-target read-back;
+                # if that read is unavailable or differs, remain fail-closed.
+                try:
+                    reconciled = self._read_anchor()
+                except Exception:
+                    raise RecoveryDenied(
+                        "Independent rollback anchor update outcome is unknown."
+                    ) from None
+                if reconciled != target:
+                    raise RecoveryDenied(
+                        "Independent rollback anchor update outcome is unknown."
+                    )
+                advanced = True
             if advanced is not True and self._read_anchor() != target:
                 raise RecoveryDenied("Independent rollback anchor rejected the update.")
         elif anchor != target:
