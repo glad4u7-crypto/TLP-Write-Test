@@ -73,7 +73,6 @@ def test_logout_then_identity_switch_cannot_reuse_old_session_capability():
     state = {"active_identity_subject": session_identity_key(OWNER.issuer, OWNER.subject)}
     old_authority = ApprovalAuthority()
     old_scope = "owner-session-scope"
-    payload = {"operation": "sensitive"}
     payload = {"name": "Private project", "description": ""}
     receipt = old_authority.issue("create_project", payload, session_scope=old_scope)
 
@@ -91,7 +90,7 @@ def test_logout_then_identity_switch_cannot_reuse_old_session_capability():
 
     new_authority = ApprovalAuthority()
     new_gateway = ExecutionGateway(
-        {"test_action": lambda data: "executed"},
+        {"create_project": lambda data: "executed"},
         approval_authority=new_authority,
         session_scope="reader-session-scope",
     )
