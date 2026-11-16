@@ -73,10 +73,41 @@ P21 commits currently on the PR branch:
 - [Rootless Podman Runtime Qualification #12](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804273605): **PASS**.
 The workflow-run jobs for Agent Foundation CI #883 both completed successfully. The P21 inspect-normalization change is therefore CI-verified at this exact head. This does not constitute APAA-integrated signed-attestation qualification or full production egress qualification.
 
-## P22 — signed-attestation lifecycle integration qualification
+## P22 — signed-attestation executor regression qualification
 
-The repository contains an executor path in `core/oci_worker_executor.py` that is designed to perform CREATE → immutable-ID INSPECT → tenant-bound challenge issuance → Ed25519 evidence verification and one-time challenge consumption → START. It requires an `InspectorEvidenceControlPlane` and tenant; stateless launch is deliberately blocked. Supporting components include `core/inspector_control_plane.py`, `core/inspector_key_registry.py`, `core/browser_inspector.py` and the durable SQLite challenge store.
+The OCI executor path in `core/oci_worker_executor.py` performs CREATE → immutable-ID INSPECT → tenant-bound durable challenge issuance → Ed25519 evidence verification and one-time challenge consumption → START. Stateless launch is deliberately blocked.
 
-The current executor unit tests mostly verify the fail-closed path when the control plane is absent, while the control-plane tests independently cover valid single-use evidence, wrong-tenant isolation, expiry and revoked/expired keys. P22 must add an end-to-end executor integration test that joins these components and proves the exact sequence against a disposable real OCI runtime, followed by invalid-signature, stale/replayed challenge, revoked-key, tenant/runtime/worker mismatch, cancellation and orphan-cleanup drills. Until those drills are evidenced, signed-attestation integration remains unqualified and the worker stays disabled.
+Executor-level fake-runner regression coverage now verifies:
+- Valid evidence is accepted in the required CREATE → INSPECT → ATTEST → START order.
+- Invalid signature blocks START and removes the created worker.
+- Revoked inspector key blocks START and removes the created worker.
+- Evidence signed for a different worker blocks START and removes the created worker.
+- Replaying the previous launch's challenge blocks the second START and removes the second created worker.
+- Host-inspector interruption blocks START and removes the created worker.
+
+P22 code commits:
+- `4db4600925a996d70edbe3b1c2f053552e2b7073` — revoked-key and wrong-worker rejection.
+- `ea2c9c199ea31250c97bb2058970f0d80af84bd4` — syntax correction after the first CI run exposed malformed test source.
+- `defed5766c5b9e557916aa740e66b9509300b142` — replay and inspector-interruption cleanup cases.
+
+**Exact-head P22 CI PASS:** `defed5766c5b9e557916aa740e66b9500b142`
+- [Agent Foundation CI #887](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779558): **PASS** — dependency audit found no known vulnerabilities, compile passed, **1009 tests passed**, disposable Linux egress namespace qualification passed.
+- [Python Demo CI #962](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779535): **PASS** — **1009 tests passed** and demo step passed.
+- [Rootless Podman Runtime Qualification #16](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779519): **PASS** — rootless Podman, cgroup v2, local image build, hardened inspect, immutable-ID lifecycle, no-orphan check and evidence upload passed.
+- [P22 Podman evidence artifact](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43804779519/artifacts/14197513360).
+
+**Qualification boundary:** the new executor regression tests use a fake runtime runner. The Podman workflow separately qualifies the runtime CLI and hardened lifecycle; it does not call APAA's signed-attestation executor. Therefore APAA-integrated signed attestation against a real OCI runtime remains unqualified. Podman STOP used the bounded 2-second SIGTERM window and SIGKILL fallback; this is not graceful-stop proof.
+
+## Remaining operational qualification
+
+1. Real rootless OCI runtime exercising APAA's signed-attestation gate, including real runtime-ID binding and invalid/replayed/revoked evidence rejection.
+2. Real-runtime tenant/runtime mismatch, cancellation/daemon interruption and orphan-cleanup drills.
+3. Rootless Docker qualification if Docker remains supported.
+4. Full worker/proxy egress topology, alternate-interface bypass resistance, external DNS policy, IPv6 UDP and firewall hook precedence.
+5. Trusted host collector installation plus out-of-band Ed25519 key provisioning, rotation, revocation and recovery.
+6. Android/Termux OCI support remains unqualified.
+
+Independent control-plane unit tests cover wrong-tenant isolation, challenge expiry, single-use consumption and revoked/expired keys. These tests are not a substitute for integrated real-runtime evidence.
+
 
 P21 CI evidence above supersedes the earlier P21 “CI pending” note.
