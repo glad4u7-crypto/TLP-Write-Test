@@ -19,7 +19,7 @@ Status: AUDIT COMPLETE; collaborator exposure remains DISABLED.
 - The new owner controller grants only project read visibility at the ACL primitive level.
 - The application does not pass that ACL into the authenticated registry used by the current Streamlit UI. It therefore continues to expose only owner-owned projects.
 - No generic collaborator action, file, memory, conversation, preference or checkpoint authorization path exists.
-- Checkpoint records are tenant-private, but the memory-store primitive does not independently prove that an arbitrary project ID belongs to that tenant. The current UI constrains choices to owner-visible projects; any future API must add a project-ownership check before accepting checkpoint association.
+- Added `OwnerProjectCheckpointAccess`, which derives the tenant from a trusted authenticated Principal and checks that the project exists under that exact issuer + subject before both checkpoint save and recovery.
 - Internal unscoped store helpers remain trusted implementation details and must not be exposed as client/API routes.
 
 This is a fail-closed audit outcome: collaborator grants do not change any action, file, memory or checkpoint permission. No collaborator UI/API is enabled.
@@ -27,6 +27,7 @@ This is a fail-closed audit outcome: collaborator grants do not change any actio
 ## Evidence added in this batch
 
 - `tests/test_project_access_security_matrix.py` checks immediate revocation through reconstructed registry/store objects, issuer+subject binding, no-ACL collaborator denial, memory/checkpoint tenant isolation and explicit consent.
+- `tests/test_project_checkpoint_access.py` rejects missing, foreign-owner and unauthenticated checkpoint associations/retrievals.
 - Existing action and approval tests continue to cover session-bound receipts and audit-before-execution failure behavior.
 
 ## Remaining work
