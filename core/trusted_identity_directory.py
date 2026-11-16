@@ -158,6 +158,19 @@ class SQLiteTrustedIdentityDirectory:
             )
             return str(row["directory_id"])
 
+    def is_discoverable(self, principal: Principal) -> bool:
+        """Return the authenticated user's current directory visibility setting."""
+        verified = self._principal(principal)
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT discoverable FROM trusted_identity_directory
+                   WHERE issuer = ? AND subject = ?""",
+                (verified.issuer, verified.subject),
+            ).fetchone()
+        if row is None:
+            raise LookupError("The identity must sign in before reading directory visibility.")
+        return bool(row["discoverable"])
+
     def set_discoverability(self, principal: Principal, *, discoverable: bool) -> None:
         """Allow an authenticated user to opt in/out of owner directory discovery."""
         verified = self._principal(principal)
