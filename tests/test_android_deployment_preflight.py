@@ -97,3 +97,53 @@ def test_preflight_rejects_missing_database_parent(deployment_settings):
     settings["apaa"]["memory_db_path"] = str(checkout.parent / "missing" / "memory.sqlite3")
     with pytest.raises(PreflightError, match="must already exist"):
         validate_settings(settings, cwd=checkout)
+
+
+def _write_secrets_file(tmp_path, data_dir):
+    import os
+
+    secrets_file = tmp_path / "secrets.toml"
+    secrets_file.write_text(
+        '[auth]\\n'
+        'client_id = "test-client"\\n'
+        'client_secret = "do-not-print-this"\\n'
+        'cookie_secret = "also-do-not-print"\\n'
+        'redirect_uri = "https://apaa.example.test/oauth2callback"\\n'
+        'server_metadata_url = "https://identity.example.test/.well-known/openid-configuration"\\n'
+        '[apaa]\\n'
+        'require_auth = true\\n'
+        'approval_signing_secret_hex = "' + ("ab" * 32) + '"\\n'
+        f'security_db_path = "{data_dir / "security.sqlite3"}"\\n'
+        f'project_db_path = "{data_dir / "projects.sqlite3"}"\\n'
+        f'memory_db_path = "{data_dir / "memory.sqlite3"}"\\n',
+        encoding="utf-8",
+    )
+    return secrets_file
+
+
+def test_cli_rejects_world_readable_secrets_without_printing_values(tmp_path, capsys):
+    from scripts.preflight_android_deployment import main
+
+    data_dir = tmp_path / "private-data"
+    data_dir.mkdir()
+    secrets_file = _write_secrets_file(tmp_path, data_dir)
+    secrets_file.chmod(0o644)
+    assert main(["--secrets", str(secrets_file)]) == 2
+    output = capsys.readouterr()
+    assert "owner-only" in output.err
+    assert "do-not-print-this" not in output.err
+    assert "also-do-not-print" not in output.err
+
+
+def test_cli_accepts_owner_only_secrets_and_never_prints_them(tmp_path, capsys):
+    from scripts.preflight_android_deployment import main
+
+    data_dir = tmp_path / "private-data"
+    data_dir.mkdir()
+    secrets_file = _write_secrets_file(tmp_path, data_dir)
+    secrets_file.chmod(0o600)
+    assert main(["--secrets", str(secrets_file)]) == 0
+    output = capsys.readouterr()
+    assert "CONFIGURATION PASS" in output.out
+    assert "do-not-print-this" not in output.out
+    assert "also-do-not-print" not in output.out
