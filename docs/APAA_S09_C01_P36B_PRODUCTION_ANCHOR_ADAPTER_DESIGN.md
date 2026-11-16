@@ -87,3 +87,12 @@ Added `core/local_owner_anchor.py` with `LocalSQLiteOwnerAnchor`. This concrete 
 Automated tests in `tests/test_local_owner_anchor.py` cover one-time bootstrap, corruption/missing-row fail-closed behavior, symlink and permission rejection, stale/jump rejection, and an eight-process CAS race where exactly one writer may advance.
 
 **Explicit limit:** this local adapter is not independently administered and is vulnerable to privileged host rollback or restoration of an older file. It does not satisfy the production anti-rollback gate and must not be substituted for an external monotonic anchor in a production owner-recovery policy. It is a safe development fallback, not an automatic production fallback.
+
+
+## 9. P51 mutual-TLS remote anchor client
+
+Added `core/remote_owner_anchor.py` with `HTTPSMonotonicAnchor`, implementing both `MonotonicOwnerAnchor` and `MonotonicSequenceBackend` over an explicit mTLS API. It enforces HTTPS, trusted CA and hostname validation, TLS 1.2 minimum, optional server certificate SHA-256 pin, a private client-key file, bounded timeouts and payloads, strict JSON with duplicate-key rejection, exact one-step CAS, no redirects/bootstrap/reset, and fail-closed handling for ambiguous outcomes. The client returns success only when the service confirms the exact target state.
+
+Tests in `tests/test_remote_owner_anchor.py` exercise reads, CAS success/conflict, malformed response, redirect rejection, TLS-key permissions, HTTPS-only configuration, invalid revision jumps and sequence operations.
+
+**Boundary:** this is a production-shaped client adapter, not a running independent service. No service endpoint, certificate, separate account, administrative domain or provider has been selected/provisioned. The service must prove atomic CAS, durable acknowledgement, separate administration, non-rollback backup/restore, immutable audit receipts, identity revocation and failure behavior. TLS alone does not establish anti-rollback. P51 contract tests are not external-provider qualification.
