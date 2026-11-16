@@ -87,7 +87,12 @@ def normalize_oci_inspect(raw: str, plan: OCIWorkerPlan) -> OCIInspectSnapshot:
             or not isinstance(attached, dict)
             or set(attached) != {plan.network_name}
         ):
-            raise OCIExecutionError("inspect: effective network differs from the approved APAA network.")
+            attached_names = sorted(attached) if isinstance(attached, dict) else []
+            raise OCIExecutionError(
+                "inspect: effective network mismatch "
+                f"(runtime={plan.runtime}, mode={network!r}, "
+                f"expected={plan.network_name!r}, attached={attached_names!r})."
+            )
         network = plan.network_name
     if host.get("ReadonlyRootfs") is not True:
         raise OCIExecutionError("inspect: read-only root filesystem is not enforced.")
