@@ -65,9 +65,9 @@ The read-only preflight is not the real daemon lifecycle qualification. Before a
 
 Do not fabricate evidence or use test keys as production trust roots. Out-of-band Ed25519 key provisioning, rotation and revocation must be tested independently.
 
-## Step 4 — Live egress isolation gate
+## Step 4 — Disposable namespace egress evidence
 
-**Latest observed result: PASS** in [Agent Foundation CI run 43796026613](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43796026613). The job executed `sudo -n bash scripts/qualify_linux_egress_namespace.sh` on a disposable GitHub-hosted Linux runner. It created a temporary network namespace and veth pair, applied namespace-local nftables policy, allowed only the exact IPv4 TCP proxy destination, and verified that direct TCP, DNS TCP/UDP, UDP/443 and IPv6 probes did not reach the host-side sink. The script cleans up its namespace and veth on exit and does not edit host firewall chains.
+Latest exact-head evidence for code commit [e669a8767fa7471056e3695fca36d413d435675a](https://github.com/glad4u7-crypto/TLP-Write-Test/commit/e669a8767fa7471056e3695fca36d413d435675a): [Agent Foundation CI run 43801033918](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43801033918) — **PASS**. The job executed `sudo -n bash scripts/qualify_linux_egress_namespace.sh` on a disposable GitHub-hosted Linux runner. It created a temporary network namespace and veth pair, applied namespace-local nftables policy, allowed only the exact IPv4 TCP proxy destination, and verified that direct TCP, DNS TCP/UDP, UDP/443 and IPv6 probes did not reach the host-side sink. The script cleans up its namespace and veth on exit and does not edit host firewall chains.
 
 This is a successful isolated namespace test, **not** proof of the complete OCI worker/proxy topology. Separate tests remain required for alternate-interface bypass resistance, external DNS policy, IPv6 UDP, host firewall hook precedence and daemon-integrated network configuration.
 
