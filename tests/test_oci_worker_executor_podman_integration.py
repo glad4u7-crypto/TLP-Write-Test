@@ -43,8 +43,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _runner(argv, timeout):
-    return subprocess_command_runner(argv, timeout)
+def _executor_runner(calls):
+    def run(argv, timeout):
+        result = subprocess_command_runner(argv, timeout)
+        calls.append((tuple(argv), result.returncode, result.stdout, result.stderr))
+        return result
+    return run
 
 
 def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
@@ -95,8 +99,9 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
             envelope["signature"] = base64.b64encode(b"x" * 64).decode("ascii")
         return envelope
 
+    calls = []
     executor = OCIWorkerExecutor(
-        runner=_runner,
+        runner=_executor_runner(calls),
         evidence_supplier=evidence_supplier,
         trusted_public_keys={key_id: public},
         expected_proxy_addresses=[proxy_ip],
@@ -105,7 +110,7 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
         clock=lambda: now,
         command_timeout_seconds=20,
     )
-    return executor
+    return executor, calls
 
 
 def _build_plan():
@@ -129,10 +134,12 @@ def _build_plan():
 
 def test_executor_attests_then_starts_and_removes_real_rootless_podman_container(tmp_path):
     spec, plan = _build_plan()
-    executor = _executor(tmp_path, plan=plan, spec=spec)
+    executor, calls = _executor(tmp_path, plan=plan, spec=spec)
     report = executor.launch(plan, spec)
 
-    assert report.started is True, report.events
+    inspect_output = next((stdout for argv, code, stdout, stderr in calls
+                           if len(argv) > 1 and argv[1] == "inspect"), "")
+    assert report.started is True, (report.events, inspect_output[:12000])
     assert report.cleaned is False
     assert report.handle is not None
     assert report.handle.container_id
@@ -168,7 +175,7 @@ def test_executor_attests_then_starts_and_removes_real_rootless_podman_container
 
 def test_executor_rejects_bad_signature_and_cleans_real_created_container(tmp_path):
     spec, plan = _build_plan()
-    executor = _executor(
+    executor, calls = _executor(
         tmp_path, plan=plan, spec=spec, corrupt_signature=True
     )
     report = executor.launch(plan, spec)
