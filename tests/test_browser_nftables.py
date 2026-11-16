@@ -95,7 +95,7 @@ def nftables():
     }
 
 
-class TestSigningProvider:
+class EphemeralSigningProvider:
     """Ephemeral software signer used only by offline tests."""
 
     def __init__(self, private_key):
@@ -181,7 +181,7 @@ def test_collector_emits_p06_compatible_signed_evidence():
     spec = build_worker_launch_spec(profile())
     source = FakeHostSource(spec)
     key = Ed25519PrivateKey.generate()
-    signer = TestSigningProvider(key)
+    signer = EphemeralSigningProvider(key)
     envelope = collect_signed_inspector_evidence(
         source, spec, challenge="d" * 64, key_id="host-inspector-prod",
         signer=signer, expected_proxy_addresses=[PROXY_IP], now=NOW,
@@ -203,7 +203,7 @@ def test_collector_fails_closed_when_runtime_identity_or_firewall_is_unsafe():
     with pytest.raises(HostCollectionError):
         collect_signed_inspector_evidence(
             source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-            signer=TestSigningProvider(Ed25519PrivateKey.generate()),
+            signer=EphemeralSigningProvider(Ed25519PrivateKey.generate()),
             expected_proxy_addresses=[PROXY_IP], now=NOW,
         )
     source = FakeHostSource(spec, rules={"nftables": [
@@ -213,7 +213,7 @@ def test_collector_fails_closed_when_runtime_identity_or_firewall_is_unsafe():
     with pytest.raises(HostCollectionError):
         collect_signed_inspector_evidence(
             source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-            signer=TestSigningProvider(Ed25519PrivateKey.generate()),
+            signer=EphemeralSigningProvider(Ed25519PrivateKey.generate()),
             expected_proxy_addresses=[PROXY_IP], now=NOW,
         )
 
@@ -222,7 +222,7 @@ def test_collector_rejects_invalid_challenge_key_and_source():
     spec = build_worker_launch_spec(profile())
     args = dict(
         spec=spec, key_id="host-inspector-prod",
-        signer=TestSigningProvider(Ed25519PrivateKey.generate()),
+        signer=EphemeralSigningProvider(Ed25519PrivateKey.generate()),
         expected_proxy_addresses=[PROXY_IP], now=NOW,
     )
     with pytest.raises(HostCollectionError):
