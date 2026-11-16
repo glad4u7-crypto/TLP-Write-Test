@@ -1,6 +1,6 @@
 # APAA S09 C01 — Trusted Identity Directory Design Contract
 
-**Status:** DESIGN READY FOR OWNER REVIEW; NOT IMPLEMENTED OR ENABLED  
+**Status:** BACKEND PRIMITIVE IMPLEMENTED; UI / PROVIDER ADAPTER / LIVE QUALIFICATION NOT ENABLED  
 **Scope:** prerequisite design for a future owner-facing read-only project grant/revoke workflow.
 
 ## 1. Decision boundary
@@ -98,3 +98,26 @@ Before enabling any UI/API:
 This design does not authorize open sign-up, email-based invitations, public invitation links, self-service role changes, write/execute grants, cross-tenant sharing, paid identity services, automatic execution, production deployment or C02 work.
 
 **Current safe behavior remains owner-only access.** The directory and collaborator UI are not implemented or enabled by this design.
+
+
+## 10. Repository implementation note (2026-11-16)
+
+A provider-neutral SQLite implementation of the closed, opt-in directory primitive is now present in `core/trusted_identity_directory.py`, with regression coverage in `tests/test_trusted_identity_directory.py`.
+
+Implemented behavior:
+- explicit OIDC issuer allowlist;
+- authenticated Principal required for enrollment and opt-in/out;
+- new identities are private by default;
+- only explicitly discoverable identities from the exact owner's issuer can be listed;
+- opaque random directory IDs are selectors, not bearer capabilities;
+- resolving an ID requires exact project ownership and returns a server-side Principal;
+- no email, token, invitation, route or UI is stored/exposed by this primitive.
+
+Not implemented/enabled:
+- provider-specific OIDC integration and sign-in hook;
+- owner-facing UI or API;
+- owner approval screen and explicit grant confirmation;
+- directory privacy/retention admin UI;
+- live OIDC and physical Android qualification.
+
+The caller must pass only a Principal produced by the trusted OIDC adapter. The resulting Principal must still pass through `OwnerProjectAccessController`; resolving a directory identity does not itself grant access. Existing grants are not revoked when discoverability is turned off; owner revocation remains an explicit separate action.
