@@ -570,3 +570,49 @@ def test_valid_global_owner_config_is_loaded_but_not_activated(monkeypatch):
     assert len(app.session_state["global_owner_generation"]) == 64
     assert "global_owner_authorized" not in app.session_state
     assert not any("Global Owner configuration is invalid" in item.value for item in app.error)
+
+
+def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monkeypatch):
+    from types import SimpleNamespace
+
+    secrets_config = {
+        "auth": {"redirect_uri": "https://example.test/oauth2callback"},
+        "apaa": {
+            "require_auth": True,
+            "approval_signing_secret_hex": "ab" * 32,
+            "trusted_identity_issuers": ["https://accounts.example.test"],
+            "global_owner": {
+                "issuer": "https://accounts.example.test",
+                "subject": "owner-subject",
+            },
+        },
+    }
+    monkeypatch.setattr(st, "secrets", secrets_config)
+    _authenticated_test_user(monkeypatch)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    assert isinstance(app.session_state["global_owner_generation"], str)
+    app.session_state["global_owner_authorized"] = True
+    app.session_state["global_owner_admin_context"] = object()
+    app.session_state["global_owner_approval_receipt"] = object()
+
+    bob_claims = {
+        "is_logged_in": True,
+        "iss": "https://accounts.example.test",
+        "sub": "different-user",
+        "iat": 1_000,
+        "exp": 4_000_000_000,
+    }
+    monkeypatch.setattr(
+        st,
+        "user",
+        SimpleNamespace(is_logged_in=True, to_dict=lambda: bob_claims),
+    )
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["active_identity_subject"] != "https://accounts.example.test\\napp-smoke-test-user"
+    assert isinstance(app.session_state["global_owner_generation"], str)
+    assert "global_owner_authorized" not in app.session_state
+    assert "global_owner_admin_context" not in app.session_state
+    assert "global_owner_approval_receipt" not in app.session_state
