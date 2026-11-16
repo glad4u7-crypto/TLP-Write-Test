@@ -78,7 +78,7 @@ def _executor(tmp_path, *, plan, spec, corrupt_signature=False):
         attestation.update({
             "runtime_id": snapshot["container_id"],
             "worker_id": snapshot["container_name"],
-            "image_digest": plan.image,
+            "image_digest": plan.image.rsplit("@", 1)[1],
             "attestor_id": key_id,
             "observed_at": now,
         })
