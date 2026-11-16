@@ -1,6 +1,6 @@
 # APAA S09-C01 — P35-A Global Owner Bootstrap and Recovery Design
 
-**Status:** DESIGN RECORDED; IMPLEMENTATION AND LIVE QUALIFICATION NOT AUTHORIZED  
+**Status:** DESIGN RECORDED; IDENTITY GUARD IMPLEMENTED IN ISOLATION; CONFIG ADAPTER/INTEGRATION/RECOVERY AND LIVE QUALIFICATION NOT COMPLETE  
 **Date:** 2026-11-16  
 **Branch:** feature/apaa-s09-c01-p16-oci-lifecycle  
 **PR:** #11 — Draft / Open / Unmerged
@@ -131,3 +131,12 @@ This design does not implement account invitations, general roles, public regist
 - S09-C02: **NOT STARTED**.
 
 **Checkpoint:** `APAA-S09-C01-P35A-GLOBAL-OWNER-BOOTSTRAP-RECOVERY-DESIGN-RECORDED`
+
+
+## 11. Isolated identity-guard implementation update (2026-11-16)
+
+Added `core/global_owner.py` and `tests/test_global_owner.py`. The pure server-side guard accepts only a caller-supplied server configuration mapping, validates exact fields, requires an HTTPS issuer in the trusted issuer collection, bounds/validates the subject, and compares authenticated Principals by exact issuer + subject. Missing config, malformed identities, untrusted issuers and non-matching principals fail closed. It exposes an opaque SHA-256 generation/fingerprint for cache invalidation/audit correlation; the fingerprint is not an authorization key.
+
+This is an isolated authorization primitive only. It does not read environment variables, files, browser state, task text or model output; does not establish secure configuration custody; does not implement strict raw-config parsing, startup policy, global-admin API integration, session invalidation, audit persistence, recovery/re-key, or live OIDC. No UI or endpoint exposes it. The application does not yet load or activate a global owner. Focused tests were added but must pass exact-head CI before any test-pass claim.
+
+Updated status: design RECORDED; isolated guard IMPLEMENTED; deployment config adapter, application integration, recovery/re-key and external qualification NOT IMPLEMENTED/BLOCKED.
