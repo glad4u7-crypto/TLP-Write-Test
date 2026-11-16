@@ -55,3 +55,18 @@ def test_owner_share_controls_require_directory_selection_and_explicit_confirmat
     assert "I confirm revoking this account's project metadata access" in source
     assert 'oidc_claims.get("name")' in source
     assert 'oidc_claims.get("email")' not in source
+
+
+def test_authenticated_deployment_fails_closed_for_non_owner_or_missing_owner():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from core.global_owner import GlobalOwnerConfigurationError, is_global_owner" in source
+    assert "if auth_required:" in source
+    assert "if global_owner_config_invalid or global_owner_config is None:" in source
+    assert "if not is_global_owner(principal, global_owner_config):" in source
+    assert "This APAA instance is private and is available only to its configured owner." in source
+    assert source.index("if not is_global_owner(principal, global_owner_config):") < source.index(
+        "st.header(\"Project Manager\")"
+    )
