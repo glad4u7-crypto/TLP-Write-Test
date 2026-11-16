@@ -67,7 +67,7 @@ Do not fabricate evidence or use test keys as production trust roots. Out-of-ban
 
 ## Step 4 — Live egress isolation gate
 
-Run `scripts/qualify_linux_egress_namespace.sh` only on a disposable Linux runner that supports network namespaces, veth, nftables and IPv6. It creates a temporary namespace and veth pair and deletes them on exit. It must not change host firewall chains.
+Run `scripts/qualify_linux_egress_namespace.sh` only on a disposable Linux runner that supports network namespaces, veth, namespace-local nftables with CAP_NET_ADMIN, and usable IPv6 sockets/addresses. The current GitHub-hosted runner attempt failed because its IPv6/network capabilities were insufficient; the script now fails early with an actionable capability diagnostic. It creates a temporary namespace and veth pair and deletes them on exit. It must not change host firewall chains.
 
 The current script validates an exact IPv4 TCP proxy destination and blocked direct IPv4 TCP, DNS TCP/UDP, UDP/443 and IPv6 TCP probes. It does **not** prove alternate-interface bypass resistance, external DNS resolution policy, IPv6 UDP, host firewall hook precedence, or the full production topology. Those remain separate acceptance tests.
 
