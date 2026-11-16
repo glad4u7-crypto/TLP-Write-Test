@@ -63,8 +63,8 @@ See [P20 Disposable Linux Host Runbook](APAA_S09_C01_P20_DISPOSABLE_HOST_RUNBOOK
 
 A checkpoint is complete only when implementation, negative tests, exact-head CI and its stated environment qualification all pass. Mock tests are not proof of real host isolation. Documentation is not runtime evidence. A queued or explicitly skipped CI step is not PASS.
 
-**Current checkpoint:** APAA-S09-C01-P20-CODE-AND-CI-PASS-REAL-OCI-DAEMON-QUALIFICATION-PENDING.  
-**Next:** Qualify a real rootless Docker/Podman daemon on a disposable Linux host, including trusted collector and signed attestation, then exercise lifecycle and bounded cleanup. Keep worker/browser disabled until all gates pass.
+**Current checkpoint:** APAA-S09-C01-P27-REAL-HOST-QUALIFICATION-EVIDENCE-PACK-DRAFTED-CI-PASS-REAL-HOST-QUALIFICATION-BLOCKED.  
+**Next:** Owner must provide/approve a disposable Linux host, protected signing key, independent monotonic anchor and local digest-pinned test image. Then execute the P27 evidence pack and obtain independent review. Do not start C02 or enable worker/browser until all mandatory C01 gates pass.
 
 
 ## P24–P26 follow-on trust work (2026-11-16)
@@ -98,3 +98,16 @@ All four workflows completed successfully on this exact commit:
 - P23 Rootless Podman Executor Integration #43808654973 — **PASS**.
 
 This is stronger than a unit-test-only result: CI exercised a real disposable rootless Podman daemon lifecycle. It still does not qualify the user's own host, a production host collector/key, TPM/HSM custody, durable independent monotonic storage, Docker rootless lifecycle, Android/Termux, or the full APAA worker/proxy egress topology. C01 remains open until those mandatory environment-dependent gates are independently satisfied.
+
+
+## P26/P27 latest verification — 2026-11-16
+
+- P26 software boundary and security gate documentation are committed; no production TPM/HSM, host key, collector service or independent monotonic anchor is provisioned.
+- All four workflows completed **PASS** on exact documentation head `1230e97fd8f83d5efc154bf18bf7cabc9c4a35c9`:
+  - Agent Foundation CI #929 — [run 43809225079](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43809225079).
+  - Python Demo CI #1004 — [run 43809225000](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43809225000).
+  - P23 Rootless Podman Executor Integration #40 — [run 43809225001](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43809225001).
+  - P20 Rootless Podman Runtime Qualification #58 — [run 43809224997](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43809224997).
+- P27 added `docs/APAA_S09_C01_P27_REAL_HOST_QUALIFICATION_EVIDENCE_PACK.md`, defining hard prerequisites, evidence manifest, trust/signer checks, real-daemon attestation lifecycle, egress probes, cleanup, integrity and independent review.
+- P27 is an operator evidence specification, not a claim that real-host tests have run. Real-host security qualification remains BLOCKED pending owner-approved infrastructure and independently reviewed evidence.
+- PR #11 remains Draft/Open/Unmerged. No deployment, host mutation, firewall change, worker/browser activation, paid service, API key or Auto-Run.
