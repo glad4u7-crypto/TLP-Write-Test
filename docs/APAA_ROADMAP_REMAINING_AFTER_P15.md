@@ -128,7 +128,9 @@ This is stronger than a unit-test-only result: CI exercised a real disposable ro
 - Added negative tests for manifest alteration, wrong signer key, wrong pinned fingerprint, sidecar placement and incomplete trust inputs. Test private keys are ephemeral and test-only.
 - Latest exact implementation head `1009939c847a2fc3157e9715e79bacacad89ced0`: all four required CI workflows PASS; Foundation and Demo suites each report 1049 passed, 7 skipped; P23 and P20 rootless Podman qualification PASS.
 - The result `VERIFIED_ED25519` proves only that the exact manifest bytes verify under the supplied pinned public key. It does not prove who controls that key, protected hardware custody, real-host identity, truthful observations, or network isolation.
-- **Next:** define an independent reviewer-verification/disposition contract and test it against the manifest digest and signer fingerprint. Keep host qualification BLOCKED until owner-approved real host, out-of-band trust provisioning, protected signer, durable anti-rollback anchor and sink-side network evidence exist.
+- **Completed next increment:** implemented `scripts/verify_apaa_p27_review.py` and `tests/test_apaa_p27_review.py`. The verifier requires a signed evidence manifest, a separate reviewer Ed25519 key pinned by out-of-band SHA-256 fingerprint, a detached reviewer attestation bound to the exact manifest digest, UTC review time, bounded findings and PASS/FAIL/BLOCKED disposition. It explicitly does not claim reviewer identity/independence or grant qualification approval.
+- Latest verifier code head `086b5a626dace4f5ee06af0df2d75ada87bb8f82`: all four required CI workflows PASS; Foundation suite 1056 passed, 7 skipped; Demo, P23 and P20 workflows PASS.
+- **Next:** define operator-side evidence collection and owner approval handoff only after an approved real Linux host and independently provisioned trust/reviewer keys are available. Keep host qualification BLOCKED until protected signer, durable anti-rollback anchor and sink-side network evidence exist.
 
 
 ## Signed independent reviewer disposition
