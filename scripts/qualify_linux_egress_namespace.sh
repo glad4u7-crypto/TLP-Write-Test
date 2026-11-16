@@ -41,7 +41,7 @@ sudo ip -n "${NS}" link set "${WORKER_VETH}" up
 sudo ip -n "${NS}" route add default via "${HOST_IP}"
 
 # Host-side sink detects any prohibited TCP connection or UDP datagram.
-python3 - <<'PY' &
+sudo python3 - <<'PY' &
 import selectors, socket, sys, time
 sel = selectors.DefaultSelector()
 sockets = []
