@@ -22,10 +22,13 @@ ISSUER = "control:root-001"
 class DurableReferenceAnchor:
     """Thread-safe reference model with durable-store and anti-rollback semantics."""
 
-    def __init__(self, store=None):
+    def __init__(self, store=None, protected_floor=None):
         self.store = {} if store is None else store
+        # Model a separately persisted monotonic floor. Tests pass the same
+        # object across adapter recreation; it is deliberately not part of
+        # the rollback-capable backup snapshot.
+        self.protected_floor = {} if protected_floor is None else protected_floor
         self.lock = threading.Lock()
-        self.restore_floor = dict(self.store)
 
     def read_sequence(self, issuer_key_id):
         with self.lock:
@@ -37,8 +40,8 @@ class DurableReferenceAnchor:
             if current != expected_current or new_sequence <= current:
                 return False
             self.store[issuer_key_id] = new_sequence
-            self.restore_floor[issuer_key_id] = max(
-                self.restore_floor.get(issuer_key_id, 0), new_sequence
+            self.protected_floor[issuer_key_id] = max(
+                self.protected_floor.get(issuer_key_id, 0), new_sequence
             )
             return True
 
@@ -48,7 +51,7 @@ class DurableReferenceAnchor:
 
     def restore(self, snapshot):
         with self.lock:
-            for issuer, floor in self.restore_floor.items():
+            for issuer, floor in self.protected_floor.items():
                 if snapshot.get(issuer, 0) < floor:
                     raise RuntimeError("backup restore would roll back monotonic state")
             self.store.clear()
@@ -238,3 +241,40 @@ def test_anchor_cas_rejection_fails_closed():
     public, raw = _bundle(sequence=4)
     with pytest.raises(InspectorTrustSequenceError, match="changed concurrently"):
         _accept(public, raw, RejectingAdvanceAnchor())
+
+
+
+def test_old_backup_is_rejected_after_adapter_recreation_with_separate_floor():
+    public, raw = _bundle(sequence=4)
+    durable_store = {}
+    independently_protected_floor = {}
+    first_process = DurableReferenceAnchor(durable_store, independently_protected_floor)
+    old_backup = first_process.backup()
+    _accept(public, raw, first_process)
+    assert independently_protected_floor[ISSUER] == 4
+
+    # Recreate the adapter as after process restart. The protected floor is
+    # supplied by a separate durable trust domain, not reconstructed from the
+    # rollback-capable data store.
+    restarted_process = DurableReferenceAnchor(durable_store, independently_protected_floor)
+    with pytest.raises(RuntimeError, match="roll back"):
+        restarted_process.restore(old_backup)
+    assert restarted_process.read_sequence(ISSUER) == 4
+
+
+def test_rolling_back_data_store_alone_does_not_roll_back_protected_floor():
+    public, raw = _bundle(sequence=4)
+    durable_store = {}
+    independently_protected_floor = {}
+    anchor = DurableReferenceAnchor(durable_store, independently_protected_floor)
+    old_backup = anchor.backup()
+    _accept(public, raw, anchor)
+
+    # Simulate restoration of only the ordinary data store, leaving the
+    # independently administered monotonic floor intact.
+    durable_store.clear()
+    durable_store.update(old_backup)
+    restarted = DurableReferenceAnchor(durable_store, independently_protected_floor)
+    assert restarted.read_sequence(ISSUER) == 0
+    with pytest.raises(InspectorTrustSequenceError, match="rejected"):
+        _accept(public, raw, restarted)
