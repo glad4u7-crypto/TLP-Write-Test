@@ -261,7 +261,7 @@ def test_audit_event_field_tampering_is_detected_and_blocks_recovery(tmp_path):
             new_generation=hashlib.sha256(b"next-generation").hexdigest(),
             nonce="f"*64), now=1100)
     assert store.read_global_owner_state().revision == 1
-    assert anchor.read().revision == 1
+    assert anchor.read().revision == 2  # anchor advances first; local CAS fails closed on tampered audit
 
 
 def test_audit_tail_deletion_is_detected_by_sequence_high_water_mark(tmp_path):
@@ -274,7 +274,7 @@ def test_audit_tail_deletion_is_detected_by_sequence_high_water_mark(tmp_path):
     with pytest.raises(RecoveryDenied):
         service.apply(_signed(op, ap), now=1100)
     assert store.read_global_owner_state().revision == 1
-    assert anchor.read().revision == 1
+    assert anchor.read().revision == 2  # anchor advances first; local CAS fails closed on truncated audit
 
 
 def test_key_rotation_accepts_new_dual_control_keys_and_rejects_old_keys(tmp_path):
