@@ -161,7 +161,7 @@ def test_no_follow_open_rejects_symlink_swap_after_inventory(tmp_path, monkeypat
 
 
 
-def test_recovers_from_crash_left_staging_file(tmp_path):
+def test_ignores_crash_left_staging_file_and_recovers_build(tmp_path):
     root = tmp_path / "evidence"
     _evidence(root)
     stale = root / (".manifest-" + "a" * 32 + ".tmp")
@@ -171,11 +171,10 @@ def test_recovers_from_crash_left_staging_file(tmp_path):
 
     assert set(manifest["files"]) == set(FILES)
     assert (root / "manifest.json").is_file()
-    assert not stale.exists()
-    assert not list(root.glob(".manifest-*.tmp"))
+    assert stale.read_bytes() == b"partial bytes from interrupted writer"
 
 
-def test_existing_manifest_cleans_crash_left_staging_file_without_overwrite(tmp_path):
+def test_existing_manifest_refuses_overwrite_and_preserves_unowned_staging_file(tmp_path):
     root = tmp_path / "evidence"
     _evidence(root)
     build_manifest(root, METADATA)
@@ -187,7 +186,7 @@ def test_existing_manifest_cleans_crash_left_staging_file_without_overwrite(tmp_
         build_manifest(root, METADATA)
 
     assert (root / "manifest.json").read_bytes() == original
-    assert not stale.exists()
+    assert stale.read_bytes() == b"interrupted cleanup"
 
 def test_concurrent_builders_publish_exactly_one_complete_manifest(tmp_path, monkeypatch):
     import scripts.build_apaa_p27_manifest as builder
