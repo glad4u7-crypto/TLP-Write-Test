@@ -19,7 +19,13 @@ Added tests for successful self-test reporting and fail-closed behavior without 
 
 ## Operator use
 
-After installing a compatible PKCS#11 library and provisioning an Ed25519 key inside a supported token:
+Install the optional Python binding and a vendor-compatible PKCS#11 shared library, then provision an Ed25519 key inside a supported token:
+
+```bash
+python -m pip install -r requirements-pkcs11.txt
+```
+
+The token vendor's PKCS#11 module must be installed separately.
 
 ```bash
 python scripts/qualify_apaa_pkcs11_signer.py --module /absolute/path/to/pkcs11.so --token-label APAA-INSPECTOR --key-id inspector-001
