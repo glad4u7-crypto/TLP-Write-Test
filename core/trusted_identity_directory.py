@@ -220,6 +220,33 @@ class SQLiteTrustedIdentityDirectory:
             for row in rows
         ]
 
+    def owner_grant_display_label(
+        self, project_id: str, *, owner: Principal,
+        grantee: Principal, access_control: ProjectAccessControl,
+    ) -> str | None:
+        """Return a display-only label for an active grantee to the exact owner.
+
+        This deliberately ignores discoverability after a grant exists: the
+        project owner must be able to identify and revoke an existing grant.
+        It never returns issuer, subject, email, or token material.
+        """
+        verified_owner = self._require_project_owner(owner, project_id, access_control)
+        verified_grantee = self._principal(grantee)
+        if (
+            verified_grantee.issuer != verified_owner.issuer
+            or (verified_grantee.issuer, verified_grantee.subject)
+            == (verified_owner.issuer, verified_owner.subject)
+            or not access_control.has_access(project_id, verified_grantee)
+        ):
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT display_label FROM trusted_identity_directory
+                   WHERE issuer = ? AND subject = ?""",
+                (verified_grantee.issuer, verified_grantee.subject),
+            ).fetchone()
+        return self._label(row["display_label"]) if row is not None else None
+
     def resolve_owner_selection(
         self, project_id: str, directory_id: str, *, owner: Principal,
         access_control: ProjectAccessControl,
