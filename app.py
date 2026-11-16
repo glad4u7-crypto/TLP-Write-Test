@@ -25,6 +25,11 @@ from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAudit
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
 from core.trusted_identity_directory import SQLiteTrustedIdentityDirectory
+from core.global_owner import GlobalOwnerConfigurationError
+from core.global_owner_config import (
+    invalidate_owner_bound_session_state,
+    load_global_owner_from_settings,
+)
 
 st.set_page_config(
     page_title="Autonomous AI Agent",
@@ -83,6 +88,31 @@ else:
         "Do not expose this instance publicly. Set [apaa].require_auth = true "
         "after configuring OIDC."
     )
+
+# Global-owner provisioning is optional but never inferred from a login.
+# Only the server-side [apaa].global_owner mapping is accepted. Invalid
+# configuration disables the owner capability without granting a fallback.
+global_owner_config = None
+global_owner_config_invalid = False
+if principal is not None:
+    try:
+        global_owner_config = load_global_owner_from_settings(apaa_settings)
+    except GlobalOwnerConfigurationError:
+        global_owner_config_invalid = True
+        st.error(
+            "Global Owner configuration is invalid. Global administration is "
+            "disabled; ordinary project access remains subject to existing ACLs."
+        )
+
+# A provisioning change (including removal or invalidation) drops any cached
+# owner-only capabilities. The raw owner subject is never stored in session.
+global_owner_generation = (
+    global_owner_config.generation if global_owner_config is not None else None
+)
+if "global_owner_generation" in st.session_state:
+    if st.session_state["global_owner_generation"] != global_owner_generation:
+        invalidate_owner_bound_session_state(st.session_state)
+st.session_state["global_owner_generation"] = global_owner_generation
 
 # Clear identity-bound drafts, approval authority and gateway if a different
 # authenticated account starts using this same Streamlit session.
