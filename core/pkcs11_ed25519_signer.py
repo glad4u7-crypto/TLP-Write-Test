@@ -80,16 +80,16 @@ class PKCS11Ed25519InspectorSigner:
     def _load(self):
         try:
             if self._loader is not None:
-                return self._loader(self._module_path)
+                loaded = self._loader(self._module_path)
+                return loaded, loaded
             import pkcs11
-            return pkcs11.lib(self._module_path)
+            return pkcs11, pkcs11.lib(self._module_path)
         except Exception:
             raise PKCS11SignerError("PKCS#11 module could not be loaded.") from None
 
     def _token_session(self):
         try:
-            import pkcs11
-            library = self._load()
+            pkcs11, library = self._load()
             token = library.get_token(token_label=self._token_label)
             return token.open(user_pin=self._pin), pkcs11
         except PKCS11SignerError:
