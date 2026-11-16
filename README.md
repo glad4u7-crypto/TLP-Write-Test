@@ -73,3 +73,12 @@ See [S04 Security Pass/Block Matrix](docs/APAA_S04_SECURITY_PASS_BLOCK_MATRIX.md
 ## Current work
 
 The active APAA security-hardening work is tracked in [Pull Request #5](https://github.com/glad4u7-crypto/TLP-Write-Test/pull/5), on branch `feature/approval-ui-e2e-p06` targeting `feature/agent-v0.3-zero-cost-core`. It remains Open + Draft and is not merged or deployed.
+
+
+## Android-first responsive interface (in progress)
+
+- The Streamlit workspace now uses a centered, narrow-friendly page layout and starts with the sidebar collapsed for small-screen usability.
+- Shared responsive styles provide 44px minimum touch targets, 16px form text to reduce mobile browser zoom, horizontally scrollable tabs, and narrow-screen spacing/typography.
+- Styling is isolated in `core/mobile_ui.py`; it changes presentation only and does not grant task execution authority.
+- Automated style contract tests live in `tests/test_mobile_ui.py`.
+- This is still a responsive web prototype, not a PWA install package or native Android APK. Physical Android Chrome verification is a required hands-on exercise before marking this part complete.
