@@ -132,7 +132,7 @@ def test_executor_attests_then_starts_and_removes_real_rootless_podman_container
     executor = _executor(tmp_path, plan=plan, spec=spec)
     report = executor.launch(plan, spec)
 
-    assert report.started is True
+    assert report.started is True, report.events
     assert report.cleaned is False
     assert report.handle is not None
     assert report.handle.container_id
