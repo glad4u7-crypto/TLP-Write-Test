@@ -62,6 +62,18 @@ def _multiprocess_manifest_attempt(root, metadata, start_barrier, read_barrier, 
         queue.put("error:" + repr(exc))
 
 
+def _crash_during_manifest_publish(root, metadata):
+    """Simulate process death after staged bytes are fsynced, before publication."""
+    import os
+    import scripts.build_apaa_p27_manifest as builder
+
+    def crash_before_link(*args, **kwargs):
+        os._exit(73)
+
+    builder.os.link = crash_before_link
+    build_manifest(Path(root), metadata)
+
+
 def test_builds_manifest_that_integrity_validator_accepts(tmp_path):
     root = tmp_path / "evidence"
     _evidence(root)
@@ -211,6 +223,33 @@ def test_ignores_crash_left_staging_file_and_recovers_build(tmp_path):
     assert set(manifest["files"]) == set(FILES)
     assert (root / "manifest.json").is_file()
     assert stale.read_bytes() == b"partial bytes from interrupted writer"
+
+
+def test_process_crash_after_stage_fsync_recovers_without_partial_manifest(tmp_path):
+    import multiprocessing
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("process crash-injection test requires fork support")
+    context = multiprocessing.get_context("fork")
+    root = tmp_path / "evidence"
+    _evidence(root)
+    process = context.Process(target=_crash_during_manifest_publish, args=(str(root), METADATA))
+    process.start()
+    process.join(timeout=15)
+
+    assert process.exitcode == 73
+    assert not (root / "manifest.json").exists()
+    staged = list(root.glob(".manifest-*.tmp"))
+    assert len(staged) == 1
+    staged_bytes = staged[0].read_bytes()
+    staged_manifest = json.loads(staged_bytes.decode("utf-8"))
+    assert set(staged_manifest["files"]) == set(FILES)
+
+    recovered = build_manifest(root, METADATA)
+    assert set(recovered["files"]) == set(FILES)
+    assert json.loads((root / "manifest.json").read_text(encoding="utf-8")) == recovered
+    # Recovery must not delete a staging inode that may belong to another writer.
+    assert staged[0].read_bytes() == staged_bytes
 
 
 def test_existing_manifest_refuses_overwrite_and_preserves_unowned_staging_file(tmp_path):
