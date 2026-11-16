@@ -14,6 +14,7 @@ import json
 import os
 import sys
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from core.pkcs11_ed25519_signer import PKCS11Ed25519InspectorSigner, PKCS11SignerError
@@ -49,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(result, sort_keys=True, indent=2))
         return 0
-    except (PKCS11SignerError, ValueError, TypeError):
+    except (PKCS11SignerError, InvalidSignature, ValueError, TypeError):
         print("PKCS#11 signer self-test failed closed; no qualification evidence was produced.", file=sys.stderr)
         return 2
 
