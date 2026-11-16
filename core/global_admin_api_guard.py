@@ -9,15 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from core.global_owner import (
-    GlobalOwnerConfig,
-    GlobalOwnerConfigurationError,
-    require_global_owner,
-)
+from core.global_owner import GlobalOwnerConfig, require_global_owner
 from core.identity import AuthorizationDenied, Principal
 
 
 OwnerConfigLoader = Callable[[], GlobalOwnerConfig | None]
+OwnerGenerationReader = Callable[[], str | None]
 
 
 class GlobalAdminRequestAuthorizer:
@@ -28,10 +25,17 @@ class GlobalAdminRequestAuthorizer:
     provided the deployment config loader itself is fresh and authoritative.
     """
 
-    def __init__(self, config_loader: OwnerConfigLoader) -> None:
-        if not callable(config_loader):
-            raise TypeError("A trusted server-side owner config loader is required.")
+    def __init__(
+        self,
+        config_loader: OwnerConfigLoader,
+        generation_reader: OwnerGenerationReader,
+    ) -> None:
+        if not callable(config_loader) or not callable(generation_reader):
+            raise TypeError(
+                "Trusted server-side config and durable generation readers are required."
+            )
         self._config_loader = config_loader
+        self._generation_reader = generation_reader
 
     def authorize(self, principal: Principal | None) -> Principal:
         """Return the trusted owner principal or deny this request.
@@ -46,6 +50,12 @@ class GlobalAdminRequestAuthorizer:
         except Exception:
             raise AuthorizationDenied("Global Admin authorization is unavailable.") from None
         if not isinstance(config, GlobalOwnerConfig):
+            raise AuthorizationDenied("Global Admin authorization is unavailable.")
+        try:
+            current_generation = self._generation_reader()
+        except Exception:
+            raise AuthorizationDenied("Global Admin authorization is unavailable.") from None
+        if current_generation != config.generation:
             raise AuthorizationDenied("Global Admin authorization is unavailable.")
         try:
             return require_global_owner(principal, config)
