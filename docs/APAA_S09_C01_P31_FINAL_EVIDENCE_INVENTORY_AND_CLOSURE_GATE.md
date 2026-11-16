@@ -285,3 +285,10 @@ P35's earlier F-02 and P35-B–D status reflected a prior code head. P42 subsequ
 Added `docs/APAA_S09_C01_P35A_GLOBAL_OWNER_BOOTSTRAP_AND_RECOVERY_DESIGN.md`. The design specifies exact issuer+subject owner provisioning from protected server-side configuration, no first-login bootstrap, fail-closed missing/invalid config, project-owner/global-owner separation, out-of-band operator recovery/re-key, audit privacy, threat mitigations, a mandatory test matrix and release gates.
 
 Disposition: design/documentation RECORDED; implementation NOT IMPLEMENTED; live OIDC, protected configuration custody, recovery rehearsal, physical Android and independent review BLOCKED. No owner identity, credential, secret or private key was requested or committed. This is not authorization to deploy, merge, enable global administration, activate workers, mutate a host, or start C02.
+
+
+## 15. P35-A isolated global-owner guard implementation
+
+Added `core/global_owner.py` and `tests/test_global_owner.py`. The primitive validates a server-supplied issuer/subject mapping against the trusted HTTPS issuer allowlist and provides exact authenticated Principal matching with fail-closed behavior. Missing config, invalid config, untrusted issuer and mismatched/unauthenticated Principal are denied. The generation fingerprint is opaque and is not used as an authorization key.
+
+This is not an active global owner bootstrap: no secure config adapter/custody, strict raw-config parser, startup integration, privileged API wiring, session invalidation, audit persistence, recovery/re-key or live OIDC qualification exists yet. No owner identity or secret was added. Focused tests are awaiting exact-head CI. Keep all release/safety locks unchanged.
