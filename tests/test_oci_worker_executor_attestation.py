@@ -24,7 +24,7 @@ NOW = 1000
 PROXY_IP = "172.20.0.2"
 
 
-def setup(tmp_path, *, corrupt_signature=False):
+def setup(tmp_path, *, corrupt_signature=False, revoked_key=False, wrong_worker=False):
     spec = build_worker_launch_spec(profile())
     plan = build_oci_worker_plan(
         spec, runtime="podman", image=IMAGE, network_name="apaa-egress-prod",
@@ -38,7 +38,7 @@ def setup(tmp_path, *, corrupt_signature=False):
         key_registry=InspectorPublicKeyRegistry([
             InspectorPublicKeyRecord(
                 key_id="host-inspector-prod", public_key=public,
-                not_before=900, not_after=1100, revoked=False,
+                not_before=900, not_after=1100, revoked=revoked_key,
             )
         ]),
     )
@@ -68,7 +68,7 @@ def setup(tmp_path, *, corrupt_signature=False):
         envelope["payload"]["runtime_attestation"]["runtime_id"] = snapshot["container_id"]
         envelope["payload"]["runtime_attestation"]["worker_id"] = snapshot["container_name"]
         envelope["payload"]["firewall"]["runtime_id"] = snapshot["container_id"]
-        envelope["payload"]["firewall"]["worker_id"] = snapshot["container_name"]
+        envelope["payload"]["firewall"]["worker_id"] = (\n            "apaa-worker-other-job" if wrong_worker else snapshot["container_name"]\n        )
         resign(envelope, private)
         if corrupt_signature:
             envelope["signature"] = "A" * 88
@@ -102,6 +102,29 @@ def test_p18_valid_durable_identity_bound_evidence_is_required_before_start(tmp_
 
 def test_p18_invalid_signature_blocks_start_and_removes_created_worker(tmp_path):
     spec, plan, calls, executor = setup(tmp_path, corrupt_signature=True)
+    report = executor.launch(plan, spec)
+
+    assert [call[1] for call in calls] == ["create", "inspect", "rm"]
+    assert report.started is False
+    assert report.handle is None
+    assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
+
+
+
+def test_p22_revoked_host_inspector_key_blocks_start_and_cleans_worker(tmp_path):
+    spec, plan, calls, executor = setup(tmp_path, revoked_key=True)
+    report = executor.launch(plan, spec)
+
+    assert [call[1] for call in calls] == ["create", "inspect", "rm"]
+    assert report.started is False
+    assert report.handle is None
+    assert report.cleaned is True
+    assert "START" not in [event.stage for event in report.events]
+
+
+def test_p22_signed_evidence_for_different_worker_blocks_start(tmp_path):
+    spec, plan, calls, executor = setup(tmp_path, wrong_worker=True)
     report = executor.launch(plan, spec)
 
     assert [call[1] for call in calls] == ["create", "inspect", "rm"]
