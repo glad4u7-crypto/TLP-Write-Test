@@ -278,3 +278,10 @@ P35's earlier F-02 and P35-B–D status reflected a prior code head. P42 subsequ
 - S09-C01: OPEN / NOT COMPLETE; S09-C02: NOT STARTED.
 - PR #11: Draft/Open/Unmerged.
 - Auto-Run OFF; browser/worker disabled; no deployment, merge, paid API/payment, host/firewall mutation or production activation.
+
+
+## 14. P35-A global owner bootstrap/recovery design
+
+Added `docs/APAA_S09_C01_P35A_GLOBAL_OWNER_BOOTSTRAP_AND_RECOVERY_DESIGN.md`. The design specifies exact issuer+subject owner provisioning from protected server-side configuration, no first-login bootstrap, fail-closed missing/invalid config, project-owner/global-owner separation, out-of-band operator recovery/re-key, audit privacy, threat mitigations, a mandatory test matrix and release gates.
+
+Disposition: design/documentation RECORDED; implementation NOT IMPLEMENTED; live OIDC, protected configuration custody, recovery rehearsal, physical Android and independent review BLOCKED. No owner identity, credential, secret or private key was requested or committed. This is not authorization to deploy, merge, enable global administration, activate workers, mutate a host, or start C02.
