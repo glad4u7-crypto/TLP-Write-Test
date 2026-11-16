@@ -98,6 +98,7 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         input_sizes = page.locator("input, textarea").evaluate_all(
             "(nodes) => nodes.map(node => parseFloat(getComputedStyle(node).fontSize))"
         )
+        assert input_sizes, "Expected the APAA task/project forms to render at least one input"
         assert all(size >= 16 for size in input_sizes), input_sizes
 
         button_heights = page.locator(
@@ -105,6 +106,7 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         ).evaluate_all(
             "(nodes) => nodes.map(node => node.getBoundingClientRect().height)"
         )
+        assert button_heights, "Expected APAA primary/action buttons to render"
         assert all(height >= 44 for height in button_heights), button_heights
 
         context.close()
