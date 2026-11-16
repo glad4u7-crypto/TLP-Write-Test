@@ -98,9 +98,9 @@ def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
 def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeouts():
     for workflow in ALL_SECURITY_WORKFLOWS:
         source = workflow.read_text(encoding="utf-8")
-        assert re.search(r"^concurrency:\\s*$", source, re.MULTILINE), workflow.name
+        assert re.search(r"^concurrency:\s*$", source, re.MULTILINE), workflow.name
         assert re.search(
-            r"^\\s+group:\\s+.+\\$\\{\\{\\s*github\\.sha\\s*\\}\\}",
+            r"^\s+group:\s+.+\$\{\{\s*github\.sha\s*\}\}",
             source,
             re.MULTILINE,
         ), f"{workflow.name} concurrency group must be commit-scoped"
@@ -117,9 +117,9 @@ def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeou
                 continue
             if not in_jobs:
                 continue
-            if re.match(r"^\\S", line):
+            if re.match(r"^\S", line):
                 break
-            job_match = re.match(r"^  ([A-Za-z0-9_-]+):\\s*$", line)
+            job_match = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
             if job_match:
                 if current_job is not None:
                     job_blocks.append((current_job, current_lines))
@@ -133,6 +133,6 @@ def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeou
         assert job_blocks, f"{workflow.name} must define at least one job"
         for job_name, job_lines in job_blocks:
             assert any(
-                re.match(r"^    timeout-minutes:\\s+\\d+\\s*$", line)
+                re.match(r"^    timeout-minutes:\s+\d+\s*$", line)
                 for line in job_lines
             ), f"{workflow.name}:{job_name} must have its own bounded timeout"
