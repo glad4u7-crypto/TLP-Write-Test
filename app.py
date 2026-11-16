@@ -89,6 +89,12 @@ else:
         "after configuring OIDC."
     )
 
+
+# Clear identity-bound drafts, approval authority and gateway if a different
+# authenticated account starts using this same Streamlit session.
+session_identity = session_identity_key(principal.issuer, principal.subject) if principal is not None else "local-prototype"
+bind_session_identity(st.session_state, session_identity)
+
 # Global-owner provisioning is optional but never inferred from a login.
 # Only the server-side [apaa].global_owner mapping is accepted. Invalid
 # configuration disables the owner capability without granting a fallback.
@@ -114,10 +120,6 @@ if "global_owner_generation" in st.session_state:
         invalidate_owner_bound_session_state(st.session_state)
 st.session_state["global_owner_generation"] = global_owner_generation
 
-# Clear identity-bound drafts, approval authority and gateway if a different
-# authenticated account starts using this same Streamlit session.
-session_identity = session_identity_key(principal.issuer, principal.subject) if principal is not None else "local-prototype"
-bind_session_identity(st.session_state, session_identity)
 if "approval_session_scope" not in st.session_state:
     st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
 
