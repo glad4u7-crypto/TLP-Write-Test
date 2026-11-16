@@ -252,3 +252,22 @@ It does **not** close the separately controlled real-host gates. GitHub-hosted C
 5. Independent security reviewer verification of the complete evidence pack and explicit owner approval.
 
 No synthetic or CI result may be substituted for these items. Until each blocker has authentic evidence and approval, C01 remains OPEN / NOT SECURITY-QUALIFIED; worker/browser activation, Auto-Run, deployment, PR merge and C02 remain disabled.
+
+
+## Latest exact-head verification — 2026-11-16 (P46)
+
+**Exact verified PR head:** `c3ffb15f043441e014adce08c2bd09152e179c41`.
+
+All seven GitHub Actions check-runs completed with conclusion **success** on this exact SHA:
+
+- Agent Foundation CI — PASS.
+- Python Demo CI — PASS.
+- Disposable rootless Podman runtime lifecycle — PASS.
+- P23 real Podman executor and durable attestation-gate plumbing — PASS.
+- Disposable Linux live host-inspector qualification — PASS.
+- Disposable Linux egress namespace qualification — PASS.
+- Android and PC Chromium browser verification — PASS (emulated browser/viewport only).
+
+This exact-head result supersedes the earlier cbbf048 checkpoint for repository CI status. It establishes only repository/disposable-CI verification. It does not establish owner-host qualification, physical Android/Termux compatibility, production signer custody, an independently administered durable monotonic anchor, or independent reviewer/owner approval. Those external gates remain BLOCKED and C01 remains OPEN / NOT COMPLETE.
+
+PR #11 remains Draft/Open/Unmerged. Auto-Run remains OFF; Worker/Browser remain DISABLED; no production deployment, host/firewall mutation, paid provider, payment, purchase or C02 start is authorized.
