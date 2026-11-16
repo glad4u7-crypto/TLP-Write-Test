@@ -162,6 +162,10 @@ def test_authenticated_app_fails_closed_for_short_signing_secret(monkeypatch):
             "auth": {"redirect_uri": "https://example.test/oauth2callback"},
             "apaa": {
                 "require_auth": True,
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
                 "approval_signing_secret_hex": "ab" * 31,
             },
         },
@@ -197,6 +201,10 @@ def test_authenticated_app_fails_closed_for_unsafe_security_database_path(
             "auth": {"redirect_uri": "https://example.test/oauth2callback"},
             "apaa": {
                 "require_auth": True,
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
                 "approval_signing_secret_hex": "ab" * 32,
                 "security_db_path": str(linked_dir / "security.sqlite3"),
                 "project_db_path": str(tmp_path / "projects" / "projects.sqlite3"),
@@ -265,6 +273,10 @@ def test_authenticated_app_fails_closed_when_project_database_initialization_fai
             "auth": {"redirect_uri": "https://example.test/oauth2callback"},
             "apaa": {
                 "require_auth": True,
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
                 "approval_signing_secret_hex": "cd" * 32,
                 "security_db_path": str(security_db),
                 "project_db_path": str(project_db),
@@ -301,6 +313,10 @@ def test_authenticated_store_failure_clears_capabilities_and_same_session_can_re
         "auth": {"redirect_uri": "https://example.test/oauth2callback"},
         "apaa": {
             "require_auth": True,
+                "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
             "approval_signing_secret_hex": secret,
             "security_db_path": str(security_db),
             "project_db_path": str(project_db),
@@ -395,6 +411,10 @@ def test_authenticated_approval_authority_rotates_on_secret_and_store_path_chang
                 "auth": {"redirect_uri": "https://example.test/oauth2callback"},
                 "apaa": {
                     "require_auth": True,
+                    "global_owner": {
+                    "issuer": "https://accounts.example.test",
+                    "subject": "app-smoke-test-user",
+                },
                     "approval_signing_secret_hex": secret,
                     "security_db_path": str(security_path),
                     "project_db_path": str(project_db),
