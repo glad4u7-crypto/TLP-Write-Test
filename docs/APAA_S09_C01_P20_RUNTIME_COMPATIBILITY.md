@@ -60,7 +60,7 @@ Free-only. No API keys, paid providers, payments, purchases, checkout, trading o
 
 During the P20 follow-on integration review, the APAA inspect normalizer was found to require the literal `CapDrop: ["ALL"]`. The qualified Podman runtime expands `--cap-drop=ALL` into the complete explicit Linux capability-name list. This mismatch could reject a correctly hardened Podman worker before the attestation stage.
 
-P21 updates `core/oci_inspect_normalizer.py` to accept either the literal `ALL` marker or the complete recognized Linux capability set (including newer kernel capabilities such as PERFMON, BPF and CHECKPOINT_RESTORE), while rejecting empty, incomplete or unknown lists. It also rejects any non-empty `CapAdd`. Regression tests cover the Podman-expanded representation, missing/unknown capabilities, and capability additions.
+P21 updates `core/oci_inspect_normalizer.py` to accept either the literal `ALL` marker or the complete recognized Linux capability set (including newer kernel capabilities such as PERFMON, BPF and CHECKPOINT_RESTORE), while rejecting empty, incomplete or unknown lists. It also rejects any non-empty `CapAdd`. P23's live Podman 4.9.3 integration then identified an additional runtime-specific inspect representation: Podman reports the exact 11-entry default capability grant set in `HostConfig.CapDrop` for `--cap-drop=ALL`. The normalizer now accepts only that exact Podman set (not subsets), still rejects non-empty `CapAdd`, and P23 separately verifies zero live process capability masks after START.
 
 P21 commits currently on the PR branch:
 - `2be42d8496469928f99a442fd3cb69dbe798aa90` — normalizer capability expansion support.
@@ -98,14 +98,42 @@ P22 code commits:
 
 **Qualification boundary:** the new executor regression tests use a fake runtime runner. The Podman workflow separately qualifies the runtime CLI and hardened lifecycle; it does not call APAA's signed-attestation executor. Therefore APAA-integrated signed attestation against a real OCI runtime remains unqualified. Podman STOP used the bounded 2-second SIGTERM window and SIGKILL fallback; this is not graceful-stop proof.
 
+
+## P23 — real rootless Podman executor integration (test-only signer)
+
+Added `tests/test_oci_worker_executor_podman_integration.py` and `.github/workflows/apaa-p23-rootless-podman-executor-integration.yml`. On an ephemeral Ubuntu 24.04 runner, the workflow installs rootless Podman 4.9.3, verifies cgroup v2, builds a local static BusyBox image without pulling a base image, creates an internal-only named network, and runs APAA's actual `OCIWorkerExecutor` against the real Podman CLI.
+
+The positive integration case exercises:
+- CREATE and capture of the immutable runtime container ID.
+- Real Podman INSPECT normalization, including Podman's `HostConfig.NetworkMode=bridge` plus the exact named `NetworkSettings.Networks` attachment.
+- Durable tenant-bound challenge issuance and one-time consumption through SQLite.
+- Ed25519 evidence signature verification using an ephemeral CI-only signer.
+- START only after the attestation gate accepts the evidence.
+- Live `CapInh`, `CapPrm`, `CapEff` and `CapBnd` masks all equal zero.
+- Handle-bound STOP and force-REMOVE by immutable ID, followed by an absent-container check.
+
+The negative integration case supplies a corrupted signature and verifies that START is not called and the real created Podman container is removed. A final workflow cleanup checks that no APAA-managed container remains.
+
+P23 also fixes two real Podman 4.9.3 inspect mismatches:
+- A named bridge is represented as generic `HostConfig.NetworkMode=bridge`; APAA now accepts it only when `NetworkSettings.Networks` contains exactly the one approved named network and no additional attachment.
+- Podman's `CapDrop` inspect field lists its exact 11 default capabilities for `--cap-drop=ALL`; APAA accepts only that exact Podman set, rejects partial/unknown sets and rejects any `CapAdd`.
+
+**Exact-head P23 verification:** `ebd2d8e46f6ca1b2d82f64d68d8d189d28c0b113` (2026-11-16):
+- [Agent Foundation CI #903](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208788): **PASS** — dependency audit found no known vulnerabilities, Python compile passed, **1013 tests passed / 2 skipped**, disposable Linux egress namespace qualification passed.
+- [Python Demo CI #978](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208755): **PASS**.
+- [Rootless Podman Runtime Qualification #32](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208806): **PASS**.
+- [P23 Rootless Podman Executor Integration #14](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208763): **PASS** — real executor lifecycle, valid evidence gate, bad-signature rejection, zero live capability masks, cleanup and no-orphan check.
+- [P23 sanitized Podman evidence artifact](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43806208763/artifacts/14198142305).
+
+**Critical trust boundary:** the P23 Ed25519 signer is generated inside disposable CI solely to exercise executor/control-plane wiring. The signed firewall/runtime evidence is synthetic test data, not a trusted host observation. P23 therefore qualifies real Podman lifecycle integration and the software attestation gate, but does NOT qualify a production trusted host collector, out-of-band key provisioning, firewall truth, proxy-only egress, or production worker enablement. Browser/worker remains disabled.
+
 ## Remaining operational qualification
 
-1. Real rootless OCI runtime exercising APAA's signed-attestation gate, including real runtime-ID binding and invalid/replayed/revoked evidence rejection.
-2. Real-runtime tenant/runtime mismatch, cancellation/daemon interruption and orphan-cleanup drills.
-3. Rootless Docker qualification if Docker remains supported.
-4. Full worker/proxy egress topology, alternate-interface bypass resistance, external DNS policy, IPv6 UDP and firewall hook precedence.
-5. Trusted host collector installation plus out-of-band Ed25519 key provisioning, rotation, revocation and recovery.
-6. Android/Termux OCI support remains unqualified.
+1. Install and independently trust a real host-side collector; provision its Ed25519 public key out-of-band and test rotation, revocation and recovery. P23 uses an explicitly synthetic CI signer.
+2. Real-runtime tenant/runtime mismatch, replayed/revoked-key, cancellation/daemon interruption and orphan-cleanup drills against the trusted collector path.
+3. Full worker/proxy egress topology, alternate-interface bypass resistance, external DNS policy, IPv6 UDP and firewall hook precedence. P23 uses an internal-only network and synthetic firewall claims; it is not egress qualification.
+4. Rootless Docker qualification if Docker remains an enabled supported runtime; otherwise keep Docker execution disabled until separately qualified.
+5. Android/Termux OCI remains unsupported/unqualified. Android may be used as a control-plane client, but the OCI worker must remain on a separately qualified Linux host until Android runtime compatibility is proven.
 
 Independent control-plane unit tests cover wrong-tenant isolation, challenge expiry, single-use consumption and revoked/expired keys. These tests are not a substitute for integrated real-runtime evidence.
 
