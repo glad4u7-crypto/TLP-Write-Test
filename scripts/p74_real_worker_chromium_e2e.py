@@ -9,7 +9,6 @@ import ipaddress
 import os
 import subprocess
 import sys
-from urllib.parse import urlsplit
 
 from core.browser_security import canonicalize_https_url
 from core.nftables_firewall_provisioner import NftablesFirewallProvisioner
@@ -61,10 +60,11 @@ def main() -> int:
             raise RuntimeError("network namespace path is outside /run/netns")
 
         namespace = namespace_path.rsplit("/", 1)[-1]
-        rules = NftablesFirewallProvisioner().verify_ruleset(namespace)
-        family_token = f"{'ip' if proxy_ip.version == 4 else 'ip6'} daddr {proxy_ip.compressed}"
-        if "policy drop" not in rules or family_token not in rules or f"tcp dport {proxy_port}" not in rules:
-            raise RuntimeError("installed firewall does not match the approved proxy endpoint")
+        rules = NftablesFirewallProvisioner().verify_ruleset(
+            namespace, proxy_ips=[proxy_ip.compressed], proxy_port=proxy_port
+        )
+        if "policy drop" not in rules:
+            raise RuntimeError("installed firewall is not default DROP")
 
         spec = OCIWorkerSpec(
             image=image,
