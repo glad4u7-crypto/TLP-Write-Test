@@ -198,9 +198,9 @@ def test_executable_mapping_parser_keeps_only_sanitized_module_ranges(tmp_path):
     proc = tmp_path / "proc" / "4242"
     proc.mkdir(parents=True)
     (proc / "maps").write_text(
-        "55555000-55556000 r-xp 00001000 08:01 123 /usr/lib/chromium/chromium\\n"
-        "7fff0000-7fff1000 rw-p 00000000 00:00 0 [stack]\\n"
-        "55556000-55557000 r--p 00002000 08:01 123 /usr/lib/chromium/chromium\\n",
+        "55555000-55556000 r-xp 00001000 08:01 123 /usr/lib/chromium/chromium\n"
+        "7fff0000-7fff1000 rw-p 00000000 00:00 0 [stack]\n"
+        "55556000-55557000 r--p 00002000 08:01 123 /usr/lib/chromium/chromium\n",
         encoding="ascii",
     )
     mappings = _executable_mappings(proc, "chromium")
