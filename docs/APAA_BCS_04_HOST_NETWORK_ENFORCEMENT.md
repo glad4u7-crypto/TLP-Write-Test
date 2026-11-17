@@ -191,3 +191,12 @@ dedicated parent. Cleanup was confirmed; no Chromium request or bypass test
 ran. The next run records the exact `/proc/<pid>/cgroup` value and includes
 the observed/expected paths in the observer error so the cgroup-v2 attachment
 can be corrected from evidence rather than weakened.
+
+
+CI #424 after the capability observer changes: **1,113 passed, 1 failed**.
+The sole failure was a stale regression assertion that still expected
+`ct.state == "new"` while the fixture and strict verifier had been corrected
+to the actual nft JSON `ct.state in "new"`. The assertion has now been
+corrected. All TLS, proxy, controller and worker-attestation contract steps
+completed successfully in that run; the remaining suite had only this one
+failure.
