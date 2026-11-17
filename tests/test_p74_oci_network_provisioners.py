@@ -69,6 +69,12 @@ def test_namespace_remove_deletes_host_veth_and_namespace():
     assert runner.calls[1][0] == ["ip", "netns", "del", "apaa-test"]
 
 
+def test_namespace_plan_rejects_duplicate_namespace_and_interface_names():
+    with pytest.raises(ValueError):
+        NamespacePlan("apaa-test", "apaa-test", "apawork0", "198.18.0.1/30", "198.18.0.2/30",
+                      "2001:db8:1::1/64", "2001:db8:1::2/64")
+
+
 def test_namespace_plan_rejects_cross_subnet_or_wrong_family():
     with pytest.raises(ValueError):
         NamespacePlan("apaa-test", "apahost0", "apawork0", "10.0.0.1/30", "10.0.0.6/30",
@@ -101,34 +107,38 @@ def test_nftables_install_uses_namespace_and_stdin_ruleset():
     assert kwargs["shell"] is False
 
 
-def test_nftables_strict_verification_rejects_extra_proxy_allow():
-    rules = """table inet apaa {
- chain input { type filter hook input priority filter; policy drop; }
- chain output { type filter hook output priority filter; policy drop; }
+def _nft_output(extra_rule=""):
+    return f"""table inet apaa {{
+ chain input {{ type filter hook input priority filter; policy drop; }}
+ chain output {{ type filter hook output priority filter; policy drop; }}
  iifname "lo" accept
  oifname "lo" accept
  ct state established,related accept
  ct state established,related accept
- ip6 saddr fe80::/10 icmpv6 type nd-neighbor-solicit accept
+ ip6 saddr fe80::/10 icmpv6 type {{ nd-neighbor-solicit, nd-neighbor-advert }} accept
  ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept
  ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
-}"""
+ {extra_rule}
+}}"""
+
+
+def test_nftables_strict_verification_accepts_exact_rules_only():
+    rules = _nft_output()
     runner = Runner(stdout=rules)
     provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
     assert provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128) == rules
 
 
-def test_nftables_strict_verification_rejects_unapproved_destination():
-    rules = """table inet apaa {
- chain input { type filter hook input priority filter; policy drop; }
- chain output { type filter hook output priority filter; policy drop; }
- iifname "lo" accept
- oifname "lo" accept
- ct state established,related accept
- ct state established,related accept
- ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
- ip daddr 1.1.1.1 tcp dport 443 accept
-}"""
+def test_nftables_strict_verification_rejects_unapproved_established_rule():
+    rules = _nft_output("ip daddr 1.1.1.1 ct state established,related accept")
+    runner = Runner(stdout=rules)
+    provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
+    with pytest.raises(FirewallProvisionError):
+        provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128)
+
+
+def test_nftables_strict_verification_rejects_extra_proxy_port():
+    rules = _nft_output("ip daddr 198.18.0.1 tcp dport 443 accept")
     runner = Runner(stdout=rules)
     provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
     with pytest.raises(FirewallProvisionError):
