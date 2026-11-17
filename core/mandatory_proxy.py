@@ -50,6 +50,17 @@ class MandatoryProxyConnector:
     def connect(self,origin:EgressTarget)->ProxiedConnection:
         if not isinstance(origin,EgressTarget) or origin.scheme not in {"https","http"} or not origin.pinned_addresses:
             raise EgressAuthorizationError("Origin target is not authorized.")
+        # EgressTarget is a public data object; re-check it at this trust boundary
+        # so a forged target cannot turn the proxy into an SSRF relay.
+        if not isinstance(origin.hostname,str) or not origin.hostname or len(origin.hostname)>253:
+            raise EgressAuthorizationError("Origin hostname is malformed.")
+        for candidate in origin.pinned_addresses:
+            try:
+                parsed=ipaddress.ip_address(candidate)
+            except (TypeError,ValueError) as exc:
+                raise EgressAuthorizationError("Origin pin is malformed.") from exc
+            if not parsed.is_global or parsed.compressed != candidate:
+                raise EgressAuthorizationError("Non-public or non-canonical origin pin denied.")
         raw=proxy_tls=origin_tls=None
         try:
             pinned=self.connector.connect(self.proxy.target); raw=pinned.socket
