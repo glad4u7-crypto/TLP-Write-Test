@@ -237,6 +237,7 @@ def test_existing_ledger_is_migrated_with_a_verifiable_snapshot(tmp_path):
             "INSERT INTO browser_jobs VALUES(?,?,?,?,?,?,?)",
             ("job_legacy0001", "c" * 64, "completed", 10.0, 12.0, "legacy-session-secret", "success"),
         )
+    path.chmod(0o600)
 
     ledger = SQLiteBrowserRecoveryLedger(path)
     history = ledger.list_history("job_legacy0001")
