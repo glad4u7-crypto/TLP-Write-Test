@@ -66,7 +66,7 @@ def launch_chromium(
     challenge: str,
     now: int,
 ) -> BrowserSession:
-    """Launch Chromium only through the concrete signed-evidence runtime gate."""
+    """Legacy host-launch wrapper; fails until a worker-backed session adapter exists."""
     if type(runtime_gate) is not AttestedBrowserRuntime:
         raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
     try:
