@@ -38,8 +38,8 @@ def fixture():
     for ip, fam in ((P4,"ip"),(P6,"ip6")):
       src,dst=fam+".saddr",fam+".daddr"
       rules=[
-       rule("input",m(src,ip),m("tcp.sport",3128),m("ct.state",{"set":["established","related"]},"in")),
-       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",{"set":["established","related"]},"in")),
+       rule("input",m(src,ip),m("tcp.sport",3128),m("ct.state",["established","related"],"in")),
+       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",["established","related"],"in")),
        rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state","new","in")),
       ]
       items.extend(rules)
