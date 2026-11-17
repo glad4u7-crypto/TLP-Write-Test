@@ -83,6 +83,15 @@ def test_namespace_plan_rejects_cross_subnet_or_wrong_family():
                       "2001:db8:1::1/64", "2001:db8:1::2/64")
 
 
+def test_namespace_plan_rejects_network_and_broadcast_endpoint_addresses():
+    with pytest.raises(ValueError):
+        NamespacePlan("apaa-test", "apahost0", "apawork0", "198.18.0.0/30", "198.18.0.2/30",
+                      "2001:db8:1::1/64", "2001:db8:1::2/64")
+    with pytest.raises(ValueError):
+        NamespacePlan("apaa-test", "apahost0", "apawork0", "198.18.0.1/30", "198.18.0.2/30",
+                      "2001:db8:1::/64", "2001:db8:1::2/64")
+
+
 def test_nftables_policy_is_default_drop_and_proxy_only():
     rules = NftablesFirewallProvisioner.render_ruleset(["198.18.0.1", "2001:db8:1::1"], 3128)
     assert "policy drop" in rules
