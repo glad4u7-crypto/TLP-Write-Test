@@ -32,6 +32,119 @@ def _canonical_host(value: str) -> str:
         raise ProxyPolicyError("invalid CONNECT hostname") from None
 
 
+def _extract_client_hello_sni(handshake: bytes) -> str:
+    """Parse a bounded TLS ClientHello and return its single canonical host SNI."""
+    if type(handshake) is not bytes or len(handshake) < 4 or handshake[0] != 1:
+        raise ProxyPolicyError("TLS tunnel must begin with a ClientHello")
+    message_length = int.from_bytes(handshake[1:4], "big")
+    if message_length > 65532 or len(handshake) < 4 + message_length:
+        raise ProxyPolicyError("TLS ClientHello length is invalid")
+    body = memoryview(handshake)[4:4 + message_length]
+    offset = 0
+
+    def take(length: int) -> bytes:
+        nonlocal offset
+        if type(length) is not int or length < 0 or offset + length > len(body):
+            raise ProxyPolicyError("TLS ClientHello is truncated")
+        value = bytes(body[offset:offset + length])
+        offset += length
+        return value
+
+    take(2)
+    take(32)
+    session_length = take(1)[0]
+    if session_length > 32:
+        raise ProxyPolicyError("TLS session ID length is invalid")
+    take(session_length)
+    cipher_length = int.from_bytes(take(2), "big")
+    if cipher_length < 2 or cipher_length % 2:
+        raise ProxyPolicyError("TLS cipher-suite vector is invalid")
+    take(cipher_length)
+    compression_length = take(1)[0]
+    if compression_length < 1:
+        raise ProxyPolicyError("TLS compression vector is invalid")
+    take(compression_length)
+    if offset == len(body):
+        raise ProxyPolicyError("TLS ClientHello is missing its SNI extension")
+    extensions_length = int.from_bytes(take(2), "big")
+    extensions = take(extensions_length)
+    if offset != len(body):
+        raise ProxyPolicyError("TLS ClientHello has trailing malformed data")
+
+    sni_values: list[str] = []
+    ext_offset = 0
+    while ext_offset < len(extensions):
+        if ext_offset + 4 > len(extensions):
+            raise ProxyPolicyError("TLS extension header is truncated")
+        extension_type = int.from_bytes(extensions[ext_offset:ext_offset + 2], "big")
+        extension_length = int.from_bytes(extensions[ext_offset + 2:ext_offset + 4], "big")
+        ext_offset += 4
+        extension = extensions[ext_offset:ext_offset + extension_length]
+        if len(extension) != extension_length:
+            raise ProxyPolicyError("TLS extension body is truncated")
+        ext_offset += extension_length
+        if extension_type != 0:
+            continue
+        if len(extension) < 2:
+            raise ProxyPolicyError("TLS SNI extension is malformed")
+        names_length = int.from_bytes(extension[:2], "big")
+        if names_length != len(extension) - 2:
+            raise ProxyPolicyError("TLS SNI name list length is invalid")
+        name_offset = 2
+        while name_offset < len(extension):
+            if name_offset + 3 > len(extension):
+                raise ProxyPolicyError("TLS SNI name entry is truncated")
+            name_type = extension[name_offset]
+            name_length = int.from_bytes(extension[name_offset + 1:name_offset + 3], "big")
+            name_offset += 3
+            name_bytes = extension[name_offset:name_offset + name_length]
+            if len(name_bytes) != name_length or name_type != 0:
+                raise ProxyPolicyError("TLS SNI name entry is unsupported or malformed")
+            name_offset += name_length
+            try:
+                sni_values.append(_canonical_host(name_bytes.decode("ascii")))
+            except (UnicodeDecodeError, ProxyPolicyError):
+                raise ProxyPolicyError("TLS SNI hostname is invalid") from None
+    if len(sni_values) != 1:
+        raise ProxyPolicyError("TLS ClientHello must contain exactly one host SNI")
+    return sni_values[0]
+
+
+def _read_client_hello(client: socket.socket, initial: bytes = b"") -> tuple[str, bytes]:
+    """Read complete bounded TLS handshake records without forwarding them yet."""
+    wire = bytearray(initial)
+    offset = 0
+    handshake = bytearray()
+    message_length: int | None = None
+    while True:
+        while len(wire) - offset >= 5:
+            content_type, major, minor = wire[offset], wire[offset + 1], wire[offset + 2]
+            record_length = int.from_bytes(wire[offset + 3:offset + 5], "big")
+            if content_type != 22 or major != 3 or minor > 4 or not 1 <= record_length <= 18432:
+                raise ProxyPolicyError("TLS tunnel did not begin with a valid handshake record")
+            record_end = offset + 5 + record_length
+            if record_end > len(wire):
+                break
+            handshake.extend(wire[offset + 5:record_end])
+            offset = record_end
+            if len(handshake) >= 4 and message_length is None:
+                if handshake[0] != 1:
+                    raise ProxyPolicyError("TLS tunnel did not begin with a ClientHello")
+                body_length = int.from_bytes(handshake[1:4], "big")
+                if body_length > 65532:
+                    raise ProxyPolicyError("TLS ClientHello exceeds the size limit")
+                message_length = 4 + body_length
+            if message_length is not None and len(handshake) >= message_length:
+                sni = _extract_client_hello_sni(bytes(handshake[:message_length]))
+                return sni, bytes(wire)
+        if len(wire) >= 65536:
+            raise ProxyPolicyError("TLS ClientHello exceeds the read limit")
+        chunk = client.recv(min(4096, 65536 - len(wire)))
+        if not chunk:
+            raise ProxyPolicyError("TLS client closed before sending a complete ClientHello")
+        wire.extend(chunk)
+
+
 class PinnedConnectProxy:
     """One-session CONNECT proxy. TLS passes through unchanged to preserve SNI."""
 
@@ -131,6 +244,7 @@ class PinnedConnectProxy:
 
     def _handle_client(self, client: socket.socket) -> None:
         upstream = None
+        tunnel_established = False
         with self._active_lock:
             self._active_sockets.add(client)
         try:
@@ -180,7 +294,6 @@ class PinnedConnectProxy:
                     upstream = connect_pinned(pinned, address, timeout=self.timeout)
                     with self._stats_lock:
                         self._dialed_addresses.append(address)
-                        self._accepted_connections += 1
                     with self._active_lock:
                         self._active_sockets.add(upstream)
                     break
@@ -190,8 +303,15 @@ class PinnedConnectProxy:
                 raise ProxyPolicyError("no pinned destination was reachable") from last_error
 
             client.sendall(b"HTTP/1.1 200 Connection Established\r\nProxy-Agent: APAA-Pinned-Proxy\r\n\r\n")
-            if remainder:
-                upstream.sendall(remainder)
+            tunnel_established = True
+            sni, client_hello = _read_client_hello(client, remainder)
+            if sni != normalized:
+                with self._stats_lock:
+                    self._rejected_requests += 1
+                raise ProxyPolicyError("TLS SNI does not match the approved CONNECT hostname")
+            upstream.sendall(client_hello)
+            with self._stats_lock:
+                self._accepted_connections += 1
             client.settimeout(None)
             upstream.settimeout(None)
             peers = (client, upstream)
@@ -205,10 +325,11 @@ class PinnedConnectProxy:
                         return
                     (upstream if source is client else client).sendall(data)
         except (OSError, ProxyPolicyError, PinnedEgressError, ValueError):
-            try:
-                self._respond(client, 502, "Bad Gateway")
-            except OSError:
-                pass
+            if not tunnel_established:
+                try:
+                    self._respond(client, 502, "Bad Gateway")
+                except OSError:
+                    pass
         finally:
             if upstream is not None:
                 upstream.close()
