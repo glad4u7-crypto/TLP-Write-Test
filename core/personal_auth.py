@@ -105,6 +105,10 @@ class LocalOwnerAuthStore:
                             (previous, entry, int(event_id)),
                         )
                         previous = entry
+                    rows = db.execute(
+                        "SELECT event_id, event_type, occurred_at, previous_hash, entry_hash "
+                        "FROM local_owner_auth_events ORDER BY event_id"
+                    ).fetchall()
                 # Store the expected tail separately from the event rows so
                 # accidental tail deletion/truncation is detectable.
                 head = db.execute(

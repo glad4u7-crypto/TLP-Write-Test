@@ -173,3 +173,49 @@ def test_restore_legacy_v1_backup_requires_fresh_owner_setup(tmp_path):
     assert owner_auth.is_configured() is False
     owner_auth.configure("new owner passphrase after restore", "new owner passphrase after restore")
     assert owner_auth.authenticate("new owner passphrase after restore") is True
+
+
+def test_backup_refuses_corrupt_owner_auth_event_chain(tmp_path):
+    source_dir = tmp_path / "source"
+    paths, _, _, _ = _seed_runtime(source_dir)
+    with sqlite3.connect(paths.owner_auth_db) as db:
+        db.execute(
+            "UPDATE local_owner_auth_events SET event_type=? WHERE event_id=1",
+            ("login_failed",),
+        )
+    with pytest.raises(PersonalBackupError, match="Owner authentication audit chain"):
+        create_personal_backup(source_dir, tmp_path / "exports" / "invalid-owner-audit.apaa-backup")
+
+
+def test_restore_rejects_owner_auth_chain_tampering_even_if_manifest_is_rehashed(tmp_path):
+    import hashlib
+    source_dir = tmp_path / "source"
+    _seed_runtime(source_dir)
+    original = create_personal_backup(source_dir, tmp_path / "exports" / "owner.apaa-backup")
+    tampered = tmp_path / "exports" / "tampered-owner-audit.apaa-backup"
+    with zipfile.ZipFile(original, "r") as source:
+        contents = {name: source.read(name) for name in source.namelist()}
+    altered_db = tmp_path / "altered-owner-auth.sqlite3"
+    altered_db.write_bytes(contents["owner-auth.sqlite3"])
+    with sqlite3.connect(altered_db) as db:
+        db.execute(
+            "UPDATE local_owner_auth_events SET event_type=? WHERE event_id=1",
+            ("login_failed",),
+        )
+    contents["owner-auth.sqlite3"] = altered_db.read_bytes()
+    manifest = json.loads(contents["manifest.json"].decode("utf-8"))
+    manifest["files"]["owner-auth.sqlite3"]["size"] = len(contents["owner-auth.sqlite3"])
+    manifest["files"]["owner-auth.sqlite3"]["sha256"] = hashlib.sha256(
+        contents["owner-auth.sqlite3"]
+    ).hexdigest()
+    contents["manifest.json"] = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for name, data in contents.items():
+            target.writestr(name, data)
+    tampered.chmod(0o600)
+    restore_parent = tmp_path / "restore-parent"
+    restore_parent.mkdir(mode=0o700)
+    with pytest.raises(PersonalBackupError, match="Owner authentication audit chain"):
+        restore_personal_backup(tampered, restore_parent / "restored")
