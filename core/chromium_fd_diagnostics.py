@@ -1,0 +1,203 @@
+"""Read-only, bounded Chromium worker FD snapshots from a cgroup-v2 subtree.
+
+The collector never opens or duplicates target descriptors. It reads procfs metadata
+only and intentionally records sanitized target classes, not raw symlink targets.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import re
+import time
+from typing import Iterable
+
+_MAX_LINE = 4096
+_TARGET_CLASSES = (
+    ("pipe:[", "pipe"),
+    ("socket:[", "socket"),
+    ("anon_inode:[eventfd]", "eventfd"),
+    ("anon_inode:[eventpoll]", "eventpoll"),
+    ("anon_inode:[timerfd]", "timerfd"),
+    ("anon_inode:", "anon_inode"),
+    ("/memfd:", "memfd"),
+    ("memfd:", "memfd"),
+)
+
+
+def _read_text(path: Path, limit: int = _MAX_LINE) -> str | None:
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as stream:
+            return stream.read(limit)
+    except (OSError, ValueError):
+        return None
+
+
+def _proc_stat_identity(raw: str) -> tuple[str, int, int] | None:
+    """Return (comm, state, ppid); comm may itself contain spaces/parentheses."""
+    left = raw.find("(")
+    right = raw.rfind(")")
+    if left < 0 or right <= left:
+        return None
+    comm = raw[left + 1:right][:256]
+    fields = raw[right + 1:].strip().split()
+    # fields[0] is stat field 3 (state), fields[1] is stat field 4 (ppid).
+    if len(fields) < 2 or len(fields[0]) != 1 or not fields[1].isdigit():
+        return None
+    return comm, ord(fields[0]), int(fields[1])
+
+
+def _target_class(target: str) -> str:
+    for prefix, label in _TARGET_CLASSES:
+        if target.startswith(prefix):
+            return label
+    if target.startswith("/"):
+        return "filesystem"
+    return "other"
+
+
+def _fd_metadata(pid_dir: Path, fd_name: str) -> dict | None:
+    if not fd_name.isdigit():
+        return None
+    fd_path = pid_dir / "fd" / fd_name
+    try:
+        target = os.readlink(fd_path)
+        st = os.stat(fd_path)
+    except (OSError, ValueError):
+        # FD may legitimately disappear between readdir/readlink/stat.
+        return None
+    info = _read_text(pid_dir / "fdinfo" / fd_name, 2048) or ""
+    fields: dict[str, str] = {}
+    for line in info.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key in {"pos", "flags", "mnt_id", "ino"}:
+            fields[key] = value.strip()[:64]
+    flags = None
+    if "flags" in fields:
+        try:
+            flags = int(fields["flags"], 8)
+        except ValueError:
+            flags = None
+    return {
+        "fd": int(fd_name),
+        "target_class": _target_class(target),
+        "device": int(st.st_dev),
+        "inode": int(st.st_ino),
+        "mode": int(st.st_mode),
+        "fdinfo": fields,
+        "status_flags_octal": format(flags, "o") if flags is not None else None,
+        # FD_CLOEXEC belongs to the descriptor table and is not reliably
+        # exposed by /proc/<pid>/fdinfo; never infer it from file status flags.
+        "close_on_exec": "not_observable_via_fdinfo",
+    }
+
+
+def _parse_status(raw: str) -> dict:
+    wanted = {"Uid", "Gid", "NSpid", "Seccomp", "FDSize"}
+    out: dict[str, str] = {}
+    for line in raw.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key in wanted:
+            out[key.lower()] = " ".join(value.split())[:128]
+    return out
+
+
+def _read_process(pid: int, proc_root: Path, max_fds_per_process: int) -> dict | None:
+    base = proc_root / str(pid)
+    stat_raw = _read_text(base / "stat")
+    if stat_raw is None:
+        return None
+    identity = _proc_stat_identity(stat_raw)
+    if identity is None:
+        return None
+    comm, state_code, ppid = identity
+    status = _parse_status(_read_text(base / "status") or "")
+    try:
+        fd_names = sorted(
+            (name for name in os.listdir(base / "fd") if name.isdigit()),
+            key=int,
+        )[:max_fds_per_process]
+    except OSError:
+        fd_names = []
+    descriptors = []
+    for name in fd_names:
+        item = _fd_metadata(base, name)
+        if item is not None:
+            descriptors.append(item)
+    try:
+        start_time = (_read_text(base / "stat") or "").rsplit(")", 1)[1].split()[19]
+    except (IndexError, AttributeError):
+        start_time = None
+    return {
+        "pid": pid,
+        "ppid": ppid,
+        "comm": comm,
+        "state_code": state_code,
+        "start_time_ticks": start_time,
+        "status": status,
+        "fd_count_observed": len(descriptors),
+        "fd_limit_reached": len(fd_names) >= max_fds_per_process,
+        "fds": descriptors,
+    }
+
+
+def _cgroup_pids(cgroup_dir: Path, max_processes: int) -> list[int]:
+    pids: set[int] = set()
+    pending = [cgroup_dir]
+    visited = 0
+    while pending and visited < 256 and len(pids) < max_processes:
+        current = pending.pop()
+        visited += 1
+        raw = _read_text(current / "cgroup.procs", 65536) or ""
+        for token in raw.split():
+            if token.isdigit() and int(token) > 1:
+                pids.add(int(token))
+                if len(pids) >= max_processes:
+                    break
+        try:
+            children = [p for p in current.iterdir() if p.is_dir() and not p.is_symlink()]
+        except OSError:
+            children = []
+        pending.extend(children[:64])
+    return sorted(pids)[:max_processes]
+
+
+def snapshot_cgroup(
+    cgroup_dir: str | os.PathLike[str],
+    *,
+    proc_root: str | os.PathLike[str] = "/proc",
+    max_processes: int = 128,
+    max_fds_per_process: int = 512,
+) -> dict:
+    """Take one bounded metadata-only snapshot of all processes in cgroup subtree."""
+    if type(max_processes) is not int or not 1 <= max_processes <= 512:
+        raise ValueError("max_processes must be between 1 and 512")
+    if type(max_fds_per_process) is not int or not 1 <= max_fds_per_process <= 2048:
+        raise ValueError("max_fds_per_process must be between 1 and 2048")
+    root = Path(cgroup_dir)
+    if not root.is_absolute() or ".." in root.parts or not root.is_dir():
+        raise ValueError("cgroup_dir must be an existing absolute directory")
+    proc = Path(proc_root)
+    pids = _cgroup_pids(root, max_processes)
+    processes = []
+    for pid in pids:
+        process = _read_process(pid, proc, max_fds_per_process)
+        if process is not None:
+            processes.append(process)
+    return {
+        "monotonic_time_ns": time.monotonic_ns(),
+        "process_count_observed": len(processes),
+        "process_limit_reached": len(pids) >= max_processes,
+        "fd_limit_per_process": max_fds_per_process,
+        "processes": processes,
+    }
+
+
+def snapshot_json_safe(snapshot: dict, *, max_bytes: int = 1_000_000) -> dict:
+    """Validate bounded JSON-safe collector output; does not add raw procfs paths."""
+    import json
+    if type(max_bytes) is not int or not 1024 <= max_bytes <= 4_000_000:
+        raise ValueError("max_bytes must be between 1024 and 4000000")
+    encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > max_bytes:
+        raise ValueError("FD snapshot exceeds the configured evidence size bound")
+    return snapshot
