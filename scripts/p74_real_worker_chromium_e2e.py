@@ -377,6 +377,15 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
+        post_start_inspect = runtime.inspect(container_id)
+        post_start_state = post_start_inspect.get("State") or {}
+        post_start_pid = post_start_state.get("Pid")
+        if type(post_start_pid) is int and post_start_pid > 1:
+            # A cgroup path is non-secret host enforcement metadata and helps
+            # diagnose the independent observer's strict subtree check.
+            evidence["worker_proc_cgroup"] = Path(f"/proc/{post_start_pid}/cgroup").read_text(
+                encoding="ascii"
+            )[:2048]
         observation = PodmanWorkerObserver(runtime).observe(container_id, spec)
         evidence["runtime_observation"] = {
             "host_pid": observation.host_pid,
