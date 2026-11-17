@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -280,7 +281,7 @@ def restore_personal_backup(
                     except OSError:
                         pass
                     raise
-                if written != metadata["size"] or not hashlib.compare_digest(
+                if written != metadata["size"] or not hmac.compare_digest(
                     digest.hexdigest(), metadata["sha256"]
                 ):
                     raise PersonalBackupError("Backup file hash or size verification failed.")
