@@ -8,7 +8,7 @@
 - Failed login attempts are throttled in the owner-private SQLite authentication database. Five consecutive failures cause a five-minute lockout, which survives application restarts.
 - Owner can rotate the passphrase from the authenticated sidebar after authenticating with the current passphrase; successful rotation revokes the current session and requires a fresh login.
 - Authentication state is separate from project/task content and approval receipts.
-- Payload-free local security events record first-run setup, successful/failed/locked login, logout and passphrase rotation/failure; recent events are visible in the authenticated Owner sidebar. Passphrases and submitted values are never included.
+- Payload-free local security events record first-run setup, successful/failed/locked login, logout and passphrase rotation/failure; a SQLite SHA-256 hash chain is verified before history is displayed or appended. A separately stored local chain head detects accidental tail truncation. Legacy event rows are sealed during one-time schema migration. Passphrases and submitted values are never included. This is tamper-evident, not immutable against an attacker who controls the local database and can recompute both records and head.
 - The Owner sidebar also exposes the latest 25 tenant-scoped action-history records. The reader verifies the complete SQLite audit hash chain before showing metadata-only action/status/reason/timestamp; payloads and secrets are excluded. A tampered chain is displayed as unverified.
 - Every memory, knowledge, conversation, preference and checkpoint mutation now passes an explicit approval argument to the audit wrapper. Content-save forms bind that approval to the Owner's consent checkbox; deletion actions bind it to the named Owner delete button. Missing/non-boolean approval is rejected before audit intent or mutation.
 - This module is a local single-owner gate, not a substitute for HTTPS/OIDC on any network-exposed deployment.
@@ -25,7 +25,7 @@
 
 ## Verification
 
-- Focused unit tests cover first-run setup, scrypt storage, wrong-password rejection, persistent lockout, passphrase rotation, payload-free security event persistence and symlink rejection.
+- Focused unit tests cover first-run setup, scrypt storage, wrong-password rejection, persistent lockout, passphrase rotation, payload-free security event persistence, hash-chain mutation/deletion detection, legacy event migration and symlink rejection.
 - Streamlit AppTest coverage has been added for first-run gating, login, logout, idle expiry, absolute expiry and failed-login isolation.
 - UI mutation tests verify missing approval blocks both audit intent and dispatch, invalid approval types are rejected, prohibited actions remain blocked, and intent/completion/failure audit semantics remain intact.
 - Streamlit AppTest verifies the action-history UI after project creation and verifies that Owner passphrase rotation revokes the current session and requires reauthentication.
