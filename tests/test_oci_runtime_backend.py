@@ -71,15 +71,15 @@ def test_create_uses_digest_pinned_image_and_hardening_flags():
 def test_create_uses_dedicated_cgroup_parent_when_supplied():
     runner = FakeRunner([(0, "b" * 64 + "\n")])
     runtime = PodmanOCIRuntime(runner=runner)
-    runtime.create(spec(cgroup_parent="/sys/fs/cgroup/apaa/worker-0001"))
+    runtime.create(spec(cgroup_parent="/apaa/worker-0001"))
     command = runner.calls[0][0]
     assert "--cgroup-parent" in command
-    assert command[command.index("--cgroup-parent") + 1] == "/sys/fs/cgroup/apaa/worker-0001"
+    assert command[command.index("--cgroup-parent") + 1] == "/apaa/worker-0001"
 
 
 def test_spec_rejects_cgroup_parent_outside_delegated_subtree():
     with pytest.raises(ValueError):
-        spec(cgroup_parent="/sys/fs/cgroup/system.slice")
+        spec(cgroup_parent="/system.slice")
 
 
 def test_local_immutable_image_id_is_accepted():
