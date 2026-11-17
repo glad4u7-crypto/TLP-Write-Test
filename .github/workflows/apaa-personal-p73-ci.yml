@@ -1,5 +1,9 @@
 name: APAA Personal Edition P73 Verification
 on:
+  # Verify every exact feature-branch head, including commits created by
+  # repository integrations that do not emit a pull_request synchronize event.
+  push:
+    branches: ["apaa-personal-edition-foundation"]
   pull_request:
     branches: ["apaa-s09-c01-action-audit-remediation-01"]
 permissions:
