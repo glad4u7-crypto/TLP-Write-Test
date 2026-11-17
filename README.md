@@ -2,6 +2,17 @@
 
 A safety-first, zero-cost foundation for a personal digital-task agent. The current product is a Streamlit web prototype; it is not yet a fully autonomous browser/device-control system or a native Android app.
 
+
+## Product direction — Personal Edition (active)
+
+APAA is being refocused on a **single-owner Personal Edition**, primarily used from Android. The first release prioritizes a persistent personal workspace, safe task planning, explicit Ask First approvals, action history, owner-controlled backup, read-only research and carefully scoped personal workflows. Public signup, collaborator administration and enterprise infrastructure are not first-release requirements.
+
+Keep owner protection, secret hygiene, fail-closed authorization, action-specific approval, durable local audit, privacy-aware memory and prohibited-action denial. Defer multi-user OIDC/directory workflows, physical HSM/PKCS#11 custody, independent remote anti-rollback anchors, OCI/Podman remote workers, enterprise host-inspection and independent enterprise review unless a later personal feature demonstrably requires them. Do not delete existing modules until imports and tests prove they are no longer dependencies.
+
+The current app remains a Streamlit web prototype with deterministic offline planning. It is **not** yet a native Android APK, installable PWA, general browser automation agent, or YouTube/file automation product. Local unauthenticated mode is for loopback/private development only and must not be exposed publicly or to an untrusted LAN. Remote Android access requires a separately reviewed HTTPS and authentication boundary. No paid provider, API key, paid hosting, Auto-Run, payment, purchase, checkout, trading or money movement is enabled.
+
+See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_EDITION_P72_SCOPE_RESET_AND_DEPENDENCY_AUDIT.md). The next implementation checkpoint is P73: a safe single-owner local runtime with persistent personal data and durable approvals/audit.
+
 ## Current application
 
 - Streamlit workspace and Project Manager.
