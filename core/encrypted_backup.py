@@ -76,9 +76,10 @@ def encrypt_backup_file(source_path: str | Path, destination_path: str | Path, p
         raise EncryptedBackupError("Encrypted backup destination must differ from its source.")
     if destination.exists() or destination.is_symlink():
         raise EncryptedBackupError("Encrypted backup destination must not already exist.")
-    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name == "posix":
-        os.chmod(destination.parent, 0o700)
+    if not destination.parent.is_dir() or destination.parent.is_symlink():
+        raise EncryptedBackupError("Destination parent must be an existing private directory.")
+    if os.name == "posix" and destination.parent.stat().st_mode & 0o077:
+        raise EncryptedBackupError("Destination parent must be private (0700).")
 
     salt = os.urandom(_SALT_SIZE)
     nonce_prefix = os.urandom(_NONCE_PREFIX_SIZE)
@@ -128,9 +129,10 @@ def decrypt_backup_file(source_path: str | Path, destination_path: str | Path, p
     _private_regular_file(source, label="Encrypted backup")
     if destination.exists() or destination.is_symlink():
         raise EncryptedBackupError("Decrypted backup destination must not already exist.")
-    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name == "posix":
-        os.chmod(destination.parent, 0o700)
+    if not destination.parent.is_dir() or destination.parent.is_symlink():
+        raise EncryptedBackupError("Destination parent must be an existing private directory.")
+    if os.name == "posix" and destination.parent.stat().st_mode & 0o077:
+        raise EncryptedBackupError("Destination parent must be private (0700).")
 
     fd, temporary_name = tempfile.mkstemp(prefix=".apaa-decrypt-", suffix=".tmp", dir=destination.parent)
     temporary = Path(temporary_name)
