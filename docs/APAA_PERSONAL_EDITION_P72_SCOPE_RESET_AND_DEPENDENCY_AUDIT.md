@@ -89,9 +89,10 @@ Parked modules and tests must not be deleted blindly in this reset: some may be 
 **P74 — Personal workspace persistence:** projects, task plans, checkpoints and consent-gated memory survive restart; backup/export and restore tests.  
 **P75 — Android experience:** responsive flow, physical Android smoke test, session behavior, clear approval/review/history UI. Keep the server loopback-only until remote HTTPS/auth is qualified.  
 **P76 — Capability contracts:** typed read-only web search/navigation, document/file access and YouTube discovery; no mutation handlers yet.  
-**P77 — First safe adapters:** read-only browsing/search and file inspection with strict origin/path/user-scope boundaries.  
-**P78 — Approved mutations:** per-action payload-bound confirmation, audit, cancellation, idempotency and recovery tests.  
-**P79 — Personal release review:** dependency audit, full tests, Android acceptance, backup/restore and owner sign-off.
+**P77 — Local Owner authentication event audit hardening:** tamper-evident local event chain, backup/restore verification and regression tests (implemented on the P73 branch).  
+**P78 — First safe adapters:** read-only browsing/search and file inspection with strict origin/path/user-scope boundaries.  
+**P79 — Approved mutations:** per-action payload-bound confirmation, audit, cancellation, idempotency and recovery tests.  
+**P80 — Personal release review:** dependency audit, full tests, Android acceptance, backup/restore and owner sign-off.
 
 ## 6. Acceptance definition for Personal Edition v1
 
