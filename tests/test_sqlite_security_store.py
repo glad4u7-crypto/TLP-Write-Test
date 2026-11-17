@@ -931,3 +931,50 @@ def test_inspector_challenge_database_stores_only_hash_not_raw_challenge(tmp_pat
         ).fetchone()
     assert row[0] == hashlib.sha256(bytes.fromhex(challenge)).hexdigest()
     assert challenge not in row[0]
+
+
+def test_execution_idempotency_claim_is_tenant_scoped_and_payload_bound(security_store):
+    alice = TenantKey("https://issuer.example", "alice")
+    bob = TenantKey("https://issuer.example", "bob")
+    key = "request-unique-0001"
+    digest = "a" * 64
+
+    assert security_store.claim_execution(alice, key, "write_file", digest, now=10) == "claimed"
+    assert security_store.claim_execution(alice, key, "write_file", digest, now=11) == "pending"
+    assert security_store.claim_execution(alice, key, "delete_file", digest, now=12) == "conflict"
+    assert security_store.claim_execution(alice, key, "write_file", "b" * 64, now=12) == "conflict"
+    assert security_store.claim_execution(bob, key, "write_file", digest, now=12) == "claimed"
+
+
+def test_execution_idempotency_terminal_state_is_one_way_and_restart_safe(tmp_path):
+    path = tmp_path / "security.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0002"
+    store = SQLiteSecurityStore(path)
+    assert store.claim_execution(tenant, key, "write_file", "c" * 64, now=20) == "claimed"
+    assert store.finish_execution(tenant, key, "completed", now=21) is True
+    assert store.finish_execution(tenant, key, "uncertain", now=22) is False
+
+    reopened = SQLiteSecurityStore(path)
+    assert reopened.claim_execution(tenant, key, "write_file", "c" * 64, now=23) == "completed"
+    assert reopened.list_unresolved_executions(tenant) == ()
+
+
+def test_pending_execution_after_crash_is_not_automatically_retried(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0003"
+    assert security_store.claim_execution(tenant, key, "write_file", "d" * 64, now=30) == "claimed"
+    assert security_store.claim_execution(tenant, key, "write_file", "d" * 64, now=31) == "pending"
+    unresolved = security_store.list_unresolved_executions(tenant)
+    assert unresolved == ({
+        "request_key": key, "action": "write_file", "status": "pending",
+        "created_at": 30, "updated_at": 30,
+    },)
+
+
+@pytest.mark.parametrize("status", ["pending", "failed", "unknown"])
+def test_execution_ledger_rejects_nonterminal_or_unsupported_status(security_store, status):
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0004"
+    assert security_store.claim_execution(tenant, key, "write_file", "e" * 64, now=40) == "claimed"
+    assert security_store.finish_execution(tenant, key, status, now=41) is False
