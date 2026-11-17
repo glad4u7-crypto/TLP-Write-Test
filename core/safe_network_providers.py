@@ -93,12 +93,12 @@ class SafeHTTPSClient:
                 if parsed.query:
                     path += "?" + quote(parsed.query, safe="=&?/%:@!$'()*+,;~-._")
                 request = (
-                    f"GET {path} HTTP/1.1\\r\\n"
-                    f"Host: {ascii_host}\\r\\n"
-                    f"User-Agent: {USER_AGENT}\\r\\n"
-                    "Accept: text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1\\r\\n"
-                    "Accept-Encoding: identity\\r\\n"
-                    "Connection: close\\r\\n\\r\\n"
+                    f"GET {path} HTTP/1.1\r\n"
+                    f"Host: {ascii_host}\r\n"
+                    f"User-Agent: {USER_AGENT}\r\n"
+                    "Accept: text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1\r\n"
+                    "Accept-Encoding: identity\r\n"
+                    "Connection: close\r\n\r\n"
                 ).encode("ascii")
                 tls_sock.sendall(request)
                 response = http.client.HTTPResponse(tls_sock)
