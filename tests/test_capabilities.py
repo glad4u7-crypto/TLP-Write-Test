@@ -55,6 +55,7 @@ def test_file_inspection_rejects_path_escape(target):
     {"capability": ReadCapability.WEB_SEARCH, "query": "x", "target": "https://example.org"},
     {"capability": ReadCapability.WEB_PAGE_READ, "target": "https://example.org", "query": "also search"},
     {"capability": ReadCapability.FILE_INSPECT, "target": "notes.txt"},
+    {"capability": ReadCapability.FILE_INSPECT, "target": "notes.txt", "project_id": "  "},
     {"capability": ReadCapability.WEB_SEARCH, "query": "x", "max_results": True},
 ])
 def test_malformed_or_ambiguous_requests_fail_closed(kwargs):
