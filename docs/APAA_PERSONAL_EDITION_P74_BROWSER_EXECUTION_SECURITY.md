@@ -84,3 +84,12 @@ pass, and the production adapter has passed independent container, firewall,
 TLS, redirect and direct-egress-bypass verification. Physical Android testing remains excluded from this checkpoint unless
 the user separately authorizes it. C01 must be completed and explicitly
 approved before C02 starts.
+
+
+## Current checkpoint record
+
+- Latest implementation branch head: `64f2e2a027badcaa2afc0f354d17f9af114f7d9d`.
+- New P74 regression tests authored: 18.
+- Exact-head GitHub combined status and PR workflow lookup returned no check results. Therefore automated PASS is **not verified**.
+- No physical Android/device testing was performed.
+- Browser execution remains disabled until a real isolated worker, host-enforced egress boundary, durable audit adapter, and successful exact-head CI/security verification exist.
