@@ -195,6 +195,15 @@ def _run_case(tmp_path, monkeypatch, *, cert_name: str, expired: bool, url_host:
         raise
 
 
+def _cleanup(context, playwright, proxy, server, server_thread):
+    context.close()
+    playwright.stop()
+    proxy.close()
+    server.shutdown()
+    server.server_close()
+    server_thread.join(timeout=2)
+
+
 def test_chromium_accepts_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
     page, url, context, playwright, proxy, server, server_thread = _run_case(
         tmp_path, monkeypatch, cert_name="localhost", expired=False, url_host="localhost"
@@ -204,29 +213,26 @@ def test_chromium_accepts_certificate_signed_by_trusted_test_ca(tmp_path, monkey
         assert response is not None and response.status == 200
         assert page.locator("body").inner_text() == "chromium TLS accepted"
     finally:
-        context.close()
-        playwright.stop()
+        _cleanup(context, playwright, proxy, server, server_thread)
 
 
 def test_chromium_rejects_trusted_certificate_with_hostname_mismatch(tmp_path, monkeypatch):
-    page, url, context, playwright = _run_case(
+    page, url, context, playwright, proxy, server, server_thread = _run_case(
         tmp_path, monkeypatch, cert_name="localhost", expired=False, url_host="wrong.test"
     )
     try:
         with pytest.raises(PlaywrightError, match="ERR_CERT_COMMON_NAME_INVALID"):
             page.goto(url, wait_until="domcontentloaded", timeout=10000)
     finally:
-        context.close()
-        playwright.stop()
+        _cleanup(context, playwright, proxy, server, server_thread)
 
 
 def test_chromium_rejects_expired_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
-    page, url, context, playwright = _run_case(
+    page, url, context, playwright, proxy, server, server_thread = _run_case(
         tmp_path, monkeypatch, cert_name="localhost", expired=True, url_host="localhost"
     )
     try:
         with pytest.raises(PlaywrightError, match="ERR_CERT_DATE_INVALID"):
             page.goto(url, wait_until="domcontentloaded", timeout=10000)
     finally:
-        context.close()
-        playwright.stop()
+        _cleanup(context, playwright, proxy, server, server_thread)
