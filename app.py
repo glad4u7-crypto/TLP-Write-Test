@@ -192,6 +192,11 @@ else:
     st.session_state["apaa_local_last_activity"] = now
 
     def _logout_local_owner():
+        try:
+            local_owner_auth.record_event("logout")
+        except (ValueError, OSError, sqlite3.Error):
+            # Logout must still revoke the in-memory session if audit storage fails.
+            pass
         clear_session_identity(st.session_state)
         for key in (
             "apaa_local_authenticated_at", "apaa_local_last_activity",
@@ -236,6 +241,10 @@ else:
                 st.error("Passphrase change failed. Check the current passphrase or login lockout.")
             except (ValueError, OSError, sqlite3.Error) as exc:
                 st.error(f"Passphrase change could not be completed safely: {exc}")
+
+    with st.sidebar.expander("Owner security events"):
+        for event_type, occurred_at in local_owner_auth.list_events(limit=25):
+            st.caption(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(occurred_at))} · {event_type}")
 
     st.sidebar.button("Log out", on_click=_logout_local_owner)
 
