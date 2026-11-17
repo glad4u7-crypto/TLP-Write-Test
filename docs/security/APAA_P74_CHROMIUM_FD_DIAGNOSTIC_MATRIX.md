@@ -90,3 +90,25 @@ Diagnostic phase is complete only when the evidence identifies (a) the first fai
 ## Current decision
 
 **NO-GO / NOT QUALIFIED.** This matrix authorizes diagnostic work only. It does not authorize merge, deployment, Browser/Worker dispatch, Auto-Run, payment, purchases or any financial action.
+
+
+## Evidence update — disposable-host run #272
+
+- Tested commit: `c1f30b449c49444bfe177c2a43d03769b9fce899`.
+- OCI preparation, cgroup-v2, image build, seccomp preparation, namespace/routes, dual-stack firewall attestation and OCI hardening passed.
+- Chromium local `data:` smoke failed before any proxy/navigation test. Chromium 156.0.8078.79 logged `Network service crashed or was terminated` followed by `Crashing due to FD ownership violation`.
+- Read-only collector captured 24 snapshots, with up to 12 Chromium processes observed in one snapshot. Cleanup was confirmed with no cleanup errors.
+- Chromium log PID/TID prefix was `16:16`. The host-side process snapshot maps container PID 16 to host PID 8271 (NSpid `8271 16`); it was `chromium`, UID/GID 65532, seccomp mode 2, with 148 FDs observed at the matching snapshot. Its precise Chromium role remains unclassified because the sanitized cmdline contained no recognized process-type flag.
+- Parent/child snapshots showed shared pipe/socket/memfd kernel-object candidates, including the same socket inode on several Chromium descendants. These are candidates only; they do not prove an FD ownership bug or identify the crashing FD.
+- Chromium's Linux `ScopedFD` implementation maintains a process-local FD ownership table. The exact fatal check is triggered by a duplicate Acquire/Release ownership transition or by calling `close(fd)` while that FD remains marked owned. Therefore, the error is not proof of a kernel-level cross-process FD ownership violation.
+- Exact failing FD and call site remain unknown. The captured stack was not symbolicated. The next run now records the complete sanitized numeric stack-frame addresses and maps the Chromium log PID/TID to the host process snapshot.
+
+### Revised diagnosis priority
+
+1. Symbolicate the failing process stack against the exact Debian Chromium 156.0.8078.79 build/debug symbols.
+2. Determine whether the fatal path is `ScopedFDCloseTraits::Acquire`, `Release`, or the guarded `close()` wrapper.
+3. Inspect same-process FD reuse/close ordering and Chromium fork/zygote ownership-table reset behavior at the identified call site.
+4. Only then evaluate whether any inherited descriptor crosses a fork/exec boundary incorrectly.
+5. Preserve all sandbox, seccomp, namespace, cgroup and deny-by-default egress controls.
+
+**Qualification remains FAILED / NO-GO.** This run produced useful process-level evidence but did not pass Chromium startup or identify the exact descriptor/call site.
