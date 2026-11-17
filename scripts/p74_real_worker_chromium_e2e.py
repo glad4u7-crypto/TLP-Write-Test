@@ -109,41 +109,77 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
     container_pid = failure.get("fd_ownership_log_pid")
     if type(container_pid) is not int:
         return None
+    source_frames = failure.get("fd_ownership_stack_frames", [])
     matches = []
     for snapshot_index, snapshot in enumerate(diagnostics.get("snapshots", [])):
         for process in snapshot.get("processes", []):
             namespace_pids = process.get("status", {}).get("nspid", "").split()
-            if namespace_pids and namespace_pids[-1].isdigit() and int(namespace_pids[-1]) == container_pid:
-                frames = []
-                for frame in failure.get("fd_ownership_stack_frames", []):
+            matching_indices = [
+                index for index, value in enumerate(namespace_pids)
+                if value.isdigit() and int(value) == container_pid
+            ]
+            if not matching_indices:
+                continue
+            frames = []
+            mapped_count = 0
+            for frame in source_frames:
+                try:
+                    address = int(frame["address"], 16)
+                except (KeyError, TypeError, ValueError):
+                    frames.append(dict(frame))
+                    continue
+                mapped_frame = dict(frame)
+                for mapping in process.get("executable_mappings", []):
                     try:
-                        address = int(frame["address"], 16)
-                    except (KeyError, TypeError, ValueError):
-                        frames.append(dict(frame))
-                        continue
-                    mapped_frame = dict(frame)
-                    for mapping in process.get("executable_mappings", []):
                         start, end = int(mapping["start"], 16), int(mapping["end"], 16)
                         if start <= address < end:
                             mapped_frame["module"] = mapping["module"]
-                            mapped_frame["module_offset"] = hex(address - start + int(mapping["file_offset"], 16))
+                            mapped_frame["module_offset"] = hex(
+                                address - start + int(mapping["file_offset"], 16)
+                            )
+                            mapped_count += 1
                             break
-                    frames.append(mapped_frame)
-                matches.append({
-                    "snapshot_index": snapshot_index,
-                    "host_pid": process["pid"],
-                    "container_pid": container_pid,
-                    "ppid": process["ppid"],
-                    "comm": process["comm"],
-                    "executable": process.get("executable"),
-                    "role": process.get("role"),
-                    "start_time_ticks": process.get("start_time_ticks"),
-                    "fd_count_observed": process.get("fd_count_observed"),
-                    "executable_mappings": process.get("executable_mappings", []),
-                    "stack_frames_with_module_offsets": frames,
-                    "status": process.get("status"),
-                })
-    return matches[-1] if matches else None
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                frames.append(mapped_frame)
+            nspid_index = min(matching_indices)
+            if mapped_count == len(source_frames) and source_frames:
+                confidence = "all_stack_frames_match_executable"
+            elif mapped_count:
+                confidence = "partial_stack_frame_match"
+            else:
+                confidence = "pid_namespace_match_only"
+            matches.append({
+                "snapshot_index": snapshot_index,
+                "snapshot_wall_time_ns": snapshot.get("wall_time_ns"),
+                "host_pid": process["pid"],
+                "container_pid": container_pid,
+                "nspid_match_index": nspid_index,
+                "ppid": process["ppid"],
+                "comm": process["comm"],
+                "executable": process.get("executable"),
+                "role": process.get("role"),
+                "start_time_ticks": process.get("start_time_ticks"),
+                "fd_count_observed": process.get("fd_count_observed"),
+                "executable_mappings": process.get("executable_mappings", []),
+                "stack_frames_with_module_offsets": frames,
+                "stack_frame_match_count": mapped_count,
+                "mapping_confidence": confidence,
+                "status": process.get("status"),
+            })
+    if not matches:
+        return None
+    # Prefer the process whose executable mapping contains the crash PCs.
+    # Then prefer the outer container PID namespace, then the latest snapshot.
+    return max(
+        matches,
+        key=lambda item: (
+            item["stack_frame_match_count"],
+            item["nspid_match_index"] == 1,
+            item["snapshot_wall_time_ns"] or 0,
+            item["snapshot_index"],
+        ),
+    )
 
 
 def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
