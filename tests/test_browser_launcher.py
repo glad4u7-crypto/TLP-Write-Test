@@ -129,7 +129,7 @@ def make_gate(browser_type, spec, key):
     return AttestedBrowserRuntime(
         spec,
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
-        expected_proxy_addresses=[PROXY_IP],
+        expected_proxy_addresses=PROXY_IPS,
         worker_start=create_playwright_worker_start(browser_type),
     )
 
