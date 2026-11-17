@@ -7,7 +7,7 @@ def test_owner_reconciliation_is_tenant_scoped_and_atomically_audited(tmp_path):
     owner = TenantKey("https://owner.example", "owner-1")
     other = TenantKey("https://owner.example", "owner-2")
     key = "owner-recovery-request-0001"
-    assert store.claim_execution(owner, key, "project.create", "a" * 64) == "claimed"
+    assert store.claim_execution(owner, key, "project_create", "a" * 64) == "claimed"
     assert store.finish_execution(owner, key, "uncertain") is True
     assert store.resolve_uncertain_execution(
         other, key, "completed", owner_confirmed=True
