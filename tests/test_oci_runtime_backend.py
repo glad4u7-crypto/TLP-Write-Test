@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -26,6 +27,8 @@ class FakeRunner:
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
         rc, stdout = self.outputs.pop(0)
+        if "--cidfile" in command:
+            Path(command[command.index("--cidfile") + 1]).write_text(stdout.strip(), encoding="ascii")
         return subprocess.CompletedProcess(command, rc, stdout, "")
 
 
