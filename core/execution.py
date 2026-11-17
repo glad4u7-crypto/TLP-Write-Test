@@ -140,6 +140,16 @@ class ExecutionGateway:
         """
         if payload is not None and not isinstance(payload, Mapping):
             return self._finish(action, False, "Action payload must be a mapping.")
+        try:
+            canonical_payload = json.dumps(
+                dict(payload or {}), sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            )
+            # Dispatch only the private snapshot that was hashed and approved.
+            # Do not pass the caller's mutable mapping across the trust boundary.
+            payload_snapshot = json.loads(canonical_payload)
+        except (TypeError, ValueError, OverflowError):
+            return self._finish(action, False, "Action payload must contain finite JSON-compatible values.")
 
         decision = authorize_action(action)
         authorized = decision.allowed
@@ -156,7 +166,7 @@ class ExecutionGateway:
 
         if not authorized and self._approval_authority is not None:
             if self._approval_authority.consume(
-                approval_receipt, action, payload, tenant=tenant,
+                approval_receipt, action, payload_snapshot, tenant=tenant,
                 session_scope=self._session_scope,
             ):
                 exact_action = _canonical_action(action)
@@ -180,10 +190,6 @@ class ExecutionGateway:
                     action, False, "A validated owner and idempotency key are required."
                 )
             try:
-                canonical_payload = json.dumps(
-                    payload or {}, sort_keys=True, separators=(",", ":"),
-                    ensure_ascii=False, allow_nan=False,
-                )
                 payload_digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
                 claim = self._idempotency_store.claim_execution(
                     tenant, idempotency_key, canonical, payload_digest
@@ -238,7 +244,7 @@ class ExecutionGateway:
                 return self._finish(action, False, "Action cancelled before handler dispatch.")
 
         try:
-            output = handler(payload or {})
+            output = handler(payload_snapshot)
         except Exception:
             completion, completed_persisted = self._record(
                 action, False, "registered_handler_failed"
