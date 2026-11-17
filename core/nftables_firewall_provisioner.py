@@ -89,8 +89,6 @@ class NftablesFirewallProvisioner:
             "add chain inet apaa output { type filter hook output priority 0; policy drop; }",
             'add rule inet apaa input iifname "lo" accept',
             'add rule inet apaa output oifname "lo" accept',
-            "add rule inet apaa input ct state established,related accept",
-            "add rule inet apaa output ct state established,related accept",
             "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type nd-neighbor-solicit accept",
             "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type nd-neighbor-advert accept",
             "add rule inet apaa output ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept",
@@ -99,10 +97,14 @@ class NftablesFirewallProvisioner:
         ]
         for address in parsed:
             family = "ip" if address.version == 4 else "ip6"
-            lines.append(
+            lines.extend([
+                f"add rule inet apaa input {family} saddr {address.compressed} "
+                f"tcp sport {proxy_port} ct state established,related accept",
                 f"add rule inet apaa output {family} daddr {address.compressed} "
-                f"tcp dport {proxy_port} ct state new accept"
-            )
+                f"tcp dport {proxy_port} ct state established,related accept",
+                f"add rule inet apaa output {family} daddr {address.compressed} "
+                f"tcp dport {proxy_port} ct state new accept",
+            ])
         return "\n".join(lines) + "\n"
 
     def install(self, namespace: str, proxy_ips: Sequence[str], proxy_port: int) -> None:
