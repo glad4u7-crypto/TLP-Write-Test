@@ -552,6 +552,82 @@ with st.sidebar:
                 "New mutations remain fail-closed."
             )
 
+    with st.expander("Owner Recovery · unresolved actions"):
+        st.caption(
+            "Read-only review of unresolved execution records. Pending actions "
+            "are never retried or automatically classified. Only an uncertain "
+            "record can be reconciled after your explicit confirmation."
+        )
+        try:
+            unresolved = active_security_store.list_unresolved_executions(
+                tenant, limit=25
+            )
+            if not unresolved:
+                st.caption("No unresolved execution records.")
+            else:
+                for recovery_item in unresolved:
+                    request_key = recovery_item["request_key"]
+                    st.markdown(
+                        f"**{recovery_item['action']}** · "
+                        f"{recovery_item['status']}"
+                    )
+                    st.caption(
+                        f"Created: {recovery_item['created_at']} · "
+                        f"Updated: {recovery_item['updated_at']} · "
+                        f"Reference: {request_key[:12]}"
+                    )
+                    if recovery_item["status"] == "pending":
+                        st.warning(
+                            "Outcome is still pending/unknown. This record cannot "
+                            "be reconciled here; inspect the external system first."
+                        )
+                    elif recovery_item["status"] == "uncertain":
+                        confirmed = st.checkbox(
+                            "I reviewed the external outcome and confirm this decision",
+                            key=f"owner_recovery_confirm_{request_key}",
+                        )
+                        left, right = st.columns(2)
+                        with left:
+                            mark_completed = st.button(
+                                "Confirm completed",
+                                key=f"owner_recovery_done_{request_key}",
+                                disabled=not confirmed,
+                            )
+                        with right:
+                            mark_cancelled = st.button(
+                                "Confirm cancelled",
+                                key=f"owner_recovery_cancel_{request_key}",
+                                disabled=not confirmed,
+                            )
+                        if mark_completed or mark_cancelled:
+                            resolution = "completed" if mark_completed else "cancelled"
+                            try:
+                                changed = active_security_store.resolve_uncertain_execution(
+                                    tenant, request_key, resolution,
+                                    owner_confirmed=True,
+                                )
+                                if changed:
+                                    st.success(
+                                        f"Owner reconciliation recorded: {resolution}. "
+                                        "The action was not re-executed."
+                                    )
+                                    st.rerun()
+                                st.error(
+                                    "The record changed or was already reconciled. "
+                                    "Refresh the recovery list."
+                                )
+                            except (ValueError, OSError, sqlite3.Error) as exc:
+                                st.error(
+                                    "Recovery could not be recorded safely. "
+                                    f"No retry was attempted: {exc}"
+                                )
+                    st.divider()
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            st.error(
+                "Owner recovery records could not be verified. "
+                "Reconciliation is disabled."
+            )
+
 # Directory visibility is a separate, explicit consent. It never grants access.
 if principal is not None and trusted_identity_directory is not None:
     st.divider()
