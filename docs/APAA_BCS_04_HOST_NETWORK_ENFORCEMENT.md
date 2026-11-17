@@ -354,3 +354,42 @@ require exact-head CI and a new real Chromium qualification.
 
 
 The latest changes are queued for a fresh disposable-host Chromium and network-bypass run.
+
+
+## BCS-04 — durable browser recovery, cancellation and audit hardening
+
+Added `core/browser_recovery.py`, an owner-private SQLite job journal:
+- Atomic unique `job_id` claims with a SHA-256 request fingerprint; a completed, failed,
+  cancelled, timed-out or interrupted ID can never be replayed.
+- Explicit one-way states (`accepted → running → terminal`), with a bounded
+  cancellation-request state. State changes are persisted with SQLite
+  `synchronous=FULL` and owner-only database permissions.
+- On process restart, `recover_interrupted()` converts accepted/running/cancelling
+  jobs to `interrupted`. It deliberately does not auto-retry: after a crash the
+  system cannot prove whether an external operation happened before failure.
+- A durable dispatch-block latch prevents new jobs after audit or recovery-state
+  failure and survives process restarts.
+- `BrowserExecutionCoordinator` accepts the durable ledger; its attested-runtime
+  factory requires one and marks pre-crash jobs interrupted before constructing
+  a new coordinator. Duplicate completed-job replay is blocked.
+
+`core/audit.py` now redacts credential assignments, bearer/basic authorization
+values, URL paths/query/fragments and email addresses from event text, and
+bounds the resulting text. Audit-write failures latch the coordinator and,
+when configured, persist a dispatch block before any subsequent job can start.
+
+New regression coverage:
+- `tests/test_browser_recovery.py`: restart recovery, durable duplicate rejection,
+  concurrent single-winner claims, terminal-state protection and durable
+  dispatch blocking.
+- `tests/test_browser_recovery_integration.py`: coordinator-level completed-job
+  replay prevention and audit-failure dispatch stop.
+- `tests/test_audit_redaction.py`: credential, URL and email redaction.
+
+Qualification limits: these are code-level implementation and automated tests;
+they do not prove physical Android process supervision or real-host Chromium
+crash recovery. The application must configure a durable owner-private ledger
+and call the startup recovery boundary before exposing browser dispatch.
+The existing injected `IsolatedWorkerBackend` is still not a production backend.
+Browser/Worker dispatch and Public Live Browsing remain DISABLED; Auto-Run OFF.
+No merge or deployment.
