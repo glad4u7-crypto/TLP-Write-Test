@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 from contextlib import contextmanager
 import os
 import re
@@ -104,7 +105,7 @@ class SQLiteBrowserRecoveryLedger:
                 db.execute("""CREATE TABLE IF NOT EXISTS browser_approval_correlations (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id TEXT NOT NULL UNIQUE,
-                    approval_ref TEXT NOT NULL CHECK(length(approval_ref)=64),
+                    approval_ref TEXT NOT NULL UNIQUE CHECK(length(approval_ref)=64),
                     owner_ref TEXT NOT NULL CHECK(length(owner_ref)=64),
                     session_ref TEXT NOT NULL CHECK(length(session_ref)=64),
                     request_digest TEXT NOT NULL CHECK(length(request_digest)=64),
@@ -271,6 +272,13 @@ class SQLiteBrowserRecoveryLedger:
             if any(type(value) is not str or not re.fullmatch(r"[0-9a-f]{64}", value)
                    for value in (approval_ref, owner_ref, session_ref, request_digest)):
                 raise RecoveryLedgerError("approval correlation contains malformed references")
+            if (type(occurred_at) not in (int, float) or not math.isfinite(occurred_at)
+                    or occurred_at < 0):
+                raise RecoveryLedgerError("approval correlation timestamp is invalid")
+            try:
+                SQLiteBrowserRecoveryLedger._validate_job(job_id, request_digest)
+            except (TypeError, ValueError) as exc:
+                raise RecoveryLedgerError("approval correlation job reference is invalid") from exc
             expected_hash = SQLiteBrowserRecoveryLedger._approval_correlation_hash(
                 previous_hash, job_id, approval_ref, owner_ref, session_ref,
                 request_digest, occurred_at,
