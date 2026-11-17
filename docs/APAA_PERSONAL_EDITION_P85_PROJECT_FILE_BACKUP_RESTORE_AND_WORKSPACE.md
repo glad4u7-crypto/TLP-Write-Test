@@ -24,6 +24,8 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Project file inspection remains local and read-only.
 - Added tenant/project-scoped, newest-first checkpoint history with a bounded listing API.
 - The Task Workspace can prefill the planner from an Owner-selected active/blocked checkpoint's next action. This is a draft-only resume: it does not execute a task or grant approval.
+- Added durable per-step progress records keyed by tenant, project, plan and step. Explicit form submission saves pending/completed state; progress totals render as a progress bar and remain separate from execution status.
+- Added tests for progress persistence, consent, tenant isolation and step-ID validation, plus an AppTest proving the read-only Web search provider is not called until the Owner submits the search form.
 - Existing saved task plans remain available for review and reloading. Checkpoint status is shown as active, blocked, completed or cancelled.
 - Android-first responsive CSS already enforces 44px minimum touch targets and 16px form text; this P85 pass preserves the browser-based product direction rather than creating a mandatory APK/Home Screen app.
 
@@ -36,8 +38,7 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 ## Remaining P85 work
 
 1. Run the exact-head Python suite, compilation, dependency audit and responsive Android/desktop browser tests; fix any regressions and record the exact tested SHA.
-2. Complete progress visualization across individual plan steps and reconcile it with the durable task-state/event store; current checkpoint status/history and planner-prefill resume are implemented, but they are not yet a full step-by-step execution progress engine.
-3. Add UI-level tests for the explicit-submit web/page/YouTube forms, including provider errors, redirect/SSRF rejection and no-call-before-submit behavior.
+2. Add further UI-level tests for public page and YouTube forms, including provider errors and no-call-before-submit behavior. The shared network provider's DNS/redirect/SSRF regression suite is already present.
 4. Finish Android-first browser layout and deployment/package documentation. The product direction remains a browser-based web platform; do not turn it into a mandatory Home Screen/native APK install.
 5. Complete integration/security regression review and document external gates separately.
 
@@ -45,8 +46,9 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 
 - Implementation is committed to `apaa-personal-edition-foundation`.
 - P73 Verification run #337 tested earlier P85 code head `16f43924bed2d027829137150e6a63a4bd83e9cb`: compilation PASS, dependency audit PASS, responsive browser smoke PASS, Python suite **1,519 passed / 9 skipped / 1 failed**. The failure identified a restore-created parent directory with overly broad permissions.
-- Corrected restore directory creation to explicitly create and chmod both `project-files` and project directories to 0700. This correction is in later branch commits; **no exact-head CI result has yet been observed for the correction or subsequent P85 UI/launcher additions**.
-- Therefore P85 remains implementation-pending-verification; do not infer a full PASS from the earlier partial run.
+- Corrected restore directory creation to explicitly create and chmod both `project-files` and project directories to 0700.
+- CI #363 on commit `597f2933b6eac56eb0627c620b648f243fcb31cd`: **1,522 passed / 9 skipped / 0 failed**; Python compile, dependency audit and responsive browser smoke all PASS.
+- Additional durable step-progress and explicit-submit Web UI regression tests were added after #363; CI #369 is running against the updated branch head. P85 is not complete until #369 passes and the remaining UI/security review is recorded.
 - Physical Android acceptance, owner-operated restore drill and independent security review remain separate external gates.
 - PR #13 remains Draft / Open / Unmerged. No merge or deployment is authorized by this checkpoint.
 - Browser/Worker dispatch remains disabled; Auto-Run OFF. No paid provider/API key/charge, payment, purchase, trading or money movement is enabled.
