@@ -113,8 +113,22 @@ def _probe_proxy_outage(command: list[str], expected_marker: str, description: s
     output = (result.stdout or "") + (result.stderr or "")
     if expected_marker in output:
         raise RuntimeError(f"browser reached the allowed page while its proxy was unavailable: {description}")
+    proxy_error = next((
+        marker for marker in ("ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED")
+        if marker in output
+    ), None)
+    if proxy_error is None:
+        diagnostic = " ".join(output.split())
+        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)[:240]
+        digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        raise RuntimeError(
+            f"proxy outage probe did not reach a Chromium proxy failure: {description} "
+            f"(exit={result.returncode}; sha256={digest}; "
+            f"{diagnostic or 'no diagnostic output'})"
+        )
     return {
         "exit_code": result.returncode,
+        "proxy_error": proxy_error,
         "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
         "allowed_marker_absent": True,
     }
