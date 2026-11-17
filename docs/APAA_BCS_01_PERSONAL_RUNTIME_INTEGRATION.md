@@ -1,6 +1,6 @@
 # APAA BCS-01 — Personal Runtime Browser Security Integration
 
-**Status:** Owner/approval/audit integration implemented and exact-head CI verification pending. A guarded Browser handler is REGISTERED but remains DISABLED.
+**Status:** Owner/approval/audit integration implemented; exact-head CI PASS at `a34a330e0746098e78c997f78a64c9def8a21b57` (run #436). A guarded Browser handler is REGISTERED but remains DISABLED.
 
 ## Scope
 BCS-01 connects the existing offline Browser Security policy to the Personal Edition Owner identity, durable ApprovalAuthority and SQLite Action Audit. It does not implement a browser worker, navigation, network access, or Android browser execution.
@@ -32,7 +32,7 @@ BCS-01 connects the existing offline Browser Security policy to the Personal Edi
 - Physical Android qualification and real isolated-worker egress qualification remain separate, deferred gates.
 
 ## Acceptance
-BCS-01 is not complete until exact-head CI passes, tests demonstrate owner/session/tenant binding, receipt expiry and replay rejection, payload tampering rejection, Action Audit persistence and the presence of the guarded disabled handler, explicit disabled outcome, approval request/issuance audit, one-time approval replay rejection, and durable denial audit. Browser execution must remain disabled after this checkpoint.
+BCS-01 implementation acceptance: exact-head CI PASS; tests demonstrate Owner/session/tenant binding, exact-payload approval, expiry and replay rejection, Action Audit persistence, guarded disabled-handler registration, explicit disabled outcome and Auto-Run bypass prevention. These implementation gates are PASS at the recorded SHA. Real browser execution remains a separate, disabled release gate requiring a reviewed host/container adapter, signed isolation evidence and connection-time egress enforcement.
 
 
 ## Handler registration correction
@@ -41,3 +41,15 @@ The original empty handler registry caused an expected but ambiguous `No trusted
 
 
 Approval Audit: `browser_approval_requested`, `browser_approval_issued`, `browser_approval_missing_owner_confirmation`, `browser_approval_owner_session_denied` and `browser_approval_job_validation_denied`, `browser_dispatch_owner_session_denied` and `browser_dispatch_job_validation_denied` are metadata-only Action Audit reason codes. No URL, hostname, page content, credential, cookie, form value or file content is included.
+
+
+## Exact-head CI evidence
+
+- Commit: `a34a330e0746098e78c997f78a64c9def8a21b57`
+- GitHub Actions run [#436](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44033818850): **PASS**
+- Python suite: **1,541 passed, 9 skipped**
+- Python compile: PASS
+- Dependency audit: PASS
+- Responsive browser smoke: **9 passed**
+
+This verifies code, unit/integration tests, dependency audit and responsive UI smoke. It does not constitute live browser-worker egress qualification or physical Android acceptance.
