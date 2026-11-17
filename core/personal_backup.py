@@ -143,12 +143,20 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
             raise PersonalBackupError("The durable audit chain is invalid; backup was refused.")
         # The local Owner login/security-event history is a separate database.
         # Verify its full hash chain as well before including it in the archive.
+        owner_auth_snapshot = temporary_dir / "owner-auth.sqlite3"
         try:
-            LocalOwnerAuthStore(temporary_dir / "owner-auth.sqlite3").verify_events()
+            LocalOwnerAuthStore(owner_auth_snapshot).verify_events()
+            _sqlite_integrity(owner_auth_snapshot)
         except (ValueError, OSError, sqlite3.Error) as exc:
             raise PersonalBackupError(
                 "The Owner authentication audit chain is invalid; backup was refused."
             ) from exc
+        # A legacy authentication database may have been upgraded in the
+        # snapshot. Hash the final post-migration bytes that enter the archive.
+        manifest_files["owner-auth.sqlite3"] = {
+            "size": owner_auth_snapshot.stat().st_size,
+            "sha256": _sha256(owner_auth_snapshot),
+        }
 
         manifest = {
             "format": _FORMAT,
