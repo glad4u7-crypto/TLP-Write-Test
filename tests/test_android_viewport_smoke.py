@@ -238,8 +238,7 @@ def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
         page = context.new_page()
         _open_owner_page(page, streamlit_server)
         backup_expander = page.locator("details").filter(has_text="Personal Backup & Restore").locator("summary")
-        backup_expander.evaluate("(element) => element.scrollIntoView({block: 'center'})")
-        backup_expander.click(force=True)
+        backup_expander.evaluate("(element) => element.click()")
         page.get_by_label("New backup encryption passphrase (12+ characters)").fill(
             "test-only encrypted backup passphrase"
         )
