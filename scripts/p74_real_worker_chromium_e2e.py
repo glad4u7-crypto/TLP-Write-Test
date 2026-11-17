@@ -96,11 +96,12 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
 
 
 
-def _host_resolver_rules(proxy_ip: str) -> str:
-    address = ipaddress.ip_address(proxy_ip).compressed
-    # Keep target DNS fail-closed while explicitly exempting the numeric
-    # proxy endpoint so Chromium can establish its HTTP CONNECT tunnel.
-    return f"MAP * ~NOTFOUND, EXCLUDE {address}"
+def _http_proxy_uri(proxy_ip: str, port: int) -> str:
+    address = ipaddress.ip_address(proxy_ip)
+    host = f"[{address.compressed}]" if address.version == 6 else address.compressed
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError("proxy port is invalid")
+    return f"http://{host}:{port}"
 
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
@@ -646,8 +647,7 @@ def main() -> int:
         evidence["tests"]["direct_udp6_443_blocked"] = True
 
         for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
-            proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
-            proxy_argument = f"http={proxy_host}:{proxy_port};https={proxy_host}:{proxy_port}"
+            proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
             page = _run([
                 "podman", "exec", "--user", "65532:65532", container_id,
                 chromium_bin,
@@ -663,7 +663,6 @@ def main() -> int:
                 "--enable-logging=stderr",
                 "--v=1",
                 "--disable-http2",
-                "--host-resolver-rules=" + _host_resolver_rules(proxy_ip),
                 "--disable-background-networking",
                 "--disable-component-update",
                 "--disable-sync",
@@ -732,15 +731,13 @@ def main() -> int:
             ("ipv6", host6, proxy_servers[1]),
         ):
             proxy.close()
-            proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
-            proxy_argument = f"http={proxy_host}:{proxy_port};https={proxy_host}:{proxy_port}"
+            proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
             outage = _probe_proxy_outage([
                 "podman", "exec", "--user", "65532:65532", container_id,
                 chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
                 "--disable-http2",
-                "--host-resolver-rules=" + _host_resolver_rules(proxy_ip),
                 "--disable-background-networking", "--disable-component-update",
                 "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
                 "--proxy-bypass-list=<-loopback>", "--dump-dom", target.url,
