@@ -766,8 +766,13 @@ def test_public_page_and_youtube_ui_wait_for_explicit_submission(
     def fake_read(self, request):
         calls.append((request.capability.name, request.target or request.query))
         cap = ReadCapability[capability]
+        locator = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+            if capability == "YOUTUBE_SEARCH"
+            else "https://example.org/item"
+        )
         return ReadResult(
-            cap, (ReadItem("Safe public item", "https://example.org/item", "bounded excerpt"),),
+            cap, (ReadItem("Safe public item", locator, "bounded excerpt"),),
             "test-only provider",
         )
 
