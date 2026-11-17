@@ -27,8 +27,20 @@ class NftablesPolicy:
                 raise ValueError("proxy IP must be text")
             address = ipaddress.ip_address(value)
             if (address.is_unspecified or address.is_multicast or address.is_loopback
-                    or address.is_link_local or address.compressed != value):
+                    or address.is_link_local or address.compressed != value
+                    or (address.version == 6 and address.ipv4_mapped is not None)):
                 raise ValueError("proxy IP must be canonical unicast")
+            # The disposable veth uses these explicit non-routable test ranges.
+            # Other private/reserved addresses are not valid proxy endpoints.
+            local_test_ranges = (
+                ipaddress.ip_network("198.18.0.0/15"),
+                ipaddress.ip_network("2001:db8:1::/64"),
+            )
+            if not address.is_global and not any(
+                address.version == network.version and address in network
+                for network in local_test_ranges
+            ):
+                raise ValueError("proxy IP is neither globally routable nor in the APAA test veth ranges")
             if address.version == 4 and address == ipaddress.IPv4Address("255.255.255.255"):
                 raise ValueError("proxy IP cannot be a broadcast address")
             normalized.append(value)
