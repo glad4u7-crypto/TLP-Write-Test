@@ -9,6 +9,7 @@ from core.audit import JsonlAuditLog
 from core.execution import ExecutionGateway
 from core.identity import Principal, require_authenticated
 from core.projects import ProjectRegistry, _PROJECT_MUTATION_CAPABILITY
+from core.storage import TenantKey
 
 
 def build_project_gateway(
@@ -26,7 +27,15 @@ def build_project_gateway(
         owner_subject = principal.subject
     else:
         # Local-only mode is explicitly unauthenticated and must not be public.
-        owner_subject = "local-prototype"
+        # Persistent local registries expose their fixed server-side tenant;
+        # legacy in-memory test registries retain the historical prototype ID.
+        local_tenant = getattr(registry, "_tenant", None)
+        if isinstance(local_tenant, TenantKey):
+            owner_subject = local_tenant.subject
+            owner_issuer = local_tenant.issuer
+        else:
+            owner_subject = "local-prototype"
+            owner_issuer = None
 
     def create_project(data):
         if not isinstance(data, dict) or set(data) != {"name", "description"}:
@@ -35,7 +44,7 @@ def build_project_gateway(
             data["name"],
             data["description"],
             owner_subject=owner_subject,
-            owner_issuer=principal.issuer if principal is not None else None,
+            owner_issuer=principal.issuer if principal is not None else owner_issuer,
             _capability=_PROJECT_MUTATION_CAPABILITY,
         )
 
