@@ -8,11 +8,14 @@
 |---|---|---|
 | Runtime | Compile/import and runtime wiring tests | PASS |
 | Persistent storage | SQLite persistence, owner scope, restart and integrity tests | PASS |
-| Approval | Action/payload/tenant/session binding, expiry and one-time nonce | PASS |
+| Approval | Project action/payload/tenant/session binding, expiry and one-time nonce | PASS |
+| Owner UI mutations | Explicit consent/approval argument on all nine mutation call sites; missing approval blocks before audit/dispatch | IMPLEMENTED; latest exact-head CI PENDING |
+| Owner authentication audit | Payload-free login/logout/lockout/passphrase events | IMPLEMENTED; local event table not independently tamper-proof |
 | Audit | Intent-before-dispatch, metadata-only records, fail-closed behavior | PASS |
 | Backup/restore | Archive validation, integrity, atomic restore and key rotation | PASS |
 | Dependency security | pip-audit on exact tested head | PASS |
-| Python regression | Full suite on exact tested head | PASS |
+| Python regression | Full suite on prior exact tested head | PASS; new Owner/action-approval changes require fresh exact-head run |
+| Browser smoke | Android/desktop Chromium login-aware viewport and workflow checks | Fixtures corrected to authenticate Owner; fresh exact-head run PENDING |
 | Browser execution | Security-qualified implementation and independent review | NOT IMPLEMENTED; DISABLED |
 | Android | Physical A01–A12 | NOT RUN |
 | Live identity | HTTPS/OIDC login, logout, expiry, second-account denial and revocation | NOT RUN |
