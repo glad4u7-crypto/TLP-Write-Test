@@ -48,7 +48,8 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - P73 Verification run #337 tested earlier P85 code head `16f43924bed2d027829137150e6a63a4bd83e9cb`: compilation PASS, dependency audit PASS, responsive browser smoke PASS, Python suite **1,519 passed / 9 skipped / 1 failed**. The failure identified a restore-created parent directory with overly broad permissions.
 - Corrected restore directory creation to explicitly create and chmod both `project-files` and project directories to 0700.
 - CI #363 on commit `597f2933b6eac56eb0627c620b648f243fcb31cd`: **1,522 passed / 9 skipped / 0 failed**; Python compile, dependency audit and responsive browser smoke all PASS.
-- Additional durable step-progress and explicit-submit Web UI regression tests were added after #363; CI #369 is running against the updated branch head. P85 is not complete until #369 passes and the remaining UI/security review is recorded.
+- CI #369 on commit `d2b534f2e706ae7d3ab936e1247bca168bfd01ae`: **1,526 passed / 9 skipped / 0 failed**; Python compile, dependency audit and responsive browser smoke all PASS.
+- After #369 completed, additional AppTest coverage was added for explicit-submit Web/Page/YouTube UI behavior and provider-error display, plus a database-reopen persistence assertion for task step progress. These newest tests are not covered by #369; a fresh exact-head CI run is required before P85 can be called verified.
 - Physical Android acceptance, owner-operated restore drill and independent security review remain separate external gates.
 - PR #13 remains Draft / Open / Unmerged. No merge or deployment is authorized by this checkpoint.
 - Browser/Worker dispatch remains disabled; Auto-Run OFF. No paid provider/API key/charge, payment, purchase, trading or money movement is enabled.
