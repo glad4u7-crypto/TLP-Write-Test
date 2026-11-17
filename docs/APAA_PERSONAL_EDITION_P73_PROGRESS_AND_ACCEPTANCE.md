@@ -114,3 +114,9 @@ The existing offline browser policy module was hardened with:
 **Not implemented / deliberately disabled:** no browser process, socket connector, TLS pinning/hostname-verification adapter, container sandbox, network egress firewall, browser session manager, download/upload path, or Browser/Worker ExecutionGateway handler was added. The returned pinned addresses are a contract for a future connector, not proof that network connections are currently pinned. Browser execution remains DISABLED.
 
 P74 therefore has real policy code and regression coverage added, but Browser Security is not complete. Android A01–A12 remain procedure-ready/not run, and final acceptance remains open. C01 remains OPEN; C02 remains NOT STARTED.
+
+
+### P74 latest-head correction
+- Reserved suffix hardening intentionally rejects `.example`; an inherited IDN normalization test had used `bücher.example` as an accepted fixture. CI exposed the mismatch (1 failed, 1,393 passed, 9 skipped on the earlier snapshot); the fixture was corrected to `bücher.com`.
+- Latest branch head after the fixture correction and verification notes: `7cf35d218a32edc4bb194633539653619548790e`.
+- Exact-head workflow [#43993446488](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43993446488) is running on this latest head. Do not claim PASS until both Python tests and browser smoke complete successfully.
