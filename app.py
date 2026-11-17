@@ -112,7 +112,7 @@ else:
     personal_paths = personal_runtime_paths(personal_data_dir)
     try:
         local_owner_auth = LocalOwnerAuthStore(
-            personal_paths.data_dir / "owner-auth.sqlite3"
+            personal_paths.owner_auth_db
         )
     except (ValueError, OSError, sqlite3.Error) as exc:
         clear_session_identity(st.session_state)
