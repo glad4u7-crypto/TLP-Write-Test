@@ -95,13 +95,7 @@ class PinnedConnectProxy:
 
         class Handler(socketserver.BaseRequestHandler):
             def handle(self):
-                if not owner._connection_slots.acquire(blocking=False):
-                    owner._respond(self.request, 503, "Proxy Capacity Exhausted")
-                    return
-                try:
-                    owner._handle_client(self.request)
-                finally:
-                    owner._connection_slots.release()
+                owner._handle_client(self.request)
 
         class Server(socketserver.ThreadingTCPServer):
             address_family = socket.AF_INET6 if ipaddress.ip_address(owner.bind_address).version == 6 else socket.AF_INET
@@ -109,6 +103,23 @@ class PinnedConnectProxy:
             allow_reuse_address = False
             daemon_threads = True
             block_on_close = True
+
+            def process_request(self, request, client_address):
+                if not owner._connection_slots.acquire(blocking=False):
+                    owner._respond(request, 503, "Proxy Capacity Exhausted")
+                    self.shutdown_request(request)
+                    return
+                try:
+                    super().process_request(request, client_address)
+                except Exception:
+                    owner._connection_slots.release()
+                    raise
+
+            def process_request_thread(self, request, client_address):
+                try:
+                    super().process_request_thread(request, client_address)
+                finally:
+                    owner._connection_slots.release()
 
         server = Server((self.bind_address, self.port), Handler)
         self._server = server
