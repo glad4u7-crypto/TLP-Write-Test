@@ -145,7 +145,7 @@ class LinuxHostSnapshotSource(HostSnapshotSource):
 
     def read_nftables_json(self) -> Mapping[str, object]:
         pid, _runtime_id, _worker_id, start_ticks = self._identity()
-        inode_before, _interface_before = self._network_namespace(pid, start_ticks)
+        inode_before, interface_before = self._network_namespace(pid, start_ticks)
         argv = [
             self._nsenter, "--target", str(pid), "--net",
             self._nft, "-j", "list", "ruleset",
@@ -170,8 +170,9 @@ class LinuxHostSnapshotSource(HostSnapshotSource):
             raise HostCollectionError("nftables output is missing or exceeds the size limit.")
         # Confirm PID and namespace identity did not change during inspection.
         pid_after, _runtime_after, _worker_after, ticks_after = self._identity()
-        inode_after, _interface_after = self._network_namespace(pid_after, ticks_after)
-        if pid_after != pid or ticks_after != start_ticks or inode_after != inode_before:
+        inode_after, interface_after = self._network_namespace(pid_after, ticks_after)
+        if (pid_after != pid or ticks_after != start_ticks
+                or inode_after != inode_before or interface_after != interface_before):
             raise HostCollectionError("Worker identity changed during nftables inspection.")
         try:
             parsed = json.loads(output)
