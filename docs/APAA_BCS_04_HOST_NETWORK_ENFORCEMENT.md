@@ -219,3 +219,12 @@ the mounted cgroup root. The next run records a bounded diagnostic of the
 candidate leaf, its parent, and sibling entries, and the observer error
 includes the exact candidate path plus OS error type. This will distinguish
 a missing Podman cgroupfs leaf from a mount-root or delegation mismatch.
+
+
+Run #81 confirmed the normalized candidate path, but the worker's reported
+`libpod-<id>` leaf is absent from the cgroup-v2 filesystem even though its
+parent exists. The next diagnostic artifact now includes the parent's
+`cgroup.procs`, `cgroup.type`, `cgroup.subtree_control` and
+`cgroup.events` values to determine whether Podman attached the process
+directly to the delegated parent, used a different cgroup namespace, or failed
+to create the expected child. The observer remains fail-closed.
