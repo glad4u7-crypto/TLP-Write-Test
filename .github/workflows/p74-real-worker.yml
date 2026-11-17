@@ -43,14 +43,6 @@ jobs:
           nft --version
           ip -Version
 
-      - name: Prepare Chromium user-namespace seccomp profile
-        run: |
-          set -euo pipefail
-          python3 -m scripts.prepare_chromium_seccomp_profile \
-            --source "$APAA_SECCOMP_PROFILE" \
-            --output "$RUNNER_TEMP/apaa-chromium-seccomp.json"
-          echo "APAA_SECCOMP_PROFILE=$RUNNER_TEMP/apaa-chromium-seccomp.json" >> "$GITHUB_ENV"
-
       - name: Prepare delegated cgroup v2 subtree
         shell: bash
         run: |
@@ -85,6 +77,14 @@ jobs:
           set -euo pipefail
           test -s /usr/share/containers/seccomp.json
           echo "APAA_SECCOMP_PROFILE=/usr/share/containers/seccomp.json" >> "$GITHUB_ENV"
+
+      - name: Prepare Chromium user-namespace seccomp profile
+        run: |
+          set -euo pipefail
+          python3 -m scripts.prepare_chromium_seccomp_profile \
+            --source "$APAA_SECCOMP_PROFILE" \
+            --output "$RUNNER_TEMP/apaa-chromium-seccomp.json"
+          echo "APAA_SECCOMP_PROFILE=$RUNNER_TEMP/apaa-chromium-seccomp.json" >> "$GITHUB_ENV"
 
       - name: Run real Chromium inside isolated OCI worker
         env:
