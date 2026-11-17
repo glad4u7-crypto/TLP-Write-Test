@@ -6,12 +6,14 @@ on:
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
       - feature/apaa-bcs05-chromium-security-qualification
+      - feature/apaa-s09-c01-action-history-recovery
   pull_request:
     branches:
       - main
       - master
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
+      - fix/apaa-bcs05-websocket-route-test
   workflow_dispatch:
 
 permissions:
