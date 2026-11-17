@@ -29,6 +29,14 @@ from core.personal_runtime import (
     personal_runtime_paths,
 )
 from core.personal_auth import LocalOwnerAuthStore
+from core.read_only_adapters import ReadOnlyAdapterRegistry, ReadOnlyAdapterError
+from core.capabilities import ReadCapability, ReadRequest
+from core.safe_network_providers import (
+    DuckDuckGoSearchProvider,
+    PublicWebPageReadProvider,
+    YouTubePublicSearchProvider,
+    SafeNetworkError,
+)
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
@@ -627,6 +635,67 @@ with st.sidebar:
                 "Owner recovery records could not be verified. "
                 "Reconciliation is disabled."
             )
+
+    with st.expander("Public Web Research · Read-only"):
+        st.caption(
+            "Owner-session public research only. Uses direct HTTPS and bounded "
+            "text extraction. No login, cookies, browser automation, uploads, "
+            "playlist changes, or website actions."
+        )
+        with st.form("apaa_public_readonly_research"):
+            research_provider = st.selectbox(
+                "Read-only provider",
+                (
+                    "Web Search · DuckDuckGo",
+                    "Read public HTTPS page",
+                    "YouTube public search",
+                ),
+            )
+            research_input = st.text_input(
+                "Search query or HTTPS page URL",
+                max_chars=2048,
+                help="For page reading, enter one public HTTPS URL. Private/local addresses are blocked.",
+            )
+            research_limit = st.selectbox("Maximum results", (5, 10, 15, 20), index=0)
+            run_public_research = st.form_submit_button("Search / Read", type="primary")
+        if run_public_research:
+            try:
+                provider_map = {
+                    "Web Search · DuckDuckGo": (
+                        ReadCapability.WEB_SEARCH, DuckDuckGoSearchProvider()
+                    ),
+                    "Read public HTTPS page": (
+                        ReadCapability.WEB_PAGE_READ, PublicWebPageReadProvider()
+                    ),
+                    "YouTube public search": (
+                        ReadCapability.YOUTUBE_SEARCH, YouTubePublicSearchProvider()
+                    ),
+                }
+                selected_capability, selected_provider = provider_map[research_provider]
+                if selected_capability is ReadCapability.WEB_PAGE_READ:
+                    read_request = ReadRequest(
+                        selected_capability, target=research_input
+                    )
+                else:
+                    read_request = ReadRequest(
+                        selected_capability, query=research_input,
+                        max_results=research_limit,
+                    )
+                readonly_registry = ReadOnlyAdapterRegistry((selected_provider,))
+                with st.spinner("Reading public information safely…"):
+                    read_result = readonly_registry.read(read_request)
+                st.caption(f"Source: {read_result.source_label}")
+                if not read_result.items:
+                    st.info("No public results were returned.")
+                for read_item in read_result.items:
+                    st.write(read_item.title)
+                    if read_item.excerpt:
+                        st.write(read_item.excerpt)
+                    st.link_button("Open source", read_item.locator)
+                if read_result.truncated:
+                    st.caption("Results were bounded; some content may be omitted.")
+            except (ValueError, OSError, ReadOnlyAdapterError, SafeNetworkError) as exc:
+                st.error(f"Public read-only request blocked or unavailable: {exc}")
 
 # Directory visibility is a separate, explicit consent. It never grants access.
 if principal is not None and trusted_identity_directory is not None:
