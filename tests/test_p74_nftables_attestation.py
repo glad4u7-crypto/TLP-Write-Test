@@ -29,11 +29,11 @@ def fixture():
       {"chain":{"family":"inet","table":"apaa","name":"output","type":"filter","hook":"output","prio":0,"policy":"drop"}},
       rule("input",m("meta.iifname","lo")),
       rule("output",m("meta.oifname","lo")),
-      rule("input",m("ip6.saddr","fe80::/10"),m("icmpv6.type","nd-neighbor-solicit")),
-      rule("input",m("ip6.saddr","fe80::/10"),m("icmpv6.type","nd-neighbor-advert")),
-      rule("output",m("ip6.saddr","fe80::/10"),m("ip6.daddr","ff02::/16"),m("icmpv6.type","nd-neighbor-solicit")),
-      rule("output",m("ip6.saddr","fe80::/10"),m("ip6.daddr","fe80::/10"),m("icmpv6.type","nd-neighbor-advert")),
-      rule("output",m("ip6.saddr","fe80::/10"),m("ip6.daddr","ff02::/16"),m("icmpv6.type","nd-neighbor-advert")),
+      rule("input",m("ip6.saddr",{"prefix":{"addr":"fe80::","len":10}}),m("icmpv6.type","nd-neighbor-solicit")),
+      rule("input",m("ip6.saddr",{"prefix":{"addr":"fe80::","len":10}}),m("icmpv6.type","nd-neighbor-advert")),
+      rule("output",m("ip6.saddr",{"prefix":{"addr":"fe80::","len":10}}),m("ip6.daddr",{"prefix":{"addr":"ff02::","len":16}}),m("icmpv6.type","nd-neighbor-solicit")),
+      rule("output",m("ip6.saddr",{"prefix":{"addr":"fe80::","len":10}}),m("ip6.daddr",{"prefix":{"addr":"fe80::","len":10}}),m("icmpv6.type","nd-neighbor-advert")),
+      rule("output",m("ip6.saddr",{"prefix":{"addr":"fe80::","len":10}}),m("ip6.daddr",{"prefix":{"addr":"ff02::","len":16}}),m("icmpv6.type","nd-neighbor-advert")),
     ]
     for ip, fam in ((P4,"ip"),(P6,"ip6")):
       src,dst=fam+".saddr",fam+".daddr"
