@@ -90,11 +90,11 @@ def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
     if marker_at < 0:
         return {"detected": False, "log_pid": None, "log_tid": None, "stack_frames": []}
     prefix = stderr[:marker_at]
-    log_lines = list(re.finditer(r"\\[(\\d+):(\\d+):\\d{4}/\\d{6}\\.\\d+\\]", prefix))
+    log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+\]", prefix))
     identity = log_lines[-1] if log_lines else None
     stack_frames = [
         {"frame": int(index), "address": address.lower()}
-        for index, address in re.findall(r"(?m)^#(\\d+)\\s+(0x[0-9a-fA-F]+)", stderr[marker_at:])
+        for index, address in re.findall(r"(?m)^#(\d+)\s+(0x[0-9a-fA-F]+)", stderr[marker_at:])
     ][:64]
     return {
         "detected": True,
