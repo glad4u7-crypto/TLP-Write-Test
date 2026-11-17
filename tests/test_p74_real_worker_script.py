@@ -365,7 +365,7 @@ def test_fd_ownership_log_pid_maps_to_host_pid_snapshot():
     }
     mapped = qualification._map_failure_to_fd_snapshot(failure, diagnostics)
     assert mapped["host_pid"] == 8271
-    assert mapped["container_pid"] == 16
+    assert mapped["container_pid"] == "16"
     assert mapped["fd_count_observed"] == 148
     assert mapped["stack_frames_with_module_offsets"][0]["module"] == "chromium"
     assert mapped["stack_frames_with_module_offsets"][0]["module_offset"] == "0x250"
