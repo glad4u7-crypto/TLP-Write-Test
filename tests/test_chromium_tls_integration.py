@@ -184,24 +184,31 @@ def _run_case(tmp_path, monkeypatch, *, cert_name: str, expired: bool, url_host:
         page = context.new_page()
         return page, f"https://{url_host}:{server.server_port}/", context, playwright, proxy, server, server_thread
     except Exception:
-        if context is not None:
-            context.close()
-        if playwright is not None:
-            playwright.stop()
-        proxy.close()
-        server.shutdown()
-        server.server_close()
-        server_thread.join(timeout=2)
+        try:
+            _cleanup(context, playwright, proxy, server, server_thread)
+        except Exception:
+            # Preserve the original setup failure; cleanup is best-effort here.
+            pass
         raise
 
 
 def _cleanup(context, playwright, proxy, server, server_thread):
-    context.close()
-    playwright.stop()
-    proxy.close()
-    server.shutdown()
-    server.server_close()
-    server_thread.join(timeout=2)
+    """Attempt every teardown operation, even if an earlier one fails."""
+    errors = []
+    for cleanup in (
+        context.close,
+        playwright.stop,
+        proxy.close,
+        server.shutdown,
+        server.server_close,
+        lambda: server_thread.join(timeout=2),
+    ):
+        try:
+            cleanup()
+        except Exception as exc:
+            errors.append(exc)
+    if errors:
+        raise errors[0]
 
 
 def test_chromium_accepts_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
