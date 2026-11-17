@@ -1,0 +1,96 @@
+from pathlib import Path
+from types import SimpleNamespace
+import pytest
+from core.oci_runtime_backend import OCIWorkerSpec, WorkerLimits
+from core.oci_runtime_observer import PodmanWorkerObserver, WorkerObservationError
+
+CID="a"*64
+IMAGE="sha256:"+"b"*64
+
+class Runtime:
+    def __init__(self, payload): self.payload=payload
+    def inspect(self, cid):
+        assert cid==CID
+        return self.payload
+
+def proc_stat(pid, start=777):
+    # Linux /proc stat: comm may contain spaces and ')' characters.
+    fields=["S"]+["0"]*18+[str(start)]+["0"]*5
+    return f"{pid} (worker process ) name) "+" ".join(fields)
+
+def make_fs(tmp_path, *, cgroup="/apaa/worker1/container", net_inode=123, ns_inode=123, start1=777, start2=777):
+    proc=tmp_path/"proc"/"4321"; (proc/"ns").mkdir(parents=True)
+    (proc/"stat").write_text(proc_stat(4321,start1))
+    (proc/"ns"/"net").symlink_to(tmp_path/"netns-target")
+    (tmp_path/"netns-target").write_text("ns")
+    (tmp_path/"netns"/"w1").mkdir(parents=True)
+    # Symlink inode is the target inode; make a stable namespace inode by hard-linking.
+    (tmp_path/"netns"/"w1").rmdir()
+    (tmp_path/"netns"/"w1").symlink_to(tmp_path/"netns-target")
+    (proc/"cgroup").write_text(f"0::{cgroup}\n")
+    (proc/"status").write_text("Name:\tworker\nSeccomp:\t2\n")
+    cg=tmp_path/"cgroup"/"apaa"/"worker1"/"container"
+    cg.mkdir(parents=True)
+    (cg/"memory.max").write_text("1073741824")
+    (cg/"cpu.max").write_text("100000 100000")
+    (cg/"pids.max").write_text("128")
+    return tmp_path/"proc",tmp_path/"cgroup",tmp_path/"netns"
+
+def payload():
+    return {
+      "Id":CID,"Image":IMAGE,
+      "HostConfig":{"ReadonlyRootfs":True,"CapDrop":["ALL"],
+       "SecurityOpt":["no-new-privileges","seccomp=/profiles/chromium.json"],
+       "Memory":1073741824,"PidsLimit":128,"NanoCpus":1000000000,
+       "NetworkMode":"ns:/run/netns/w1"},
+      "Config":{"User":"65532:65532"},
+      "State":{"Running":True,"Pid":4321},
+    }
+
+def spec():
+    return OCIWorkerSpec(IMAGE,"/run/netns/w1","/profiles/chromium.json","worker1",
+                         WorkerLimits(),"/sys/fs/cgroup/apaa/worker1")
+
+def test_observer_requires_runtime_and_kernel_evidence(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    result=observer.observe(CID,spec())
+    assert result.host_pid==4321
+    assert result.process_start_time_ticks==777
+    assert result.network_namespace_inode==(ns/"w1").stat().st_ino
+    assert result.seccomp_mode==2
+    assert result.memory_max=="1073741824"
+
+def test_observer_rejects_pid_reuse_during_observation(tmp_path):
+    proc,cg,ns=make_fs(tmp_path,start1=777,start2=778)
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="reused"):
+        observer.observe(CID,spec())
+
+@pytest.mark.parametrize("change,match",[
+ (lambda p:p["HostConfig"].update(NetworkMode="bridge"),"namespace"),
+ (lambda p:p["HostConfig"].update(ReadonlyRootfs=False),"security"),
+ (lambda p:p["HostConfig"].update(Memory=999),"resource"),
+ (lambda p:p["State"].update(Running=False),"not confirmed running"),
+ (lambda p:p["Config"].update(User="0:0"),"non-root"),
+ (lambda p:p.update(Image="latest"),"image ID"),
+])
+def test_observer_rejects_mismatched_runtime_inspect(tmp_path,change,match):
+    proc,cg,ns=make_fs(tmp_path)
+    p=payload(); change(p)
+    observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match=match):
+        observer.observe(CID,spec())
+
+def test_observer_rejects_cgroup_escape(tmp_path):
+    proc,cg,ns=make_fs(tmp_path,cgroup="/other/container")
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="cgroup subtree"):
+        observer.observe(CID,spec())
+
+def test_observer_rejects_missing_seccomp_or_wrong_effective_limits(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    (proc/"4321"/"status").write_text("Name:\tworker\nSeccomp:\t0\n")
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="seccomp"):
+        observer.observe(CID,spec())
