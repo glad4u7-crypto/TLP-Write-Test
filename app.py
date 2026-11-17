@@ -496,7 +496,7 @@ if (
     st.session_state["execution_gateway_owner"] = gateway_owner
 
 # Browser Security is connected to the authenticated Owner, durable approval
-# authority and Action Audit, but its handler is deliberately not registered.
+# authority and Action Audit. A guarded handler is registered but remains disabled.
 _active_browser_session_scope = st.session_state["approval_session_scope"]
 def _browser_owner_session_is_active():
     if st.session_state.get("approval_session_scope") != _active_browser_session_scope:
