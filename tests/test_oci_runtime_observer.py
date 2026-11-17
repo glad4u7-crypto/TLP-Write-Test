@@ -121,3 +121,11 @@ def test_observer_rejects_nonzero_kernel_effective_capabilities(tmp_path):
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="effective Linux capabilities"):
         observer.observe(CID,spec())
+
+
+def test_observer_normalizes_proc_cgroup_path_with_mount_prefix(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    (proc/"4321"/"cgroup").write_text(f"0::{cg}/apaa/worker1/container\\n")
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    result=observer.observe(CID,spec())
+    assert result.cgroup_path == "/apaa/worker1/container"
