@@ -184,6 +184,24 @@ def _read_process(
     except OSError:
         pass
     role = _process_role(cmdline)
+    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\\0") if part]
+    allowed_process_types = {
+        "browser", "zygote", "renderer", "gpu-process", "utility",
+        "ppapi", "plugin", "broker",
+    }
+    process_type = next(
+        (token.split("=", 1)[1] for token in tokens if token.startswith("--type=")),
+        None,
+    )
+    if process_type not in allowed_process_types:
+        process_type = None
+    utility_subtype = next(
+        (token.split("=", 1)[1] for token in tokens
+         if token.startswith("--utility-sub-type=")),
+        None,
+    )
+    if utility_subtype != "network.mojom.NetworkService":
+        utility_subtype = None
     status = _parse_status(_read_text(base / "status") or "")
     try:
         fd_names = sorted(
@@ -207,6 +225,11 @@ def _read_process(
         "comm": comm,
         "executable": executable,
         "role": role,
+        "cmdline_bytes_observed": len(cmdline),
+        "process_type": process_type,
+        "utility_subtype": utility_subtype,
+        "zygote_disabled": "--no-zygote" in tokens,
+        "single_process": "--single-process" in tokens,
         "executable_mappings": _executable_mappings(base, executable),
         "state_code": state_code,
         "start_time_ticks": start_time,
