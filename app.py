@@ -567,7 +567,7 @@ with st.sidebar:
                     metric_cols[1].metric("FAIL", failed)
                     metric_cols[2].metric("INFO", info)
                     for diagnostic in diagnostic_results:
-                        message = f"{diagnostic.code}: {diagnostic.detail}"
+                        message = f"{diagnostic.status} · {diagnostic.code}: {diagnostic.detail}"
                         if diagnostic.status == "PASS":
                             st.success(message)
                         elif diagnostic.status == "FAIL":
