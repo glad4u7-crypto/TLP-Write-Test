@@ -164,7 +164,7 @@ def test_registered_browser_handler_is_disabled_and_audited_before_side_effect(t
     events = audit.list_recent_events(limit=10)
     assert any(
         event["action"] == BROWSER_APPROVAL_ACTION
-        and event["reason"] == "registered_handler_disabled"
+        and event["reason_code"] == "registered_handler_disabled"
         for event in events
     )
 
