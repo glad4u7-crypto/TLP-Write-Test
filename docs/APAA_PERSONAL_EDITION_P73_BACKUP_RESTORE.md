@@ -12,14 +12,14 @@ The backup archive contains consistent SQLite snapshots of:
 - `memory.sqlite3` — consented memories, knowledge, conversation turns, preferences and task checkpoints;
 - `manifest.json` — format version, file sizes and SHA-256 digests.
 
-The local approval signing key is deliberately **not** exported. Restore generates a new owner-only key, so all outstanding approval receipts become invalid. The Owner authentication database is preserved so the configured Owner passphrase remains valid after restore. Previously consumed nonce records and the durable audit chain are preserved.
+The local approval signing key is deliberately **not** exported. Restore generates a new owner-only key, so all outstanding approval receipts become invalid. The Owner authentication database is preserved so the configured Owner passphrase remains valid after restore. Previously consumed nonce records, the durable action-audit chain and the Owner authentication event chain/head are preserved.
 
 ## Safety properties
 
 - Source data directory, database files, backup file and restored directory are checked for symlinks and owner-only permissions.
 - Each database is snapshotted using SQLite's online backup API, then checked with `PRAGMA integrity_check`.
-- The security database audit chain is verified before export and after restore.
-- The archive has an exact file allowlist, duplicate-entry rejection, bounded sizes, CRC checks and per-file SHA-256 verification.
+- The security database audit chain and the separate Owner authentication event hash chain are verified before export and after restore. Legacy Owner-auth snapshots are migrated before the final snapshot digest is recorded.
+- The archive has an exact file allowlist, duplicate-entry rejection, bounded sizes, CRC checks and per-file SHA-256 verification. The Owner authentication event chain is also verified semantically; a recomputed archive manifest cannot make a tampered event chain valid.
 - Restore writes into a staging directory and atomically renames it to a **new, non-existing** destination. It never overwrites a live data directory.
 - Restore rejects malformed manifests, path traversal entries, symlinks and corrupted databases.
 

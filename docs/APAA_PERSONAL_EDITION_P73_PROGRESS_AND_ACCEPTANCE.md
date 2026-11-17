@@ -162,3 +162,17 @@ The source review also reconfirmed that the local auth-event SQLite table is pay
 - The runbook now treats Android acceptance as a same-device, loopback-only local Owner workflow. Physical A01–A12 and Android/Termux runtime compatibility remain NOT RUN / UNQUALIFIED. Remote HTTPS/OIDC and two-account grant/revoke are future remote deployment scope, not current Personal Edition prerequisites.
 - The action-history UI is now included in the Owner sidebar and verifies the full audit chain before showing the latest tenant-scoped metadata. The local Owner authentication event table remains a separate non-tamper-evident convenience log.
 - The separate PR #10 browser-runtime branch remains unmerged and unqualified: no trusted host adapter, real network isolation, or direct-egress proof. It is not imported into this Personal Edition branch; live Browser/Worker execution remains disabled.
+
+
+## 11. P77 — Local Owner authentication event audit hardening
+
+- Added a SHA-256 hash chain to payload-free Owner setup/login/failure/lockout/logout/passphrase events.
+- A separately stored local chain head detects accidental tail deletion/truncation; the full chain is verified before history display and before appending new events.
+- Legacy pre-chain databases are upgraded once. Databases already using the hash-chain schema fail closed if the chain or head is missing/corrupt; they are never silently resealed.
+- Personal backup creation verifies the Owner authentication event chain after snapshot migration and hashes the final snapshot bytes. Restore verifies the Owner authentication event chain after archive integrity checks.
+- Added regression tests for event mutation, event deletion/tail truncation, legacy migration, backup refusal on a corrupt Owner event chain, and restore rejection even when the archive manifest digest is recomputed.
+- Code-bearing head: `40d86044d04128a0de0a131166489b29af3996fb`.
+- Exact-head P73 Verification run #126: Python complete test suite PASS, compilation PASS, dependency audit PASS. Android/Desktop browser smoke is still running at the time of this record; do not call the complete workflow PASS until that job succeeds.
+- This local hash chain is tamper-evident, not independently immutable. An attacker controlling the complete local SQLite database can rewrite both event rows and the local head. No external anchor was added.
+
+**Disposition:** Owner authentication event history software hardening is implemented. Physical Android acceptance, owner-operated backup/restore on the intended device, real browser transport/egress qualification and independent security review remain external gates. Browser/Worker stay DISABLED; Auto-Run OFF. C01 remains OPEN; C02 NOT STARTED.

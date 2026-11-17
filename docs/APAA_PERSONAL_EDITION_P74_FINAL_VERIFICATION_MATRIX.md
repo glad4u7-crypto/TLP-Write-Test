@@ -12,9 +12,9 @@
 | Owner UI mutations | Explicit consent/approval argument on all nine mutation call sites; missing approval blocks before audit/dispatch | PASS — run #112 exact head |
 | Owner action history | Tenant-scoped metadata-only history; full audit-chain verification before display; tamper detection | PASS — run #112 exact head |
 | Owner passphrase UI | Rotation revokes session; new passphrase required for re-login | PASS — run #112 exact head |
-| Owner authentication audit | Payload-free login/logout/lockout/passphrase events | IMPLEMENTED; local event table not independently tamper-proof |
+| Owner authentication audit | Payload-free events, full SHA-256 chain + stored local head; verify before display/append and during backup/restore | IMPLEMENTED; exact-head Python suite PASS at `40d86044d04128a0de0a131166489b29af3996fb`; tamper-evident, not externally immutable |
 | Audit | Intent-before-dispatch, metadata-only records, fail-closed behavior | PASS |
-| Backup/restore | Archive validation, integrity, atomic restore and key rotation | PASS |
+| Backup/restore | Archive validation, SQLite integrity, action-audit chain + Owner-auth event chain verification, atomic restore and key rotation | Automated tests PASS on code head `40d86044d04128a0de0a131166489b29af3996fb`; owner-operated device drill NOT RUN |
 | Dependency security | pip-audit on exact tested head | PASS |
 | Python regression | Full suite on exact head `b975d14f351bf42d72940fcea54103a2b4b384fe` | PASS — 1,417 passed, 9 skipped; run #112 |
 | Browser smoke | Android/desktop Chromium login-aware viewport and workflow checks | PASS — 9 passed; run #112 |
@@ -25,6 +25,12 @@
 | Local key protection | Owner-only local signing-key file, backup exclusion and restore key rotation | Automated PASS |
 | Enterprise key custody/anti-rollback | HSM/TPM and independent remote anchor | DEFERRED; not a Personal Edition gate |
 | Real-host egress | Host/network enforcement and bypass testing | NOT RUN |
+
+## Latest Owner authentication hardening evidence
+
+- P77 code head: `40d86044d04128a0de0a131166489b29af3996fb`.
+- P73 Verification run #126: Python complete suite, compile and dependency audit PASS; responsive Android/Desktop browser smoke was still running when this matrix update was prepared. Re-check the exact-head workflow before marking the complete workflow PASS.
+- Owner-auth event history now uses a local SHA-256 chain and separately stored local head. It detects row mutation and tail deletion but is not an independent external anchor.
 
 ## Evidence rules
 - Every PASS identifies exact commit SHA, command/workflow, date and result.
