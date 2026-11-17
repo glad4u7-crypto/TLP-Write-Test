@@ -122,3 +122,11 @@ This checkpoint does not modify production configuration, delete existing securi
 - P80 remains **NO-GO** until P78, latest exact-head CI, Owner recovery UI for uncertain outcomes, physical Android acceptance, Owner-operated backup/restore drill, independent security review and explicit Owner acceptance are complete.
 
 **Current safety posture:** PR #13 remains Draft/Open/Unmerged. No merge/deploy; Browser/Worker DISABLED; Auto-Run OFF; no paid providers, payments, purchases, trading or money movement.
+
+
+## P78 implementation checkpoint — 2026-11-17
+
+- Owner Recovery UI and atomic audited reconciliation are implemented.
+- Bounded read-only adapter registry and secure project-file inspection are implemented.
+- Injected web/HTTPS/YouTube provider adapters are contracts/wrappers only; no network provider is enabled.
+- Exact-head CI is pending. Do not mark P78 automated-PASS until the exact latest branch head completes successfully.
