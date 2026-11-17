@@ -496,6 +496,9 @@ class BrowserExecutionCoordinator:
             result = outcome.get("result")
             cleanup_mode = "browser_context_destroyed"  # run() returned after context/profile teardown.
             if self._clock() > deadline:
+                if self._recovery_ledger is not None:
+                    self._recovery_ledger.transition(job.job_id, "timed_out", outcome_code="hard_deadline")
+                    ledger_state = "timed_out"
                 self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
