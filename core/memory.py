@@ -98,6 +98,16 @@ class SavedTaskPlan:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class TaskPlanStepProgress:
+    project_id: str
+    plan_id: str
+    step_id: str
+    title: str
+    status: str
+    updated_at: str
+
+
 class SQLiteMemoryStore:
     """Private local store; every read/write is scoped to an explicit TenantKey.
 
@@ -194,6 +204,14 @@ class SQLiteMemoryStore:
                 UNIQUE(issuer, subject, project_id, plan_id))""",
             """CREATE INDEX IF NOT EXISTS idx_saved_task_plans_latest
                 ON saved_task_plans(issuer, subject, project_id, updated_at)""",
+            """CREATE TABLE IF NOT EXISTS task_plan_step_progress (
+                issuer TEXT NOT NULL, subject TEXT NOT NULL, project_id TEXT NOT NULL,
+                plan_id TEXT NOT NULL, step_id TEXT NOT NULL, title TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('pending','completed')),
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(issuer, subject, project_id, plan_id, step_id))""",
+            """CREATE INDEX IF NOT EXISTS idx_task_plan_progress_latest
+                ON task_plan_step_progress(issuer, subject, project_id, plan_id)""",
         ]
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
@@ -537,6 +555,56 @@ class SQLiteMemoryStore:
             )
             for row in rows
         ]
+
+    def set_task_plan_step_progress(
+        self, tenant: TenantKey, *, project_id: str, plan_id: str,
+        step_id: str, title: str, completed: bool, consent: bool = False,
+    ) -> TaskPlanStepProgress:
+        """Persist one explicit Owner-reviewed plan-step status; never executes work."""
+        self._require_consent(consent)
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if not isinstance(plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", plan_id) is None:
+            raise ValueError("Task plan ID is invalid.")
+        if not isinstance(step_id, str) or re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", step_id) is None:
+            raise ValueError("Task step ID is invalid.")
+        title = _validate_text(title, "Task step title", 200)
+        if type(completed) is not bool:
+            raise TypeError("completed must be a boolean.")
+        status = "completed" if completed else "pending"
+        updated_at = _now()
+        with closing(self._connect()) as db:
+            db.execute(
+                """INSERT INTO task_plan_step_progress
+                   (issuer,subject,project_id,plan_id,step_id,title,status,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(issuer,subject,project_id,plan_id,step_id)
+                   DO UPDATE SET title=excluded.title,status=excluded.status,
+                                 updated_at=excluded.updated_at""",
+                (issuer, subject, project_id, plan_id, step_id, title, status, updated_at),
+            )
+        return TaskPlanStepProgress(project_id, plan_id, step_id, title, status, updated_at)
+
+    def list_task_plan_step_progress(
+        self, tenant: TenantKey, *, project_id: str, plan_id: str, limit: int = 100,
+    ) -> tuple[TaskPlanStepProgress, ...]:
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if not isinstance(plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", plan_id) is None:
+            raise ValueError("Task plan ID is invalid.")
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("Progress limit must be between 1 and 200.")
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                """SELECT * FROM task_plan_step_progress
+                   WHERE issuer=? AND subject=? AND project_id=? AND plan_id=?
+                   ORDER BY step_id LIMIT ?""",
+                (issuer, subject, project_id, plan_id, limit),
+            ).fetchall()
+        return tuple(TaskPlanStepProgress(
+            row["project_id"], row["plan_id"], row["step_id"],
+            row["title"], row["status"], row["updated_at"],
+        ) for row in rows)
 
     def delete_task_plan(
         self, tenant: TenantKey, *, project_id: str, plan_id: str, consent: bool = False,
