@@ -1,5 +1,6 @@
 name: APAA P74 real OCI Chromium worker
-# Chromium FD diagnosis uses read-only bounded host procfs snapshots; sandbox policy is unchanged.\n# The gated disposable-host run is opt-in and uses only this ephemeral runner.
+# Chromium FD diagnosis uses read-only bounded host procfs snapshots; sandbox policy is unchanged.
+# The gated disposable-host run is opt-in and uses only this ephemeral runner.
 
 on:
   push:
