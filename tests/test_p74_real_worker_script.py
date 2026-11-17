@@ -298,3 +298,11 @@ def test_command_timeout_diagnostics_are_redacted(monkeypatch):
 
     assert "timeout-secret" not in str(error.value)
     assert "[REDACTED]" in str(error.value)
+
+
+def test_chromium_worker_disables_histogram_shared_memory_fd_handoff():
+    import inspect
+
+    source = inspect.getsource(qualification)
+    assert source.count("--disable-features=PassHistogramSharedMemoryOnLaunch") >= 3
+    assert '"--no-sandbox"' not in source
