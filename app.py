@@ -180,7 +180,8 @@ else:
                 if local_owner_auth.authenticate(owner_passphrase):
                     st.session_state["apaa_local_authenticated_at"] = now
                     st.session_state["apaa_local_last_activity"] = now
-                    st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
+                    # The identity binder creates a fresh approval scope only
+                    # after it has cleared any orphaned prior-session state.
                     st.rerun()
                 st.error("Owner authentication failed or is temporarily locked.")
             except (ValueError, OSError, sqlite3.Error) as exc:
