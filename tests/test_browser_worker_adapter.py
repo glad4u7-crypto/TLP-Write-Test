@@ -155,7 +155,7 @@ def test_worker_cleanup_runs_when_snapshot_collection_fails(monkeypatch):
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP], cleanup_wait_seconds=2,
     )
-    with pytest.raises(BrowserWorkerBootstrapError, match="trusted host snapshot source"):
+    with pytest.raises(BrowserWorkerBootstrapError, match="failed closed"):
         execute(worker)
     assert [call[0] for call in backend.calls] == ["provision", "snapshot", "destroy"]
 
@@ -174,7 +174,7 @@ def test_worker_refuses_missing_or_invalid_backend_before_any_execution():
 def test_invalid_snapshot_source_fails_closed_and_destroys_worker(monkeypatch):
     backend = FakeBackend(source=object())
     worker, backend, _ = make_adapter(monkeypatch, backend)
-    with pytest.raises(BrowserWorkerBootstrapError, match="failed closed"):
+    with pytest.raises(BrowserWorkerBootstrapError, match="trusted host snapshot source"):
         execute(worker)
     assert [call[0] for call in backend.calls] == ["provision", "snapshot", "destroy"]
 
