@@ -99,7 +99,7 @@ class PodmanOCIRuntime:
     def _cleanup_partial_create(self, launch_token: str, known_ids: set[str]) -> bool:
         try:
             result = self._invoke([
-                "ps", "--all", "--quiet", "--filter", f"label=org.apaa.launch={launch_token}"
+                "ps", "--all", "--quiet", "--no-trunc", "--filter", f"label=org.apaa.launch={launch_token}"
             ])
         except OCIRuntimeError:
             return False
