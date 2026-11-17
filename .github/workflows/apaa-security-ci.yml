@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 15
     env:
       # Keep Playwright's installed browser path stable when TLS tests isolate HOME.
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/apaa-playwright-browsers
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
     steps:
       - name: Checkout
         uses: actions/checkout@v4
