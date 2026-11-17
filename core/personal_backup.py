@@ -445,7 +445,7 @@ def restore_personal_backup(
                     decoded = target.read_text(encoding="utf-8")
                 except (UnicodeError, OSError):
                     raise PersonalBackupError("Restored project file is not valid UTF-8.") from None
-                if "\\x00" in decoded:
+                if "\x00" in decoded:
                     raise PersonalBackupError("Restored project file contains binary data.")
                 os.chmod(target, 0o600)
 
