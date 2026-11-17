@@ -208,6 +208,11 @@ class PodmanWorkerObserver:
         if not re.fullmatch(r"[0-9a-fA-F]+", cap_eff) or int(cap_eff, 16) != 0:
             raise WorkerObservationError("kernel reports effective Linux capabilities in the worker")
         image_id = inspected.get("Image")
+        # Podman versions may expose the immutable local image ID either as
+        # sha256:<hex> or as the bare 64-character digest. Normalize only that
+        # exact representation; never accept a tag, short ID or mutable name.
+        if type(image_id) is str and re.fullmatch(r"[0-9a-f]{64}", image_id):
+            image_id = "sha256:" + image_id
         if type(image_id) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
             raise WorkerObservationError("OCI runtime did not report a canonical immutable image ID")
         if spec.image.startswith("sha256:") and image_id != spec.image:
