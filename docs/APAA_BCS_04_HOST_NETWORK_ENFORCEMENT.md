@@ -543,3 +543,18 @@ branch head must complete successfully before this work can be called CI-verifie
   automatic replay or automatic latch reset is provided.
 - Browser/Worker dispatch and Public Live Browsing remain disabled; Auto-Run
   remains OFF. No merge or deployment.
+
+
+### Run #200 — user namespaces are available, but Chromium's chroot sandbox still fails
+
+The in-container `unshare(CLONE_NEWUSER)` probe succeeded under the existing
+deny-by-default seccomp profile, so the host kernel and container policy permit
+unprivileged user namespaces. Chromium nevertheless failed at its zygote
+`chroot` step; the earlier probe did not establish UID/GID mapping or
+`CAP_SYS_CHROOT` inside the newly created namespace. The next harness version
+tests the complete unprivileged UID/GID-map plus chroot sequence, captures the
+relevant seccomp syscall rules under a separate evidence field, and retains the
+bounded tail of Chromium's sandbox diagnostics. No capabilities or seccomp
+permissions have been broadened.
+
+The complete user-namespace mapping/chroot probe is queued for exact-head CI and a new disposable-host run.
