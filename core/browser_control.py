@@ -111,9 +111,11 @@ class BrowserControlBoundary:
             "and verified isolated-worker egress evidence are not configured."
         )
 
-    def _record_audit(self, reason: str) -> None:
+    def _record_audit(
+        self, reason: str, *, action: str = BROWSER_APPROVAL_ACTION, succeeded: bool = False
+    ) -> None:
         try:
-            self._audit_log.append(create_audit_event(BROWSER_APPROVAL_ACTION, False, reason))
+            self._audit_log.append(create_audit_event(action, succeeded, reason))
         except Exception as exc:
             raise BrowserControlSecurityError(
                 "Action Audit persistence failed; browser control was blocked."
@@ -162,7 +164,7 @@ class BrowserControlBoundary:
         ttl = min(BROWSER_APPROVAL_TTL_SECONDS, remaining)
         if ttl < 1:
             raise BrowserControlSecurityError("Browser job has expired.")
-        self._record_audit("browser_approval_requested")
+        self._record_audit("browser_approval_requested_pending", action="browser_approval")
         receipt = self._approval_authority.issue(
             BROWSER_APPROVAL_ACTION,
             _job_payload(job),
@@ -170,7 +172,7 @@ class BrowserControlBoundary:
             tenant=self._tenant,
             session_scope=self._session_scope,
         )
-        self._record_audit("browser_approval_issued")
+        self._record_audit("browser_approval_issued", action="browser_approval", succeeded=True)
         return receipt
 
     def dispatch(
@@ -189,7 +191,7 @@ class BrowserControlBoundary:
         try:
             self._require_active_owner()
         except BrowserControlSecurityError:
-            self._record_audit("browser_dispatch_owner_session_denied")
+            self._record_audit("browser_dispatch_owner_session_denied", action=BROWSER_APPROVAL_ACTION)
             raise
         current = int(time.time()) if now is None else now
         if type(current) is not int or current < 0:
@@ -197,7 +199,7 @@ class BrowserControlBoundary:
         try:
             job = validate_browser_job(raw_job, now=current)
         except (TypeError, ValueError):
-            self._record_audit("browser_dispatch_job_validation_denied")
+            self._record_audit("browser_dispatch_job_validation_denied", action=BROWSER_APPROVAL_ACTION)
             raise
         return self._gateway.execute(
             BROWSER_APPROVAL_ACTION,
