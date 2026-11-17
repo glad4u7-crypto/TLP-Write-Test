@@ -432,3 +432,21 @@ def test_gateway_handler_failure_marks_request_uncertain_and_blocks_retry(tmp_pa
     assert "uncertain outcome" in second.reason
     assert calls == [payload]
     assert store.list_unresolved_executions(tenant)[0]["status"] == "uncertain"
+
+
+def test_gateway_dispatches_a_private_snapshot_of_the_approved_payload():
+    authority = ApprovalAuthority()
+    payload = {"path": "safe.txt", "metadata": {"tags": ["original"]}}
+    seen = []
+    def handler(snapshot):
+        seen.append(snapshot)
+        snapshot["metadata"]["tags"].append("handler-change")
+        return "ok"
+    gateway = ExecutionGateway({"write_file": handler}, approval_authority=authority)
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert seen[0] is not payload
+    assert payload["metadata"]["tags"] == ["original"]
