@@ -87,6 +87,17 @@ class TaskCheckpoint:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class SavedTaskPlan:
+    saved_plan_id: str
+    project_id: str
+    plan_id: str
+    task_description: str
+    plan_json: str
+    created_at: str
+    updated_at: str
+
+
 class SQLiteMemoryStore:
     """Private local store; every read/write is scoped to an explicit TenantKey.
 
@@ -176,6 +187,13 @@ class SQLiteMemoryStore:
                 updated_at TEXT NOT NULL)""",
             """CREATE INDEX IF NOT EXISTS idx_checkpoint_latest
                 ON task_checkpoints(issuer, subject, project_id, updated_at)""",
+            """CREATE TABLE IF NOT EXISTS saved_task_plans (
+                saved_plan_id TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
+                project_id TEXT NOT NULL, plan_id TEXT NOT NULL, task_description TEXT NOT NULL,
+                plan_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(issuer, subject, project_id, plan_id))""",
+            """CREATE INDEX IF NOT EXISTS idx_saved_task_plans_latest
+                ON saved_task_plans(issuer, subject, project_id, updated_at)""",
         ]
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
@@ -431,6 +449,85 @@ class SQLiteMemoryStore:
             return None
         return TaskCheckpoint(row["checkpoint_id"], row["project_id"], row["label"],
             row["summary"], row["next_action"], row["status"], row["created_at"], row["updated_at"])
+
+    def save_task_plan(
+        self, tenant: TenantKey, *, project_id: str, plan_id: str,
+        task_description: str, plan: dict[str, object], consent: bool = False,
+    ) -> SavedTaskPlan:
+        """Persist a reviewable plan only after explicit Owner consent."""
+        self._require_consent(consent)
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if not isinstance(plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", plan_id) is None:
+            raise ValueError("Task plan ID is invalid.")
+        task_description = _validate_text(task_description, "Task description", 4000)
+        if not isinstance(plan, dict) or plan.get("plan_id") != plan_id:
+            raise ValueError("Task plan snapshot does not match its plan ID.")
+        if plan.get("task_description") != task_description:
+            raise ValueError("Task plan snapshot does not match its description.")
+        encoded = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        if len(encoded) > 100000 or _SECRET_PATTERN.search(encoded):
+            raise ValueError("Task plan is too large or resembles a credential.")
+        now = _now()
+        with closing(self._connect()) as db:
+            existing = db.execute(
+                """SELECT saved_plan_id, created_at FROM saved_task_plans
+                   WHERE issuer=? AND subject=? AND project_id=? AND plan_id=?""",
+                (issuer, subject, project_id, plan_id),
+            ).fetchone()
+            if existing:
+                saved_plan_id, created_at = existing["saved_plan_id"], existing["created_at"]
+                db.execute(
+                    """UPDATE saved_task_plans SET task_description=?, plan_json=?, updated_at=?
+                       WHERE issuer=? AND subject=? AND project_id=? AND plan_id=?""",
+                    (task_description, encoded, now, issuer, subject, project_id, plan_id),
+                )
+            else:
+                saved_plan_id, created_at = str(uuid4()), now
+                db.execute(
+                    """INSERT INTO saved_task_plans VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (saved_plan_id, issuer, subject, project_id, plan_id,
+                     task_description, encoded, created_at, now),
+                )
+        return SavedTaskPlan(
+            saved_plan_id, project_id, plan_id, task_description, encoded, created_at, now
+        )
+
+    def list_task_plans(
+        self, tenant: TenantKey, *, project_id: str, limit: int = 50,
+    ) -> list[SavedTaskPlan]:
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Task plan limit must be between 1 and 100.")
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                """SELECT * FROM saved_task_plans WHERE issuer=? AND subject=? AND project_id=?
+                   ORDER BY updated_at DESC, saved_plan_id LIMIT ?""",
+                (issuer, subject, project_id, limit),
+            ).fetchall()
+        return [
+            SavedTaskPlan(
+                row["saved_plan_id"], row["project_id"], row["plan_id"],
+                row["task_description"], row["plan_json"], row["created_at"], row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    def delete_task_plan(
+        self, tenant: TenantKey, *, project_id: str, plan_id: str, consent: bool = False,
+    ) -> bool:
+        self._require_consent(consent)
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if not isinstance(plan_id, str) or re.fullmatch(r"plan-[0-9a-f]{16}", plan_id) is None:
+            raise ValueError("Task plan ID is invalid.")
+        with closing(self._connect()) as db:
+            cur = db.execute(
+                "DELETE FROM saved_task_plans WHERE issuer=? AND subject=? AND project_id=? AND plan_id=?",
+                (issuer, subject, project_id, plan_id),
+            )
+        return cur.rowcount == 1
 
     def purge_expired_memories(self, tenant: TenantKey) -> int:
         issuer, subject = self._tenant(tenant)
