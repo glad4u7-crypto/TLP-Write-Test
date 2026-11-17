@@ -179,10 +179,8 @@ class PodmanWorkerObserver:
         if not parent:
             raise WorkerObservationError("an explicit delegated cgroup parent is required")
         expected_parent = "/" + str(Path(parent).relative_to("/sys/fs/cgroup")).strip("/")
-        if cgroup_path != expected_parent and not cgroup_path.startswith(expected_parent.rstrip("/") + "/"):
-            raise WorkerObservationError(
-                f"worker process cgroup {cgroup_path!r} is outside dedicated subtree {expected_parent!r}"
-            )
+        # Procfs paths can be namespace-relative; prove actual membership
+        # from the host cgroup.procs files instead of trusting that string.
         parent_dir = self.cgroup_root / expected_parent.lstrip("/")
         try:
             cgroup_dir, cgroup_path = self._locate_pid_cgroup(
