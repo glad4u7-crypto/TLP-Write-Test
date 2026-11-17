@@ -13,8 +13,7 @@ def _store(tmp_path):
 def test_owner_auth_is_unconfigured_until_explicit_first_run_setup(tmp_path):
     store = _store(tmp_path)
     assert store.is_configured() is False
-    with pytest.raises(ValueError):
-        store.authenticate("not configured")
+    assert store.authenticate("not configured") is False
     store.configure("correct horse battery staple", "correct horse battery staple")
     assert store.is_configured() is True
 
