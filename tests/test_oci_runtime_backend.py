@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from core.cgroup_seccomp_provisioner import IsolationEnforcementError
 from core.oci_runtime_backend import (
     OCIWorkerSpec,
     OCIRuntimeError,
@@ -93,7 +94,7 @@ def test_create_rejects_permissive_seccomp_before_runtime_call(tmp_path):
     }))
     runner = FakeRunner([])
     runtime = PodmanOCIRuntime(runner=runner)
-    with pytest.raises(Exception, match="deny unknown system calls"):
+    with pytest.raises(IsolationEnforcementError, match="deny unknown system calls"):
         runtime.create(spec(seccomp_profile=str(profile)))
     assert runner.calls == []
 
