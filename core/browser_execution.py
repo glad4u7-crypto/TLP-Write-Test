@@ -284,7 +284,7 @@ class BrowserExecutionCoordinator:
             self._active[job.job_id] = (token, session_id, termination_confirmed)
 
         deadline = self._clock() + job.max_runtime_seconds
-        worker_exit_confirmed = False
+        cleanup_mode: str | None = None
         try:
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
             token.raise_if_cancelled()
@@ -325,7 +325,7 @@ class BrowserExecutionCoordinator:
                 try:
                     if self._worker.terminate(session_id) is not True:
                         raise BrowserExecutionError("Worker termination was not confirmed.")
-                    worker_exit_confirmed = True
+                    cleanup_mode = "worker_process_exit_confirmed"
                 except Exception as exc:
                     self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
                     raise BrowserExecutionError("Timed-out browser worker could not be terminated.") from exc
@@ -339,12 +339,12 @@ class BrowserExecutionCoordinator:
                 token.cancel()
                 if self._worker.terminate(session_id) is not True:
                     raise BrowserExecutionError("Worker termination was not confirmed.")
-                worker_exit_confirmed = True
+                cleanup_mode = "worker_process_exit_confirmed"
                 self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
                 raise BrowserExecutionError("Worker returned an invalid result envelope.")
-            worker_exit_confirmed = True  # run() contract: context/profile teardown completed.
+            cleanup_mode = "browser_context_destroyed"  # run() contract: context/profile teardown completed.
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return dict(result)
         except BrowserCancelled:
@@ -358,12 +358,13 @@ class BrowserExecutionCoordinator:
         finally:
             with self._lock:
                 self._active.pop(job.job_id, None)
-            worker_exit_confirmed = worker_exit_confirmed or termination_confirmed.is_set()
+            if termination_confirmed.is_set():
+                cleanup_mode = "worker_process_exit_confirmed"
             try:
                 self._record(
-                    "session_closed" if worker_exit_confirmed else "session_cleanup_unconfirmed",
+                    "session_closed" if cleanup_mode is not None else "session_cleanup_unconfirmed",
                     job_id=job.job_id, session_id=session_id,
-                    detail="worker_exit_confirmed" if worker_exit_confirmed else "termination_not_confirmed",
+                    detail=cleanup_mode or "termination_not_confirmed",
                 )
             except Exception as exc:
                 # Audit integrity is mandatory: never silently swallow it.
