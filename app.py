@@ -551,9 +551,9 @@ with st.sidebar:
                 "Read-only preflight for this device's private APAA data. "
                 "It never creates, repairs, or changes databases or keys."
             )
-            if st.button("Run local health checks", key="apaa_run_local_diagnostics"):
-                st.session_state["apaa_run_local_diagnostics"] = True
-            if st.session_state.get("apaa_run_local_diagnostics"):
+            if st.button("Run local health checks", key="apaa_run_local_diagnostics_button"):
+                st.session_state["apaa_show_local_diagnostics"] = True
+            if st.session_state.get("apaa_show_local_diagnostics"):
                 try:
                     diagnostic_results = inspect_personal_runtime(personal_data_dir)
                     passed, failed, info = diagnostics_summary(diagnostic_results)
