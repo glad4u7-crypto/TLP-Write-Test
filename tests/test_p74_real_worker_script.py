@@ -120,3 +120,41 @@ def test_proxy_outage_probe_records_failure_without_leaking_response(monkeypatch
     assert evidence["allowed_marker_absent"] is True
     assert evidence["exit_code"] == 1
     assert len(evidence["output_sha256"]) == 64
+
+
+def test_direct_egress_probe_requires_socket_level_network_denial(monkeypatch):
+    from subprocess import CompletedProcess
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda command, **kwargs: CompletedProcess(command, 1, "", "TimeoutError: timed out"),
+    )
+    evidence = qualification._probe_blocked(["podman", "exec", "id", "python3"], "direct TCP")
+    assert evidence["denial"] == "timeout"
+    assert len(evidence["output_sha256"]) == 64
+
+
+def test_direct_egress_probe_rejects_runtime_or_executable_failure(monkeypatch):
+    from subprocess import CompletedProcess
+    import pytest
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda command, **kwargs: CompletedProcess(command, 125, "", "Error: container is not running"),
+    )
+    with pytest.raises(RuntimeError, match="recognized socket-level denial"):
+        qualification._probe_blocked(["podman", "exec", "id", "python3"], "direct TCP")
+
+
+def test_qualification_command_error_identifies_action_and_redacts_url(monkeypatch):
+    from subprocess import CompletedProcess
+    import pytest
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda command, **kwargs: CompletedProcess(command, 126, "", "failed https://example.invalid/path?token=secret"),
+    )
+    with pytest.raises(RuntimeError) as error:
+        qualification._run(["podman", "exec", "--user", "65532:65532", "id", "/usr/bin/chromium"])
+    assert "podman exec chromium" in str(error.value)
+    assert "secret" not in str(error.value)
