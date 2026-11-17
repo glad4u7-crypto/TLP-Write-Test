@@ -11,12 +11,13 @@ START_TICKS = 123456
 
 
 class FakeRuntimeProvider:
-    def __init__(self, *, pid=PID, start_ticks=START_TICKS, runtime_id="runtime:host-01", worker_id="worker:host-01"):
+    def __init__(self, *, pid=PID, start_ticks=START_TICKS, runtime_id="runtime:host-01", worker_id="worker:host-01", attestation_worker_id=None):
         self.pid, self.start_ticks = pid, start_ticks
         self.runtime_id, self.worker_id = runtime_id, worker_id
+        self.attestation_worker_id = attestation_worker_id or worker_id
 
     def read_runtime_attestation(self):
-        return {"runtime_id": self.runtime_id, "worker_id": self.worker_id,
+        return {"runtime_id": self.runtime_id, "worker_id": self.attestation_worker_id,
                 "state": "created", "process_started": False}
 
     def read_worker_process_identity(self):
@@ -95,7 +96,7 @@ def test_linux_source_requires_exactly_one_non_loopback_interface(tmp_path):
 
 
 def test_linux_source_rejects_runtime_process_identity_mismatch(tmp_path):
-    source, calls = make_source(tmp_path, provider=FakeRuntimeProvider(worker_id="worker:other-01"))
+    source, calls = make_source(tmp_path, provider=FakeRuntimeProvider(attestation_worker_id="worker:other-01"))
     with pytest.raises(HostCollectionError, match="does not match"):
         source.read_network_namespace_identity()
     assert calls == []
