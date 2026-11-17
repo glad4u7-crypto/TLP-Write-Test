@@ -17,9 +17,11 @@
 | Python regression | Full suite on prior exact tested head | PASS; new Owner/action-approval changes require fresh exact-head run |
 | Browser smoke | Android/desktop Chromium login-aware viewport and workflow checks | Fixtures corrected to authenticate Owner; fresh exact-head run PENDING |
 | Browser execution | Security-qualified implementation and independent review | NOT IMPLEMENTED; DISABLED |
-| Android | Physical A01–A12 | NOT RUN |
-| Live identity | HTTPS/OIDC login, logout, expiry, second-account denial and revocation | NOT RUN |
-| Key custody/anti-rollback | Independent protected key and remote anchor verification | NOT RUN |
+| Android | Physical A01–A12 on the actual phone using local Owner authentication | NOT RUN; Termux/runtime compatibility unqualified |
+| Local Owner identity | Passphrase setup/login, lockout, logout, idle/absolute expiry and identity-bound session cleanup | Automated PASS; physical Android run NOT RUN |
+| Remote OIDC | HTTPS/OIDC and second-account grant/revoke for a future remote deployment | OUT OF CURRENT PERSONAL EDITION SCOPE |
+| Local key protection | Owner-only local signing-key file, backup exclusion and restore key rotation | Automated PASS |
+| Enterprise key custody/anti-rollback | HSM/TPM and independent remote anchor | DEFERRED; not a Personal Edition gate |
 | Real-host egress | Host/network enforcement and bypass testing | NOT RUN |
 
 ## Evidence rules
@@ -32,7 +34,7 @@
 - Missing environment or unavailable device is BLOCKED/NOT RUN, never PASS.
 
 ## Final acceptance criteria
-Call the repository verified only when all applicable exact-head automated checks pass. Call it physically accepted only after owner-operated Android and recovery tests pass. Call it security-qualified only after browser/network, identity, protected-key, anti-rollback and independent-review gates have evidence.
+Call the repository verified only when all applicable exact-head automated checks pass. Call it physically accepted only after owner-operated Android and recovery tests pass. Call Browser Control security-qualified only after browser/network transport, host egress enforcement and independent review have evidence. Enterprise HSM/TPM and remote anti-rollback are deferred from Personal Edition.
 
 C01 remains OPEN until mandatory gates are independently evidenced and the owner approves closure. C02 must not start before C01 completion and explicit owner approval.
 
