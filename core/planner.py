@@ -266,7 +266,7 @@ def task_plan_from_dict(value: object) -> TaskPlan:
     }
     if set(value) != expected:
         raise ValueError("Persisted task plan fields are invalid.")
-    if not isinstance(value["steps"], list):
+    if not isinstance(value["steps"], (list, tuple)):
         raise ValueError("Persisted task plan steps must be a list.")
     steps = []
     for item in value["steps"]:
@@ -291,7 +291,7 @@ def task_plan_from_dict(value: object) -> TaskPlan:
     sequences = {}
     for field_name in sequence_fields:
         field_value = value[field_name]
-        if not isinstance(field_value, list):
+        if not isinstance(field_value, (list, tuple)):
             raise ValueError(f"Persisted {field_name} must be a list.")
         sequences[field_name] = tuple(field_value)
     try:
