@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import zipfile
 
@@ -141,3 +142,34 @@ def test_restore_never_overwrites_an_existing_data_directory(tmp_path):
     with pytest.raises(PersonalBackupError, match="must not already exist"):
         restore_personal_backup(backup, destination)
     assert marker.read_text(encoding="utf-8") == "do not overwrite"
+
+
+def test_restore_legacy_v1_backup_requires_fresh_owner_setup(tmp_path):
+    source_dir = tmp_path / "source"
+    _seed_runtime(source_dir)
+    current_backup = create_personal_backup(
+        source_dir, tmp_path / "exports" / "current.apaa-backup"
+    )
+    legacy_backup = tmp_path / "exports" / "legacy-v1.apaa-backup"
+    with zipfile.ZipFile(current_backup, "r") as source:
+        manifest = json.loads(source.read("manifest.json").decode("utf-8"))
+        manifest["version"] = 1
+        manifest["files"].pop("owner-auth.sqlite3")
+        with zipfile.ZipFile(legacy_backup, "w", compression=zipfile.ZIP_DEFLATED) as target:
+            for filename in ("projects.sqlite3", "security.sqlite3", "memory.sqlite3"):
+                target.writestr(filename, source.read(filename))
+            target.writestr(
+                "manifest.json",
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+            )
+    legacy_backup.chmod(0o600)
+    restore_parent = tmp_path / "restore-parent"
+    restore_parent.mkdir(mode=0o700)
+    restored_dir = restore_personal_backup(
+        legacy_backup, restore_parent / "legacy-restored"
+    )
+    restored_paths = personal_runtime_paths(restored_dir)
+    owner_auth = LocalOwnerAuthStore(restored_paths.owner_auth_db)
+    assert owner_auth.is_configured() is False
+    owner_auth.configure("new owner passphrase after restore", "new owner passphrase after restore")
+    assert owner_auth.authenticate("new owner passphrase after restore") is True
