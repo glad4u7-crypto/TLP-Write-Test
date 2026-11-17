@@ -176,7 +176,7 @@ def list_project_files(
                     decoded = content.decode("utf-8", errors="strict")
                 except UnicodeDecodeError:
                     continue
-                if "\\x00" in decoded or _SECRET_PATTERN.search(decoded):
+                if "\x00" in decoded or _SECRET_PATTERN.search(decoded):
                     continue
                 entries.append(ProjectFileEntry(
                     filename, len(content), hashlib.sha256(content).hexdigest()
