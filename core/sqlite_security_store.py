@@ -507,6 +507,42 @@ class SQLiteSecurityStore:
             except ValueError:
                 return False
 
+    def list_audit_events(
+        self, *, principal_fingerprint: str, limit: int = 50
+    ) -> tuple[dict[str, object], ...]:
+        """Read recent metadata-only events for one tenant after verifying the full chain."""
+        if (
+            type(principal_fingerprint) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", principal_fingerprint) is None
+        ):
+            raise ValueError("Audit principal fingerprint is invalid.")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Audit history limit must be between 1 and 1000.")
+        with closing(self._connect()) as connection:
+            # Never display a partial history as trustworthy when any row in
+            # the shared append-only chain has been altered.
+            self._verify_audit_connection(connection)
+            rows = connection.execute(
+                """SELECT sequence, timestamp, action, result, reason_code,
+                          request_id, entry_hash
+                   FROM durable_audit_events
+                   WHERE principal_fingerprint = ?
+                   ORDER BY sequence DESC LIMIT ?""",
+                (principal_fingerprint, limit),
+            ).fetchall()
+        return tuple(
+            {
+                "sequence": int(row["sequence"]),
+                "timestamp": str(row["timestamp"]),
+                "action": str(row["action"]),
+                "result": str(row["result"]),
+                "reason_code": str(row["reason_code"]),
+                "request_id": str(row["request_id"]),
+                "entry_hash": str(row["entry_hash"]),
+            }
+            for row in rows
+        )
+
     def last_audit_hash(self) -> str:
         with closing(self._connect()) as connection:
             return self._verify_audit_connection(connection)
@@ -572,3 +608,10 @@ class SQLiteExecutionAuditLog:
         if not self._store.verify_audit_chain():
             raise ValueError("SQLite audit hash chain verification failed.")
         return self._store.last_audit_hash()
+
+    def list_recent_events(self, *, limit: int = 50) -> tuple[dict[str, object], ...]:
+        """Return verified recent metadata for this exact owner/tenant only."""
+        return self._store.list_audit_events(
+            principal_fingerprint=self._principal_fingerprint,
+            limit=limit,
+        )
