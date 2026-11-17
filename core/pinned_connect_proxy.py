@@ -68,6 +68,7 @@ class PinnedConnectProxy:
                 owner._handle_client(self.request)
 
         class Server(socketserver.ThreadingTCPServer):
+            address_family = socket.AF_INET6 if ipaddress.ip_address(owner.bind_address).version == 6 else socket.AF_INET
             allow_reuse_address = False
             daemon_threads = True
             block_on_close = True
