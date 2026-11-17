@@ -82,6 +82,7 @@ def test_observer_rejects_pid_reuse_during_observation(tmp_path,monkeypatch):
  (lambda p:p["State"].update(Running=False),"not confirmed running"),
  (lambda p:p["Config"].update(User="0:0"),"non-root"),
  (lambda p:p.update(Image="latest"),"image ID"),
+ (lambda p:p.update(Image="sha256:"+"c"*64),"image ID"),
 ])
 def test_observer_rejects_mismatched_runtime_inspect(tmp_path,change,match):
     proc,cg,ns=make_fs(tmp_path)
