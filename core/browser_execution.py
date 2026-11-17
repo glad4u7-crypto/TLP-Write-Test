@@ -229,13 +229,23 @@ class BrowserExecutionCoordinator:
                 return False
             token, session_id = active
             changed = token.cancel()
-        self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
+        termination_error = None
         if self._worker is not None:
             try:
                 self._worker.terminate(session_id)
-            except Exception:
+            except Exception as exc:
+                termination_error = exc
+        audit_error = None
+        try:
+            self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
+            if termination_error is not None:
                 self._record("worker_terminate_error", job_id=job_id, session_id=session_id, detail="adapter_error")
-                raise BrowserExecutionError("Worker termination failed; job remains cancelled.")
+        except Exception as exc:
+            audit_error = exc
+        if termination_error is not None:
+            raise BrowserExecutionError("Worker termination failed; job remains cancelled.") from termination_error
+        if audit_error is not None:
+            raise BrowserExecutionError("Cancellation audit write failed after worker termination.") from audit_error
         return changed
 
     def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
@@ -293,7 +303,8 @@ class BrowserExecutionCoordinator:
                 daemon=True,
             )
             worker_thread.start()
-            if not completed.wait(timeout=job.max_runtime_seconds):
+            remaining = max(0.0, deadline - self._clock())
+            if not completed.wait(timeout=remaining):
                 token.cancel()
                 try:
                     self._worker.terminate(session_id)
