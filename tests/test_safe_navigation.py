@@ -8,8 +8,9 @@ PUBLIC = "93.184.216.34"
 
 
 class FakeRequest:
-    def __init__(self, url):
+    def __init__(self, url, redirected_from=None):
         self.url = url
+        self.redirected_from = redirected_from
 
 
 class FakeRoute:
@@ -187,3 +188,40 @@ def test_context_level_route_blocks_disallowed_redirect_or_subresource():
 def test_context_argument_must_expose_route():
     with pytest.raises(TypeError, match="context"):
         SafeNavigationController(FakePage(), make_policy(), context=object())
+
+
+def test_context_route_enforces_redirect_chain_depth_and_loop():
+    context = FakeContext()
+    page = FakePage(route_owner=context)
+    policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        resolver=lambda host: (PUBLIC,),
+        max_redirects=1,
+    )
+    controller = SafeNavigationController(page, policy, context=context)
+    first = FakeRequest("https://example.com/one")
+    second = FakeRequest("https://example.com/two", redirected_from=first)
+    third = FakeRequest("https://example.com/three", redirected_from=second)
+    route = FakeRoute(third)
+
+    controller.install()
+    context.handlers["**/*"](route)
+
+    assert route.aborted is True
+    controller.close()
+
+
+def test_context_route_rejects_redirect_loop_chain():
+    context = FakeContext()
+    page = FakePage(route_owner=context)
+    controller = SafeNavigationController(page, make_policy(), context=context)
+    first = FakeRequest("https://example.com/one")
+    second = FakeRequest("https://example.com/two", redirected_from=first)
+    loop = FakeRequest("https://example.com/one", redirected_from=second)
+    route = FakeRoute(loop)
+
+    controller.install()
+    context.handlers["**/*"](route)
+
+    assert route.aborted is True
+    controller.close()
