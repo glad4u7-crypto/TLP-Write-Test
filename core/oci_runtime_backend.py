@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 from typing import Callable, Sequence
 
+from core.cgroup_seccomp_provisioner import validate_seccomp_profile
+
 
 class OCIRuntimeError(RuntimeError):
     """Raised when an OCI operation fails or its result is untrustworthy."""
@@ -119,6 +121,7 @@ class PodmanOCIRuntime:
         return success
 
     def create(self, spec: OCIWorkerSpec) -> str:
+        validate_seccomp_profile(spec.seccomp_profile)
         launch_token = secrets.token_hex(16)
         with tempfile.TemporaryDirectory(prefix="apaa-oci-") as directory:
             cidfile = Path(directory) / "container.cid"
