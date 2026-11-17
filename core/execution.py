@@ -4,6 +4,8 @@ No shell, browser, network, device, or provider adapters are included.
 """
 from collections.abc import Callable, Mapping, Iterable
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -49,10 +51,17 @@ class ExecutionGateway:
         auto_run_actions: Iterable[str] = (),
         audit_log: JsonlAuditLog | None = None,
         session_scope: str = "",
+        idempotency_store: Any | None = None,
     ) -> None:
         self._handlers: dict[str, ActionHandler] = {}
         self._approval_authority = approval_authority
         self._audit_log = audit_log
+        self._idempotency_store = idempotency_store
+        if idempotency_store is not None and not all(
+            callable(getattr(idempotency_store, name, None))
+            for name in ("claim_execution", "finish_execution")
+        ):
+            raise TypeError("Idempotency store does not implement the required ledger contract.")
         if not isinstance(session_scope, str) or len(session_scope) > 256:
             raise ValueError("Execution session scope must be text of at most 256 characters.")
         self._session_scope = session_scope
@@ -119,8 +128,16 @@ class ExecutionGateway:
         approval_receipt: ApprovalReceipt | None = None,
         auto_run: bool = False,
         tenant: TenantKey | None = None,
+        idempotency_key: str | None = None,
+        cancellation_check: Callable[[], bool] | None = None,
     ) -> ExecutionResult:
-        """Run one handler only after policy + approval + durable intent audit."""
+        """Run one handler after policy, approval, idempotency and audit checks.
+
+        When a durable idempotency store is configured, every dispatch needs a
+        tenant-bound request key. Cancellation is checked immediately before
+        the handler starts; an already-running side effect is never claimed to
+        be cancellable. A crashed pending request is not automatically retried.
+        """
         if payload is not None and not isinstance(payload, Mapping):
             return self._finish(action, False, "Action payload must be a mapping.")
 
@@ -156,15 +173,69 @@ class ExecutionGateway:
                 action, False, "No trusted handler is registered for this action."
             )
 
+        ledger_claimed = False
+        if self._idempotency_store is not None:
+            if not isinstance(tenant, TenantKey) or not isinstance(idempotency_key, str):
+                return self._finish(
+                    action, False, "A validated owner and idempotency key are required."
+                )
+            try:
+                canonical_payload = json.dumps(
+                    payload or {}, sort_keys=True, separators=(",", ":"),
+                    ensure_ascii=False, allow_nan=False,
+                )
+                payload_digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+                claim = self._idempotency_store.claim_execution(
+                    tenant, idempotency_key, canonical, payload_digest
+                )
+            except Exception:
+                return self._finish(action, False, "Idempotency ledger unavailable; dispatch was blocked.")
+            if claim != "claimed":
+                reasons = {
+                    "pending": "This request is already pending; automatic retry is blocked.",
+                    "completed": "This request was already completed; duplicate dispatch is blocked.",
+                    "uncertain": "This request has an uncertain outcome; owner reconciliation is required.",
+                    "cancelled": "This request was cancelled and cannot be replayed.",
+                    "conflict": "This idempotency key is already bound to a different action or payload.",
+                }
+                return self._finish(
+                    action, False, reasons.get(claim, "Idempotency claim was rejected.")
+                )
+            ledger_claimed = True
+        elif idempotency_key is not None:
+            return self._finish(action, False, "An idempotency key cannot be used without a durable ledger.")
+
         # Persist intent before the side effect. Fail closed if audit is unavailable.
         intent, persisted = self._record(
             action, False, "authorized_dispatch_pending"
         )
         if not persisted:
+            if ledger_claimed:
+                try:
+                    self._idempotency_store.finish_execution(tenant, idempotency_key, "cancelled")
+                except Exception:
+                    pass
             return ExecutionResult(
                 False, "Audit persistence unavailable; action was not executed.",
                 None, intent,
             )
+
+        if cancellation_check is not None:
+            if not callable(cancellation_check):
+                if ledger_claimed:
+                    self._idempotency_store.finish_execution(tenant, idempotency_key, "cancelled")
+                return self._finish(action, False, "Cancellation control is invalid; dispatch was blocked.")
+            try:
+                cancelled = bool(cancellation_check())
+            except Exception:
+                cancelled = True
+            if cancelled:
+                if ledger_claimed:
+                    try:
+                        self._idempotency_store.finish_execution(tenant, idempotency_key, "cancelled")
+                    except Exception:
+                        pass
+                return self._finish(action, False, "Action cancelled before handler dispatch.")
 
         try:
             output = handler(payload or {})
@@ -172,23 +243,46 @@ class ExecutionGateway:
             completion, completed_persisted = self._record(
                 action, False, "registered_handler_failed"
             )
-            reason = "The registered action handler failed."
+            if ledger_claimed:
+                try:
+                    self._idempotency_store.finish_execution(tenant, idempotency_key, "uncertain")
+                except Exception:
+                    pass
+            reason = "The registered action handler failed; outcome may require owner reconciliation."
             if not completed_persisted:
-                reason = "The handler failed and completion audit persistence failed."
+                reason = "The handler failed and completion audit persistence failed; owner reconciliation is required."
             return ExecutionResult(False, reason, None, completion)
 
         completion, completed_persisted = self._record(
             action, True, "action_executed"
         )
         if not completed_persisted:
-            # The side effect already happened; the durable intent record remains.
+            if ledger_claimed:
+                try:
+                    self._idempotency_store.finish_execution(tenant, idempotency_key, "uncertain")
+                except Exception:
+                    pass
             return ExecutionResult(
                 True,
                 "Action executed; completion audit persistence failed. Manual review required.",
                 output,
                 completion,
             )
+        if ledger_claimed:
+            try:
+                finished = self._idempotency_store.finish_execution(
+                    tenant, idempotency_key, "completed"
+                )
+            except Exception:
+                finished = False
+            if not finished:
+                return ExecutionResult(
+                    True,
+                    "Action executed but idempotency completion could not be persisted. Manual review required.",
+                    output,
+                    completion,
+                )
         return ExecutionResult(
-            True, "Action executed after permission and audit checks.",
+            True, "Action executed after permission, idempotency and audit checks.",
             output, completion,
         )
