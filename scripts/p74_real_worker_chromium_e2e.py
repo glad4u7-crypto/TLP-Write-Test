@@ -236,7 +236,13 @@ def _run_chromium_with_fd_snapshots(
         except ProcessLookupError:
             pass
         process.wait()
+        for reader in readers:
+            reader.join(timeout=2)
         raise
+    for reader in readers:
+        reader.join(timeout=5)
+    stdout = "".join(captured["stdout"])
+    stderr = "".join(captured["stderr"])
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     summary = {
         "snapshot_count": len(snapshots),
