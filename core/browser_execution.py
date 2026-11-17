@@ -311,8 +311,16 @@ class BrowserExecutionCoordinator:
                 daemon=True,
             )
             worker_thread.start()
-            remaining = max(0.0, deadline - self._clock())
-            if not completed.wait(timeout=remaining):
+            timed_out = False
+            while not completed.is_set():
+                remaining = deadline - self._clock()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                completed.wait(timeout=min(remaining, 0.05))
+                if token.cancelled:
+                    break
+            if timed_out:
                 token.cancel()
                 try:
                     if self._worker.terminate(session_id) is not True:
