@@ -127,3 +127,20 @@ def test_unconfirmed_cancellation_marks_job_interrupted_and_blocks_dispatch(tmp_
     assert ledger.get("job_cancel_unconfirmed01")["state"] == "interrupted"
     assert ledger.dispatch_blocked() is True
     assert any(event["event"] == "job_cancel_unconfirmed" for event in events)
+
+
+def test_restart_recovery_latches_dispatch_when_orphan_review_is_required(tmp_path):
+    ledger = private_ledger(tmp_path)
+    ledger.claim("job_crash_orphan001", "2" * 64, session_id="orphan-session-0001")
+    ledger.transition("job_crash_orphan001", "running")
+
+    worker = Worker()
+    coordinator = BrowserExecutionCoordinator(worker, audit=lambda event: None, recovery_ledger=ledger)
+    interrupted = coordinator.recover_interrupted_jobs()
+
+    assert interrupted == ["job_crash_orphan001"]
+    assert ledger.get("job_crash_orphan001")["state"] == "interrupted"
+    assert ledger.dispatch_blocked() is True
+    with pytest.raises(BrowserExecutionError, match="blocked"):
+        coordinator.execute(raw_job("job_after_crash001"), resolver=lambda host: ["93.184.216.34"])
+    assert worker.runs == 0

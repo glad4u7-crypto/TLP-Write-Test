@@ -317,7 +317,12 @@ class BrowserExecutionCoordinator:
             raise TypeError("Production browser dispatch requires a durable SQLite recovery ledger.")
         # This factory is a process-start boundary. Interrupted jobs are made
         # terminal and retained for owner review; they are never auto-replayed.
-        recovery_ledger.recover_interrupted()
+        interrupted = recovery_ledger.recover_interrupted()
+        if interrupted:
+            recovery_ledger.latch_dispatch_block("interrupted_jobs_require_owner_review")
+            raise BrowserExecutionError(
+                "Interrupted browser jobs require verified orphan cleanup and Owner review; dispatch remains blocked."
+            )
         worker = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
         if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
             raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
@@ -328,7 +333,10 @@ class BrowserExecutionCoordinator:
         if self._recovery_ledger is None:
             raise BrowserExecutionError("Durable crash recovery is not configured.")
         try:
-            return self._recovery_ledger.recover_interrupted()
+            interrupted = self._recovery_ledger.recover_interrupted()
+            if interrupted:
+                self._recovery_ledger.latch_dispatch_block("interrupted_jobs_require_owner_review")
+            return interrupted
         except RecoveryLedgerError as exc:
             self._audit_failed = True
             raise BrowserExecutionError("Crash recovery failed; dispatch is blocked.") from exc
