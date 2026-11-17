@@ -1,6 +1,6 @@
 # APAA BCS-01 — Personal Runtime Browser Security Integration
 
-**Status:** Implementation added; exact-head verification pending. Browser/Worker handler remains DISABLED.
+**Status:** Owner/approval/audit integration implemented and exact-head CI verification pending. A guarded Browser handler is REGISTERED but remains DISABLED.
 
 ## Scope
 BCS-01 connects the existing offline Browser Security policy to the Personal Edition Owner identity, durable ApprovalAuthority and SQLite Action Audit. It does not implement a browser worker, navigation, network access, or Android browser execution.
@@ -21,8 +21,8 @@ BCS-01 connects the existing offline Browser Security policy to the Personal Edi
 3. The request is validated by `validate_browser_job`; the receipt binds the canonical job, Owner tenant and current session.
 4. The receipt lifetime is at most 60 seconds and cannot exceed the job expiry.
 5. Dispatch revalidates the job and consumes the durable one-time receipt through the existing ExecutionGateway.
-6. The gateway has an intentionally empty handler registry. It records a payload-free Action Audit denial stating that no trusted browser handler is registered.
-7. The app does not expose a browser action UI or invoke dispatch. No browser/worker adapter is registered.
+6. The gateway registers an explicit disabled Browser handler. After consuming a valid one-time receipt, it raises a typed `ActionHandlerDisabled` before any side effect; the gateway records a durable payload-free denial with reason `registered_handler_disabled` rather than the misleading `No trusted handler is registered` result.
+7. `browser_handler_registered` is true while `browser_handler_enabled` remains false. The app exposes no browser action UI and does not invoke dispatch. No host/container worker adapter is configured or registered.
 
 ## Security limits
 - Offline URL/DNS validation is not connection-time enforcement. No socket pinning, TLS proxy, browser request interception or OS-level egress isolation is claimed.
@@ -32,4 +32,9 @@ BCS-01 connects the existing offline Browser Security policy to the Personal Edi
 - Physical Android qualification and real isolated-worker egress qualification remain separate, deferred gates.
 
 ## Acceptance
-BCS-01 is not complete until exact-head CI passes, tests demonstrate owner/session/tenant binding, receipt expiry and replay rejection, payload tampering rejection, Action Audit persistence and the absence of registered browser handlers. Browser execution must remain disabled after this checkpoint.
+BCS-01 is not complete until exact-head CI passes, tests demonstrate owner/session/tenant binding, receipt expiry and replay rejection, payload tampering rejection, Action Audit persistence and the presence of the guarded disabled handler, explicit disabled outcome, one-time approval replay rejection, and durable denial audit. Browser execution must remain disabled after this checkpoint.
+
+
+## Handler registration correction
+
+The original empty handler registry caused an expected but ambiguous `No trusted handler is registered` result even after valid Owner approval. BCS-01 now registers a typed disabled handler. `ExecutionGateway` recognizes `ActionHandlerDisabled`, writes a durable denial event, returns `executed=False`, and does not classify this intentional pre-side-effect stop as an uncertain handler failure. This fixes the registry error without enabling browser execution. The actual host/container adapter and independently verified network egress boundary remain absent and are not simulated.
