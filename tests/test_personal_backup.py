@@ -263,10 +263,7 @@ def test_restore_rejects_project_file_hash_tampering(tmp_path):
     from core.personal_project_files import save_project_file
 
     source_dir = tmp_path / "source"
-    _seed_runtime(source_dir)
-    project = SQLiteProjectStore(personal_runtime_paths(source_dir).projects_db).list_for_tenant(
-        PERSONAL_OWNER_TENANT
-    )[0]
+    _paths, _key, project, _audit = _seed_runtime(source_dir)
     save_project_file(source_dir, project.project_id, "notes.txt", b"original", consent=True)
     backup = create_personal_backup(source_dir, tmp_path / "exports" / "original.apaa-backup")
     tampered = tmp_path / "exports" / "tampered-project-file.apaa-backup"
