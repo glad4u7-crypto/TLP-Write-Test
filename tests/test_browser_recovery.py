@@ -94,3 +94,22 @@ def test_unknown_job_transition_is_rejected(tmp_path):
     ledger = make_ledger(tmp_path)
     with pytest.raises(RecoveryLedgerError, match="does not exist"):
         ledger.transition("job_missing001", "completed")
+
+
+def test_concurrent_terminal_transitions_are_serialized(tmp_path):
+    ledger = make_ledger(tmp_path)
+    ledger.claim("job_race_state01", "1" * 64, session_id="r" * 32)
+    ledger.transition("job_race_state01", "running")
+
+    def finish(state):
+        try:
+            ledger.transition("job_race_state01", state, outcome_code=state)
+            return state
+        except RecoveryLedgerError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(finish, ("completed", "failed")))
+
+    assert results.count("rejected") == 1
+    assert ledger.get("job_race_state01")["state"] in {"completed", "failed"}
