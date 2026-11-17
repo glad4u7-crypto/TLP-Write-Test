@@ -54,9 +54,16 @@ def test_cancellation_token_is_idempotent_and_observable():
         token.raise_if_cancelled()
 
 
-def test_pinned_destination_rejects_non_public_and_duplicate_ips():
+@pytest.mark.parametrize("address", [
+    "127.0.0.1", "169.254.169.254", "100.64.0.1",
+    "192.0.2.1", "::ffff:127.0.0.1", "ff02::1",
+])
+def test_pinned_destination_rejects_non_public_and_special_use_ips(address):
     with pytest.raises(ValueError):
-        PinnedDestination("example.com", 443, ("127.0.0.1",))
+        PinnedDestination("example.com", 443, (address,))
+
+
+def test_pinned_destination_rejects_duplicate_ips():
     with pytest.raises(ValueError):
         PinnedDestination("example.com", 443, ("93.184.216.34", "93.184.216.34"))
 
