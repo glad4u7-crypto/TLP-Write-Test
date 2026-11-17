@@ -29,3 +29,12 @@ The script does not create the data directory, initialize an Owner, rotate a key
 ## Limits
 
 This is a local filesystem/SQLite preflight, not a penetration test, independent security review, physical Android acceptance, browser-worker qualification or proof against an attacker controlling the same OS account. It does not enable Browser/Worker, Auto-Run, network providers or any mutation handler.
+
+
+## Owner UI integration — 2026-11-17
+
+- Added a collapsed **Personal Runtime Health** panel to the authenticated local Owner sidebar.
+- Owner can explicitly run the P81 read-only diagnostics and see PASS/FAIL/INFO counts and per-check details.
+- The panel is hidden in the OIDC deployment path and appears only in local Personal Edition mode.
+- No automatic repair, key rotation, database creation, or state mutation is performed.
+- UI integration is subject to exact-head CI; it is not yet marked verified until that run completes.
