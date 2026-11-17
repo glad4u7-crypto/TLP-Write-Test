@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: apaa-p73-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: apaa-p73-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   python-tests:
