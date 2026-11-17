@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: apaa-security-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   security-tests:
@@ -40,7 +40,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m playwright install --with-deps chromium
-      - name: Run test suite
+      - name: Chromium TLS — trusted CA accepted
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-        run: python -m pytest -q
+        run: >-
+          python -m pytest -q
+          tests/test_chromium_tls_integration.py::test_chromium_accepts_certificate_signed_by_trusted_test_ca
+      - name: Chromium TLS — hostname mismatch rejected
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -m pytest -q
+          tests/test_chromium_tls_integration.py::test_chromium_rejects_trusted_certificate_with_hostname_mismatch
+      - name: Chromium TLS — expired certificate rejected
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -m pytest -q
+          tests/test_chromium_tls_integration.py::test_chromium_rejects_expired_certificate_signed_by_trusted_test_ca
+      - name: Run remaining security test suite
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -q --ignore=tests/test_chromium_tls_integration.py
