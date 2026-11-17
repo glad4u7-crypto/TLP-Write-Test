@@ -84,7 +84,7 @@ class FakeBackend:
         return not self.fail_destroy
 
 
-def make_adapter(monkeypatch, backend=None, *, challenge="a" * 64):
+def make_adapter(monkeypatch, backend=None, *, challenge="a" * 64, challenge_ledger=None):
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
     backend = backend or FakeBackend()
@@ -113,6 +113,7 @@ def make_adapter(monkeypatch, backend=None, *, challenge="a" * 64):
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP],
         challenge_factory=lambda size: challenge,
+        challenge_ledger=challenge_ledger,
         cleanup_wait_seconds=2,
     )
     return instance, backend, collected
@@ -335,3 +336,22 @@ def test_host_attestation_challenge_is_single_use_even_across_distinct_sessions(
     assert [call[0] for call in backend.calls] == [
         "provision", "snapshot", "start", "destroy", "provision", "snapshot", "destroy"
     ]
+
+
+def test_adapter_consumes_durable_challenge_before_attestation_collection(monkeypatch):
+    class Ledger:
+        def __init__(self):
+            self.values = set()
+        def consume(self, challenge):
+            if challenge in self.values:
+                return False
+            self.values.add(challenge)
+            return True
+
+    ledger = Ledger()
+    worker, backend, collected = make_adapter(
+        monkeypatch, challenge="f" * 64, challenge_ledger=ledger,
+    )
+    assert execute(worker, session_id="session-ledger-first-123") == {"ok": True}
+    assert ledger.values == {"f" * 64}
+    assert collected[0][2]["challenge"] == "f" * 64
