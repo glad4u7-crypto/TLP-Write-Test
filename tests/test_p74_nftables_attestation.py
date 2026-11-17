@@ -39,7 +39,7 @@ def fixture():
       src,dst=fam+".saddr",fam+".daddr"
       rules=[
        rule("input",m(src,ip),m("tcp.sport",3128),m("ct.state",{"set":["established","related"]},"in")),
-       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",["established","related"],"in")),
+       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",{"set":["established","related"]},"in")),
        rule("output",m(dst,ip),m("tcp.dport",3128)),
       ]
       items.extend(rules)
