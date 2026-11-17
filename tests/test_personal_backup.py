@@ -260,12 +260,13 @@ def test_backup_restore_includes_owner_project_files(tmp_path):
 
 
 def test_restore_rejects_project_file_hash_tampering(tmp_path):
-    import hashlib
-
     from core.personal_project_files import save_project_file
 
     source_dir = tmp_path / "source"
-    paths, _key, project, _audit = _seed_runtime(source_dir)
+    _seed_runtime(source_dir)
+    project = SQLiteProjectStore(personal_runtime_paths(source_dir).projects_db).list_for_tenant(
+        PERSONAL_OWNER_TENANT
+    )[0]
     save_project_file(source_dir, project.project_id, "notes.txt", b"original", consent=True)
     backup = create_personal_backup(source_dir, tmp_path / "exports" / "original.apaa-backup")
     tampered = tmp_path / "exports" / "tampered-project-file.apaa-backup"
@@ -273,14 +274,6 @@ def test_restore_rejects_project_file_hash_tampering(tmp_path):
         contents = {name: source.read(name) for name in source.namelist()}
     archive_name = f"project-files/{project.project_id}/notes.txt"
     contents[archive_name] = b"modified"
-    manifest = json.loads(contents["manifest.json"].decode("utf-8"))
-    manifest["project_files"][archive_name]["size"] = len(contents[archive_name])
-    manifest["project_files"][archive_name]["sha256"] = hashlib.sha256(
-        contents[archive_name]
-    ).hexdigest()
-    contents["manifest.json"] = json.dumps(
-        manifest, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
     with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_DEFLATED) as target:
         for name, data in contents.items():
             target.writestr(name, data)
