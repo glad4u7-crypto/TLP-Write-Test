@@ -720,7 +720,7 @@ if prepare_project:
         st.session_state["pending_project"] = {
             "name": project_name.strip(),
             "description": project_description.strip(),
-            "idempotency_key": secrets.token_urlsafe(24),
+            "idempotency_key": secrets.token_hex(24),
         }
 
 pending_project = st.session_state.get("pending_project")
