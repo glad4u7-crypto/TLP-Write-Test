@@ -43,6 +43,7 @@ class FakeWorker:
 
     def terminate(self, session_id):
         self.terminated.append(session_id)
+        return True
 
 
 def test_cancellation_token_is_idempotent_and_observable():
@@ -210,6 +211,7 @@ def test_cancel_terminates_the_unique_worker_session():
         def terminate(self, session_id):
             terminated.append(session_id)
             release.set()
+            return True
 
     events = []
     coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=events.append)
@@ -337,3 +339,25 @@ def test_cancel_terminates_worker_even_if_audit_storage_fails():
     thread.join(timeout=3)
     assert not thread.is_alive()
     assert len(terminated) == 1
+
+
+
+def test_timeout_does_not_claim_session_closed_when_termination_unconfirmed():
+    class UnconfirmedWorker(FakeWorker):
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            threading.Event().wait(timeout=3)
+            return {"text": "late"}
+
+        def terminate(self, session_id):
+            self.terminated.append(session_id)
+            return False
+
+    events = []
+    coordinator = BrowserExecutionCoordinator(UnconfirmedWorker(), audit=events.append)
+    with pytest.raises(BrowserExecutionError, match="could not be terminated"):
+        coordinator.execute(
+            valid_job(max_runtime_seconds=1),
+            resolver=lambda host: ["93.184.216.34"],
+        )
+    assert any(event["event"] == "session_cleanup_unconfirmed" for event in events)
+    assert not any(event["event"] == "session_closed" for event in events)
