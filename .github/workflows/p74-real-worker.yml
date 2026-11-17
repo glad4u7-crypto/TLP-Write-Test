@@ -11,6 +11,7 @@ name: APAA P74 real OCI Chromium worker
 # Full local symbols are checked before falling back to dynamic symbols.
 # Procfs command-line parsing now uses true NUL boundaries for process roles.
 # The final run includes sanitized cmdline availability and disassembly windows.
+# FD ownership crash stderr now triggers an immediate host /proc snapshot.
 
 on:
   push:
