@@ -227,3 +227,26 @@ def test_proxy_re_resolves_and_rejects_dns_rebinding_to_private_ip(monkeypatch):
     client1.close()
     client2.close()
     upstream_peer.close()
+
+
+def test_proxy_rejects_noncanonical_connect_port_spelling():
+    import socket
+    import threading
+
+    resolver_calls = []
+    proxy = PinnedConnectProxy(
+        "172.20.0.2", 3128, allowed_hosts=["example.com"],
+        resolver=lambda *args: resolver_calls.append(args) or [],
+    )
+    client, server = socket.socketpair()
+    thread = threading.Thread(target=proxy._handle_client, args=(server,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(b"CONNECT example.com:+443 HTTP/1.1\\r\\n\\r\\n")
+        response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 403")
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        assert resolver_calls == []
+    finally:
+        client.close()
