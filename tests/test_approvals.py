@@ -141,6 +141,13 @@ def test_durable_nonce_store_requires_tenant_and_persists_replay_across_authorit
     assert second_authority.consume(receipt, "write_file", payload, tenant=tenant) is False
 
 
+def test_durable_nonce_store_requires_explicit_stable_signing_secret(tmp_path):
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    with pytest.raises(ValueError, match="stable signing secret"):
+        ApprovalAuthority(nonce_store=SQLiteSecurityStore(tmp_path / "security.sqlite3"))
+
+
 def test_durable_nonce_mode_fails_closed_without_validated_tenant(tmp_path):
     from core.storage import TenantKey
     from core.sqlite_security_store import SQLiteSecurityStore
