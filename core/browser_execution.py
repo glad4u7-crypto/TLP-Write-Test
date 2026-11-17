@@ -34,6 +34,10 @@ class BrowserCancelled(BrowserExecutionError):
     """Raised when a browser job is cancelled."""
 
 
+class BrowserTimeout(BrowserExecutionError):
+    """Raised when the hard browser job deadline expires."""
+
+
 class CancellationToken:
     """Thread-safe cooperative cancellation token with idempotent cancel()."""
 
@@ -238,22 +242,55 @@ class BrowserExecutionCoordinator:
         try:
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
             token.raise_if_cancelled()
-            result = self._worker.run(
-                job,
-                session_id=session_id,
-                cancellation=token,
-                deadline_monotonic=deadline,
-                pinned_destination=pinned,
+            completed = threading.Event()
+            outcome: dict[str, Any] = {}
+
+            def invoke_worker() -> None:
+                try:
+                    outcome["result"] = self._worker.run(
+                        job,
+                        session_id=session_id,
+                        cancellation=token,
+                        deadline_monotonic=deadline,
+                        pinned_destination=pinned,
+                    )
+                except BaseException as exc:
+                    outcome["error"] = exc
+                finally:
+                    completed.set()
+
+            worker_thread = threading.Thread(
+                target=invoke_worker,
+                name=f"apaa-browser-{session_id[:12]}",
+                daemon=True,
             )
+            worker_thread.start()
+            if not completed.wait(timeout=job.max_runtime_seconds):
+                token.cancel()
+                try:
+                    self._worker.terminate(session_id)
+                except Exception as exc:
+                    self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
+                    raise BrowserExecutionError("Timed-out browser worker could not be terminated.") from exc
+                self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
+                raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             token.raise_if_cancelled()
+            if "error" in outcome:
+                raise outcome["error"]
+            result = outcome.get("result")
             if self._clock() > deadline:
-                raise BrowserExecutionError("Browser job exceeded its runtime deadline.")
+                token.cancel()
+                self._worker.terminate(session_id)
+                self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
+                raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
                 raise BrowserExecutionError("Worker returned an invalid result envelope.")
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return dict(result)
         except BrowserCancelled:
             self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
+            raise
+        except BrowserTimeout:
             raise
         except Exception:
             self._record("job_failed", job_id=job.job_id, session_id=session_id, detail="execution_error")
