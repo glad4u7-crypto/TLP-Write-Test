@@ -18,6 +18,7 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 - Reuse of a key with a different action or payload returns conflict. Same-payload duplicate requests in pending/completed/uncertain/cancelled states are never automatically dispatched again.
 - `ExecutionGateway` can be configured with the durable ledger. When configured, every handler dispatch requires a validated `TenantKey` and an idempotency key.
 - Existing one-time approval receipts remain action-, payload-, tenant- and session-bound. Receipt consumption occurs before dispatch and cannot be replayed.
+- The gateway snapshots the caller's JSON payload before approval verification and passes only that private snapshot to the handler, preventing post-approval mutation of the caller-owned mapping from changing the dispatched request. Non-finite/non-JSON payloads fail closed.
 - Durable intent audit is written before the handler. Audit failure blocks dispatch.
 - A cancellation callback is checked immediately before the handler starts. A pre-dispatch cancellation becomes terminal and cannot be replayed. A synchronous handler already in progress is not represented as cancellable.
 - Handler exceptions and post-side-effect audit/ledger failures are treated as uncertain outcomes, not safe-to-retry failures.
