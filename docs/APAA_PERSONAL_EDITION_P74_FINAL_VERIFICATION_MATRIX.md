@@ -1,0 +1,42 @@
+# APAA Personal Edition — P74 Final Verification Matrix
+
+**Checkpoint:** APAA-PERSONAL-P74  
+**Status:** Verification criteria and evidence inventory; final acceptance remains OPEN.
+
+## Repository-level verification
+| Area | Required check | P73 status |
+|---|---|---|
+| Runtime | Compile/import and runtime wiring tests | PASS |
+| Persistent storage | SQLite persistence, owner scope, restart and integrity tests | PASS |
+| Approval | Action/payload/tenant/session binding, expiry and one-time nonce | PASS |
+| Audit | Intent-before-dispatch, metadata-only records, fail-closed behavior | PASS |
+| Backup/restore | Archive validation, integrity, atomic restore and key rotation | PASS |
+| Dependency security | pip-audit on exact tested head | PASS |
+| Python regression | Full suite on exact tested head | PASS |
+| Browser execution | Security-qualified implementation and independent review | NOT IMPLEMENTED; DISABLED |
+| Android | Physical A01–A12 | NOT RUN |
+| Live identity | HTTPS/OIDC login, logout, expiry, second-account denial and revocation | NOT RUN |
+| Key custody/anti-rollback | Independent protected key and remote anchor verification | NOT RUN |
+| Real-host egress | Host/network enforcement and bypass testing | NOT RUN |
+
+## Evidence rules
+- Every PASS identifies exact commit SHA, command/workflow, date and result.
+- An earlier commit's result does not prove a later commit.
+- Chromium emulation is not physical Android acceptance.
+- Unit tests are not independent security review.
+- An audit hash chain is tamper-evident, not immutable against an attacker controlling the host/database.
+- Documentation of a gate is not implementation or passing evidence.
+- Missing environment or unavailable device is BLOCKED/NOT RUN, never PASS.
+
+## Final acceptance criteria
+Call the repository verified only when all applicable exact-head automated checks pass. Call it physically accepted only after owner-operated Android and recovery tests pass. Call it security-qualified only after browser/network, identity, protected-key, anti-rollback and independent-review gates have evidence.
+
+C01 remains OPEN until mandatory gates are independently evidenced and the owner approves closure. C02 must not start before C01 completion and explicit owner approval.
+
+## Safety invariants
+- Owner-first; no public signup by default.
+- Ask First; Auto-Run OFF.
+- Free-only; no paid provider, hosting, API key or billable service.
+- No payment, purchase, checkout, trading, investment order or money movement.
+- No merge or deployment without explicit owner approval.
+- Browser and Worker execution remain disabled until every browser security gate passes.
