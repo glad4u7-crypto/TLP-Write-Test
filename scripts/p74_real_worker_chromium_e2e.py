@@ -92,7 +92,7 @@ def _probe_blocked(
         # A failed podman exec, missing executable, or malformed probe is not
         # evidence that the network boundary blocked the packet.
         diagnostic = " ".join(output.split())
-        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)[:240]
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)[:240]
         digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
         raise RuntimeError(
             f"direct network probe did not reach a recognized socket-level denial: "
