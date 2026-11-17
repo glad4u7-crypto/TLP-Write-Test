@@ -63,6 +63,25 @@ class PinnedConnectProxy:
         self.resolver = resolver
         self._server = None
         self._thread = None
+        self._stats_lock = threading.Lock()
+        self._dialed_addresses: list[str] = []
+        self._accepted_connections = 0
+        self._rejected_requests = 0
+
+    @property
+    def dialed_addresses(self) -> tuple[str, ...]:
+        with self._stats_lock:
+            return tuple(self._dialed_addresses)
+
+    @property
+    def accepted_connections(self) -> int:
+        with self._stats_lock:
+            return self._accepted_connections
+
+    @property
+    def rejected_requests(self) -> int:
+        with self._stats_lock:
+            return self._rejected_requests
 
     def start(self) -> None:
         if self._server is not None:
@@ -116,6 +135,8 @@ class PinnedConnectProxy:
                 self._respond(client, 403, "Forbidden")
                 return
             if normalized not in self.allowed_hosts or port != self.allowed_port:
+                with self._stats_lock:
+                    self._rejected_requests += 1
                 self._respond(client, 403, "Forbidden")
                 return
             pinned = resolve_and_pin(normalized, port, resolver=self.resolver)
@@ -123,6 +144,9 @@ class PinnedConnectProxy:
             for address in pinned.addresses:
                 try:
                     upstream = connect_pinned(pinned, address, timeout=self.timeout)
+                    with self._stats_lock:
+                        self._dialed_addresses.append(address)
+                        self._accepted_connections += 1
                     break
                 except (OSError, PinnedEgressError) as exc:
                     last_error = exc
