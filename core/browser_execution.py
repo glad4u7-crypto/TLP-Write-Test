@@ -108,7 +108,7 @@ def resolve_pinned_destination(
         try:
             answers = resolver(target.hostname)
         except Exception as exc:
-            raise BrowserExecutionError("Destination DNS/IP pin resolution failed closed.") from exc
+            raise BrowserExecutionError("Destination DNS resolution failed during DNS/IP pin validation.") from exc
     try:
         addresses = validate_dns_answers(target.hostname, answers)
         destination = PinnedDestination(target.hostname, target.port, addresses)
