@@ -552,10 +552,17 @@ class SQLiteExecutionAuditLog:
         if not all(hasattr(event, field) for field in ("action", "executed", "reason")):
             raise TypeError("Unsupported execution audit event.")
         import uuid
+        reason = str(event.reason)
+        if reason.endswith("_pending"):
+            result = "pending"
+        elif reason.endswith("_failed"):
+            result = "failed"
+        else:
+            result = "success" if event.executed else "denied"
         record = DurableAuditEvent(
             action=str(event.action),
-            result="success" if event.executed else "denied",
-            reason_code=str(event.reason),
+            result=result,
+            reason_code=reason,
             principal_fingerprint=self._principal_fingerprint,
             request_id=uuid.uuid4().hex,
         )
