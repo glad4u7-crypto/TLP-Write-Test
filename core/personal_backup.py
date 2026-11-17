@@ -167,10 +167,13 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
         project_file_manifest: dict[str, dict[str, Any]] = {}
         project_files_root = paths.data_dir / "project-files"
         project_file_total = 0
-        if project_files_root.exists():
+        try:
+            project_root_stat = project_files_root.lstat()
+        except FileNotFoundError:
+            project_root_stat = None
+        if project_root_stat is not None:
             _reject_symlink_components(project_files_root)
-            root_stat = project_files_root.lstat()
-            if not stat.S_ISDIR(root_stat.st_mode) or (os.name == "posix" and root_stat.st_mode & 0o077):
+            if not stat.S_ISDIR(project_root_stat.st_mode) or (os.name == "posix" and project_root_stat.st_mode & 0o077):
                 raise PersonalBackupError("Project files root is not a private real directory.")
             project_ids = sorted(item.name for item in project_files_root.iterdir())
             if len(project_ids) > _MAX_PROJECT_FILES:
