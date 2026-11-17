@@ -857,6 +857,16 @@ st.caption(
 # Persistent memory is available in the authenticated owner runtime and in
 # the loopback-only Personal Edition. Every write has a separate consent checkbox.
 st.divider()
+def execute_owner_ui_mutation(action, approved, payload, operation):
+    """Route every Owner UI mutation through payload-bound approval + audit."""
+    return execute_audited_ui_mutation(
+        audit_log, action, approved, payload, operation,
+        approval_authority=st.session_state["approval_authority"],
+        tenant=tenant,
+        session_scope=st.session_state["approval_session_scope"],
+    )
+
+
 st.header("Memory & Knowledge")
 if memory_store is None or checkpoint_access is None:
     st.info("Persistent memory is unavailable because its private store did not initialize.")
@@ -876,11 +886,12 @@ else:
         if memory_submit:
             try:
                 tags = [tag.strip() for tag in memory_tags.split(",") if tag.strip()]
-                execute_audited_ui_mutation(
-                    audit_log, "memory.add", memory_consent,
-                    lambda: memory_store.add_memory(
-                        tenant, category=memory_category, content=memory_content, tags=tags,
-                        pinned=memory_pinned, consent=memory_consent,
+                execute_owner_ui_mutation(
+                    "memory.add", memory_consent,
+                    {"category": memory_category, "content": memory_content, "tags": tags, "pinned": memory_pinned},
+                    lambda p: memory_store.add_memory(
+                        tenant, category=p["category"], content=p["content"], tags=p["tags"],
+                        pinned=p["pinned"], consent=True,
                     ),
                 )
                 st.success("Memory saved.")
@@ -893,9 +904,9 @@ else:
                 st.caption(f"Tags: {', '.join(item.tags) or 'none'} · Saved: {item.created_at}")
                 if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
                     try:
-                        execute_audited_ui_mutation(
-                            audit_log, "memory.delete", True,
-                            lambda: memory_store.delete_memory(tenant, item.memory_id),
+                        execute_owner_ui_mutation(
+                            "memory.delete", True, {"memory_id": item.memory_id},
+                            lambda p: memory_store.delete_memory(tenant, p["memory_id"]),
                         )
                         st.rerun()
                     except Exception as exc:
@@ -912,11 +923,12 @@ else:
         if knowledge_submit:
             try:
                 tags = [tag.strip() for tag in knowledge_tags.split(",") if tag.strip()]
-                execute_audited_ui_mutation(
-                    audit_log, "knowledge.add", knowledge_consent,
-                    lambda: memory_store.add_knowledge(
-                        tenant, title=knowledge_title, content=knowledge_content,
-                        tags=tags, consent=knowledge_consent,
+                execute_owner_ui_mutation(
+                    "knowledge.add", knowledge_consent,
+                    {"title": knowledge_title, "content": knowledge_content, "tags": tags},
+                    lambda p: memory_store.add_knowledge(
+                        tenant, title=p["title"], content=p["content"],
+                        tags=p["tags"], consent=True,
                     ),
                 )
                 st.success("Knowledge document saved.")
@@ -937,9 +949,9 @@ else:
                 st.write(document.content[:1200] + ("…" if len(document.content) > 1200 else ""))
                 if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
                     try:
-                        execute_audited_ui_mutation(
-                            audit_log, "knowledge.delete", True,
-                            lambda: memory_store.delete_knowledge(tenant, document.document_id),
+                        execute_owner_ui_mutation(
+                            "knowledge.delete", True, {"document_id": document.document_id},
+                            lambda p: memory_store.delete_knowledge(tenant, p["document_id"]),
                         )
                         st.rerun()
                     except Exception as exc:
@@ -955,11 +967,12 @@ else:
             conversation_submit = st.form_submit_button("Save turn")
         if conversation_submit:
             try:
-                execute_audited_ui_mutation(
-                    audit_log, "conversation.append_turn", conversation_consent,
-                    lambda: memory_store.append_turn(
-                        tenant, conversation_id=conversation_id, role=conversation_role,
-                        content=conversation_content, consent=conversation_consent,
+                execute_owner_ui_mutation(
+                    "conversation.append_turn", conversation_consent,
+                    {"conversation_id": conversation_id, "role": conversation_role, "content": conversation_content},
+                    lambda p: memory_store.append_turn(
+                        tenant, conversation_id=p["conversation_id"], role=p["role"],
+                        content=p["content"], consent=True,
                     ),
                 )
                 st.success("Conversation turn saved.")
@@ -972,9 +985,9 @@ else:
                 st.write(f"**{turn.role.title()}** · {turn.content}")
             if st.button("Delete this conversation history", key="delete_conversation_history"):
                 try:
-                    execute_audited_ui_mutation(
-                        audit_log, "conversation.delete", True,
-                        lambda: memory_store.delete_conversation(tenant, context_id),
+                    execute_owner_ui_mutation(
+                        "conversation.delete", True, {"conversation_id": context_id},
+                        lambda p: memory_store.delete_conversation(tenant, p["conversation_id"]),
                     )
                     st.rerun()
                 except Exception as exc:
@@ -989,11 +1002,11 @@ else:
             preference_submit = st.form_submit_button("Save preference")
         if preference_submit:
             try:
-                execute_audited_ui_mutation(
-                    audit_log, "preference.save", preference_consent,
-                    lambda: memory_store.save_preference(
-                        tenant, key=preference_key, value=preference_value,
-                        consent=preference_consent,
+                execute_owner_ui_mutation(
+                    "preference.save", preference_consent,
+                    {"key": preference_key, "value": preference_value},
+                    lambda p: memory_store.save_preference(
+                        tenant, key=p["key"], value=p["value"], consent=True,
                     ),
                 )
                 st.success("Preference saved.")
@@ -1004,9 +1017,9 @@ else:
             st.write(f"**{key}:** {value}")
             if st.button("Delete preference", key=f"delete_preference_{key}"):
                 try:
-                    execute_audited_ui_mutation(
-                        audit_log, "preference.delete", True,
-                        lambda: memory_store.delete_preference(tenant, key),
+                    execute_owner_ui_mutation(
+                        "preference.delete", True, {"key": key},
+                        lambda p: memory_store.delete_preference(tenant, p["key"]),
                     )
                     st.rerun()
                 except Exception as exc:
@@ -1030,12 +1043,15 @@ else:
                 checkpoint_submit = st.form_submit_button("Save checkpoint")
             if checkpoint_submit:
                 try:
-                    execute_audited_ui_mutation(
-                        audit_log, "checkpoint.save", checkpoint_consent,
-                        lambda: checkpoint_access.save_checkpoint(
-                            project_id=checkpoint_project, label=checkpoint_label,
-                            summary=checkpoint_summary, next_action=checkpoint_next,
-                            status=checkpoint_status, consent=checkpoint_consent,
+                    execute_owner_ui_mutation(
+                        "checkpoint.save", checkpoint_consent,
+                        {"project_id": checkpoint_project, "label": checkpoint_label,
+                         "summary": checkpoint_summary, "next_action": checkpoint_next,
+                         "status": checkpoint_status},
+                        lambda p: checkpoint_access.save_checkpoint(
+                            project_id=p["project_id"], label=p["label"],
+                            summary=p["summary"], next_action=p["next_action"],
+                            status=p["status"], consent=True,
                         ),
                     )
                     st.success("Checkpoint saved.")
