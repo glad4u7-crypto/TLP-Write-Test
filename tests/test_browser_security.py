@@ -9,6 +9,7 @@ from core.browser_security import (
     validate_destination,
     validate_dns_answers,
     validate_live_destination,
+    validate_live_browser_job,
     validate_redirect,
     validate_redirect_chain,
 )
@@ -330,4 +331,29 @@ def test_redirect_chain_fails_closed_when_any_later_dns_lookup_fails():
             ["https://example.com"],
             resolver=resolver,
             max_redirects=2,
+        )
+
+
+
+def test_live_browser_job_entry_point_requires_dns_pinning():
+    job = valid_job()
+    with pytest.raises(BrowserPolicyError, match="resolver is mandatory"):
+        validate_live_browser_job(job, resolver=None, now=1000)
+
+    live = validate_live_browser_job(
+        job,
+        resolver=lambda host: ["93.184.216.34"],
+        now=1000,
+    )
+    assert live.job.job_id == "job_12345678"
+    assert live.destination.target.url == "https://example.com/docs"
+    assert live.destination.addresses == ("93.184.216.34",)
+
+
+def test_live_browser_job_entry_point_rejects_private_dns_answers():
+    with pytest.raises(BrowserPolicyError):
+        validate_live_browser_job(
+            valid_job(),
+            resolver=lambda host: ["93.184.216.34", "169.254.169.254"],
+            now=1000,
         )
