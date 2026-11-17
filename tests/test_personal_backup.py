@@ -88,6 +88,9 @@ def test_backup_restore_recovers_projects_memory_checkpoints_and_audit(tmp_path)
     restored_audit = SQLiteExecutionAuditLog(security, PERSONAL_OWNER_TENANT)
     assert restored_audit.verify() == audit.verify()
     restored_key = load_or_create_approval_signing_key(restored_dir)
+    restored_owner_auth = LocalOwnerAuthStore(restored.owner_auth_db)
+    assert restored_owner_auth.authenticate("test-only owner passphrase") is True
+    assert restored_owner_auth.authenticate("incorrect owner passphrase") is False
     assert restored_key != original_key
     assert (restored_dir / "approval-signing.key").stat().st_mode & 0o077 == 0
     assert restored_dir.stat().st_mode & 0o077 == 0
