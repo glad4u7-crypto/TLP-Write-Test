@@ -79,8 +79,19 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "stdout_sha256": hashlib.sha256(stdout.encode("utf-8", errors="replace")).hexdigest(),
         "stdout_html_present": "<html" in stdout.lower(),
         "expected_marker_present": expected_marker in stdout,
+        "stderr_bytes": len(stderr.encode("utf-8", errors="replace")),
+        "stderr_sha256": hashlib.sha256(stderr.encode("utf-8", errors="replace")).hexdigest(),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
-        "stderr_preview": redact_sensitive_text(stderr[-600:], limit=320),
+        "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
+        "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
+        "stderr_markers": [
+            marker for marker in (
+                "ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED",
+                "ERR_NAME_NOT_RESOLVED", "ERR_CERT_AUTHORITY_INVALID",
+                "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_REFUSED",
+                "zygote", "sandbox", "crashpad", "DevTools listening",
+            ) if marker.lower() in stderr.lower()
+        ],
     }
 
 def _probe_blocked(
@@ -654,6 +665,13 @@ def main() -> int:
                 "--dump-dom",
                 target.url,
             ], timeout=120)
+            proxy = proxy_servers[0] if family == "ipv4" else proxy_servers[1]
+            evidence["proxy_progress"] = {
+                "family": family,
+                "accepted_connections": proxy.accepted_connections,
+                "rejected_requests": proxy.rejected_requests,
+                "dialed_addresses": list(proxy.dialed_addresses),
+            }
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
                 failure = _chromium_failure_details(page, family, expected_marker)
                 evidence["chromium_failure"] = failure
