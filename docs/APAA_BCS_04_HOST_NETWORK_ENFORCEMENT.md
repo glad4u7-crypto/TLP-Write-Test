@@ -652,3 +652,14 @@ nftables default-DROP policy, proxy-only direct-egress blocks, kernel cgroup
 limits, OCI security options and independent host observation; it also
 confirmed cleanup (`cleanup_confirmed=true`, no cleanup errors). Chromium
 execution remains BLOCKED pending the new seccomp profile qualification.
+
+
+### Workflow ordering correction
+
+The first run of the derived-profile workflow stopped before host setup because
+the profile-generation step had been placed before the step that exports the
+system seccomp profile path. The workflow order is corrected: locate the
+system-default profile first, then derive the owner-only Chromium profile, then
+create the worker. That run produced no host qualification evidence.
+
+The corrected profile-step ordering is queued for a new disposable-host run.
