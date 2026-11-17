@@ -23,7 +23,7 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 def _proxy_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     address = ipaddress.ip_address(value)
-    if address.is_unspecified or address.is_multicast or address.is_loopback or address.is_link_local:
+    if address.is_unspecified or address.is_multicast or address.is_loopback or address.is_link_local or address.is_reserved:
         raise ValueError("proxy address must be a usable unicast address")
     return address
 
@@ -49,9 +49,8 @@ class NftablesFirewallProvisioner:
             'add rule inet apaa output oifname "lo" accept',
             "add rule inet apaa input ct state established,related accept",
             "add rule inet apaa output ct state established,related accept",
-            # IPv6 neighbour discovery is link-local control traffic, not Internet egress.
             "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } accept",
-            "add rule inet apaa output ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept",
+            "add rule inet apaa output ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept",
         ]
         for address in parsed:
             family = "ip" if address.version == 4 else "ip6"
@@ -78,7 +77,9 @@ class NftablesFirewallProvisioner:
         if result.returncode:
             raise FirewallProvisionError("nftables rejected the worker policy")
 
-    def verify_ruleset(self, namespace: str) -> str:
+    def verify_ruleset(
+        self, namespace: str, *, proxy_ips: Sequence[str] | None = None, proxy_port: int | None = None
+    ) -> str:
         if not _NAME.fullmatch(namespace):
             raise ValueError("invalid network namespace name")
         if self._require_root and os.geteuid() != 0:
@@ -91,6 +92,26 @@ class NftablesFirewallProvisioner:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise FirewallProvisionError("nftables inspection failed") from exc
-        if result.returncode or "policy drop" not in result.stdout:
+        output = result.stdout if result.returncode == 0 else ""
+        if result.returncode or output.count("policy drop") != 2:
             raise FirewallProvisionError("worker firewall is absent or not default DROP")
-        return result.stdout
+        if proxy_ips is not None or proxy_port is not None:
+            if proxy_ips is None or proxy_port is None:
+                raise ValueError("both proxy_ips and proxy_port are required for strict verification")
+            expected = set()
+            for value in proxy_ips:
+                address = _proxy_address(value)
+                family = "ip" if address.version == 4 else "ip6"
+                expected.add(f"{family} daddr {address.compressed} tcp dport {proxy_port}")
+            accept_lines = [line.strip() for line in output.splitlines() if " accept" in line]
+            proxy_lines = {line for line in accept_lines if "tcp dport" in line}
+            if proxy_lines != expected:
+                raise FirewallProvisionError("firewall proxy allow rules do not exactly match the approved endpoints")
+            allowed_fragments = (
+                'iifname "lo"', 'oifname "lo"', "ct state established,related",
+                "ip6 saddr fe80::/10 icmpv6 type", "ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type",
+                *expected,
+            )
+            if any(not any(fragment in line for fragment in allowed_fragments) for line in accept_lines):
+                raise FirewallProvisionError("firewall contains an unexpected ACCEPT rule")
+        return output
