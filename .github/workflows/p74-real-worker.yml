@@ -1,6 +1,7 @@
 name: APAA P74 real OCI Chromium worker
 # Chromium FD diagnosis uses read-only bounded host procfs snapshots; sandbox policy is unchanged.
 # The gated disposable-host run is opt-in and uses only this ephemeral runner.
+# Optional stack symbolication resolves the pinned Debian Chromium build-id.
 
 on:
   push:
