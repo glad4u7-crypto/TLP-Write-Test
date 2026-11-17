@@ -65,7 +65,8 @@ interface bypass still require sink-side verification on the real host.
 ## Required real-host acceptance — all are mandatory
 
 1. Run the manual `APAA P74 real OCI Chromium worker` workflow with an
-   owner-approved HTTPS test URL and exact origin. It creates a disposable
+   owner-approved HTTPS test URL, exact origin and unique expected HTML marker.
+   It creates a disposable
    GitHub-hosted Linux VM, installs Podman/iproute2/nftables, builds the
    Chromium worker image and requires a dedicated delegated cgroup subtree.
 2. Provision namespace and veth; prove the worker has no route outside the
