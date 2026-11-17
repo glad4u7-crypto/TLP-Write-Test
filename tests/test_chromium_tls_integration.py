@@ -182,7 +182,7 @@ def _run_case(tmp_path, monkeypatch, *, cert_name: str, expired: bool, url_host:
     try:
         playwright, context = _browser_with_test_ca(tmp_path, ca_path, proxy.port, monkeypatch)
         page = context.new_page()
-        return page, f"https://{url_host}:{server.server_port}/", context, playwright
+        return page, f"https://{url_host}:{server.server_port}/", context, playwright, proxy, server, server_thread
     except Exception:
         if context is not None:
             context.close()
@@ -196,7 +196,7 @@ def _run_case(tmp_path, monkeypatch, *, cert_name: str, expired: bool, url_host:
 
 
 def test_chromium_accepts_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
-    page, url, context, playwright = _run_case(
+    page, url, context, playwright, proxy, server, server_thread = _run_case(
         tmp_path, monkeypatch, cert_name="localhost", expired=False, url_host="localhost"
     )
     try:
