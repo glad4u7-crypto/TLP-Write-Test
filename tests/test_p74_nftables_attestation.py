@@ -95,3 +95,22 @@ def test_policy_rejects_private_or_noncanonical_proxy_addresses():
     for bad in ("127.0.0.1","10.0.0.1","169.254.1.1","::1","::ffff:127.0.0.1"):
         with pytest.raises(ValueError):
             NftablesPolicy((bad,),3128)
+
+
+@pytest.mark.parametrize("bad_rule",[
+    None,
+    {"family":"inet","table":"apaa","chain":"output","expr":[{"accept":None}]},
+    {"family":"inet","table":"apaa","chain":"output","expr":[
+        {"match":{"op":"==","left":{"meta":{"key":"oifname","unexpected":"x"}},"right":"lo"}},
+        {"accept":None},
+    ]},
+    {"family":"inet","table":"apaa","chain":"output","expr":[
+        {"match":{"op":"==","left":{"meta":{"key":"oifname"}},"right":"lo","extra":True}},
+        {"accept":None},
+    ]},
+])
+def test_rejects_malformed_rule_or_unknown_match_fields(bad_rule):
+    data=fixture()
+    data["nftables"].append({"rule":bad_rule})
+    with pytest.raises(NftablesAttestationError):
+        attest_nftables_json(json.dumps(data),policy())
