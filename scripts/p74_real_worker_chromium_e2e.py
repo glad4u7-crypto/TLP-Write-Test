@@ -507,6 +507,8 @@ def _run_chromium_with_fd_snapshots(
     # the OS pipe buffer and stall the very process being diagnosed.
     captured = {"stdout": [], "stderr": []}
     captured_chars = {"stdout": 0, "stderr": 0}
+    fd_marker_event = threading.Event()
+    max_snapshots = 180
 
     def _drain(name: str, stream) -> None:
         while True:
@@ -518,6 +520,8 @@ def _run_chromium_with_fd_snapshots(
                 kept = chunk[:remaining]
                 captured[name].append(kept)
                 captured_chars[name] += len(kept)
+            if name == "stderr" and "Crashing due to FD ownership violation:" in chunk:
+                fd_marker_event.set()
 
     readers = [
         threading.Thread(target=_drain, args=("stdout", process.stdout), daemon=True),
@@ -529,18 +533,31 @@ def _run_chromium_with_fd_snapshots(
     diagnostic_errors: list[str] = []
     deadline = time.monotonic() + timeout
     timed_out = False
+    marker_trigger_snapshots = 0
+    next_snapshot_at = time.monotonic()
     try:
         while process.poll() is None and time.monotonic() < deadline:
-            if len(snapshots) < 40:
+            marker_seen = fd_marker_event.is_set()
+            periodic_due = time.monotonic() >= next_snapshot_at
+            if (marker_seen or periodic_due) and len(snapshots) < max_snapshots:
+                fd_marker_event.clear()
                 try:
                     snap = snapshot_cgroup(
                         cgroup_dir, max_processes=96, max_fds_per_process=192,
                     )
-                    snapshots.append(snapshot_json_safe(snap, max_bytes=180_000))
+                    safe_snapshot = snapshot_json_safe(snap, max_bytes=180_000)
+                    if marker_seen:
+                        safe_snapshot["capture_reason"] = "fd-ownership-marker"
+                        marker_trigger_snapshots += 1
+                    else:
+                        safe_snapshot["capture_reason"] = "periodic"
+                    snapshots.append(safe_snapshot)
                 except Exception as exc:
                     if len(diagnostic_errors) < 3:
                         diagnostic_errors.append(type(exc).__name__)
-            time.sleep(1.15)
+                next_snapshot_at = time.monotonic() + 0.25
+            else:
+                fd_marker_event.wait(timeout=0.05)
         if process.poll() is None:
             timed_out = True
             try:
@@ -564,12 +581,14 @@ def _run_chromium_with_fd_snapshots(
         for reader in readers:
             reader.join(timeout=2)
         raise
-    if len(snapshots) < 40:
+    if len(snapshots) < max_snapshots:
         try:
             final_snapshot = snapshot_cgroup(
                 cgroup_dir, max_processes=96, max_fds_per_process=192,
             )
-            snapshots.append(snapshot_json_safe(final_snapshot, max_bytes=180_000))
+            final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=180_000)
+            final_safe_snapshot["capture_reason"] = "final"
+            snapshots.append(final_safe_snapshot)
         except Exception as exc:
             if len(diagnostic_errors) < 3:
                 diagnostic_errors.append(type(exc).__name__)
@@ -580,7 +599,9 @@ def _run_chromium_with_fd_snapshots(
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     summary = {
         "snapshot_count": len(snapshots),
-        "snapshot_interval_seconds": 1.15,
+        "snapshot_interval_seconds": 0.25,
+        "max_snapshots": max_snapshots,
+        "marker_trigger_snapshots": marker_trigger_snapshots,
         "diagnostic_errors": diagnostic_errors,
         "timed_out": timed_out,
         "snapshots": snapshots,
