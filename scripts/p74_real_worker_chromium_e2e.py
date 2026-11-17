@@ -287,6 +287,19 @@ def main() -> int:
         if not 1024 <= proxy_port <= 65535:
             raise RuntimeError("proxy port is outside the permitted range")
         validate_seccomp_profile(seccomp_profile)
+        seccomp_bytes = Path(seccomp_profile).read_bytes()
+        seccomp_document = json.loads(seccomp_bytes)
+        relevant_syscalls = []
+        for rule in seccomp_document.get("syscalls", []):
+            names = rule.get("names", []) if isinstance(rule, dict) else []
+            if any(name in {"socket", "clone", "clone3", "unshare", "setns", "chroot", "ptrace"} for name in names):
+                relevant_syscalls.append(rule)
+        evidence["seccomp_profile"] = {
+            "filename": Path(seccomp_profile).name,
+            "sha256": hashlib.sha256(seccomp_bytes).hexdigest(),
+            "default_action": seccomp_document.get("defaultAction"),
+            "relevant_syscalls": relevant_syscalls,
+        }
         if not image.startswith("sha256:") and "@sha256:" not in image:
             raise RuntimeError("Chromium image must be addressed by an immutable sha256 digest")
 
@@ -524,6 +537,18 @@ def main() -> int:
         evidence["cgroup_readback"] = {"memory.max": memory, "cpu.max": cpu, "pids.max": pids}
         evidence["tests"]["kernel_cgroup_v2_readback"] = True
         evidence["tests"]["kernel_seccomp_active"] = True
+
+        userns_probe = subprocess.run([
+            "podman", "exec", container_id, "python3", "-c",
+            "import ctypes,os; libc=ctypes.CDLL(None,use_errno=True); "
+            "result=libc.unshare(0x10000000); "
+            "raise SystemExit(0 if result == 0 else ctypes.get_errno() or 1)",
+        ], check=False, capture_output=True, text=True, timeout=8, shell=False)
+        evidence["user_namespace_probe"] = {
+            "exit_code": userns_probe.returncode,
+            "stderr_sha256": hashlib.sha256((userns_probe.stderr or "").encode("utf-8")).hexdigest(),
+        }
+        evidence["tests"]["unprivileged_user_namespace_available"] = userns_probe.returncode == 0
 
         # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
         evidence["direct_network_probes"] = {
