@@ -125,6 +125,10 @@ def launch_chromium(
     try:
         session = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
     except BrowserRuntimeGateError as exc:
+        # Distinguish a rejected signature/firewall gate from a failure after
+        # the verified gate invoked the trusted browser worker callback.
+        if isinstance(exc.__cause__, BrowserLaunchError):
+            raise BrowserLaunchError(str(exc.__cause__)) from exc
         cause = exc.__cause__
         detail = cause.__cause__ if cause is not None and cause.__cause__ is not None else exc
         raise BrowserLaunchError(
