@@ -48,6 +48,8 @@ def test_namespace_provisioner_uses_separate_netns_and_dual_stack_routes():
     commands = [call[0] for call in runner.calls]
     assert commands[0] == ["ip", "netns", "add", "apaa-test"]
     assert ["ip", "link", "set", "apawork0", "netns", "apaa-test"] in commands
+    assert ["ip", "-6", "addr", "add", "2001:db8:1::1/64", "dev", "apahost0", "nodad"] in commands
+    assert ["ip", "netns", "exec", "apaa-test", "ip", "-6", "addr", "add", "2001:db8:1::2/64", "dev", "apawork0", "nodad"] in commands
     assert ["ip", "netns", "exec", "apaa-test", "ip", "route", "replace", "default", "via", "198.18.0.1"] in commands
     assert ["ip", "netns", "exec", "apaa-test", "ip", "-6", "route", "replace", "default", "via", "2001:db8:1::1"] in commands
 
