@@ -1,0 +1,90 @@
+name: APAA P74 real OCI Chromium worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_url:
+        description: Exact HTTPS URL on an owner-approved test origin
+        required: true
+        type: string
+      allowed_origin:
+        description: Exact HTTPS origin matching test_url (scheme + host + optional port)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-worker:
+    name: Disposable Linux OCI + dual-stack Chromium qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install disposable-host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman nftables iproute2 uidmap slirp4netns fuse-overlayfs
+          podman --version
+          nft --version
+          ip -Version
+
+      - name: Prepare delegated cgroup v2 subtree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(stat -fc %T /sys/fs/cgroup)" = "cgroup2fs"
+          for controller in cpu memory pids; do
+            grep -qw "$controller" /sys/fs/cgroup/cgroup.controllers
+          done
+          sudo mkdir -p /sys/fs/cgroup/apaa
+          printf '+cpu +memory +pids\n' | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          printf '+cpu +memory +pids\n' | sudo tee /sys/fs/cgroup/apaa/cgroup.subtree_control >/dev/null
+          cat /sys/fs/cgroup/apaa/cgroup.controllers
+          cat /sys/fs/cgroup/apaa/cgroup.subtree_control
+
+      - name: Build local Chromium worker image
+        run: |
+          set -euo pipefail
+          sudo podman build --pull=always \
+            --build-arg BASE_IMAGE=docker.io/library/debian:bookworm-slim \
+            -f containers/chromium-worker/Containerfile \
+            -t localhost/apaa-chromium-worker:ci .
+          IMAGE_ID="$(sudo podman image inspect --format '{{.Id}}' localhost/apaa-chromium-worker:ci)"
+          echo "APAA_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
+          test "$IMAGE_ID" != ""
+
+      - name: Locate deny-by-default OCI seccomp profile
+        run: |
+          set -euo pipefail
+          test -s /usr/share/containers/seccomp.json
+          echo "APAA_SECCOMP_PROFILE=/usr/share/containers/seccomp.json" >> "$GITHUB_ENV"
+
+      - name: Run real Chromium inside isolated OCI worker
+        env:
+          APAA_P74_TEST_URL: ${{ inputs.test_url }}
+          APAA_P74_ALLOWED_ORIGIN: ${{ inputs.allowed_origin }}
+        run: |
+          set -euo pipefail
+          sudo env \
+            APAA_P74_REAL_HOST=1 \
+            APAA_P74_IMAGE_DIGEST="$APAA_IMAGE_ID" \
+            APAA_P74_SECCOMP_PROFILE="$APAA_SECCOMP_PROFILE" \
+            APAA_P74_WORKER_ID=worker-p74-01 \
+            APAA_P74_TEST_URL="$APAA_P74_TEST_URL" \
+            APAA_P74_ALLOWED_ORIGIN="$APAA_P74_ALLOWED_ORIGIN" \
+            APAA_P74_EVIDENCE_PATH="$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" \
+            PYTHONPATH="$GITHUB_WORKSPACE" \
+            python3 scripts/p74_real_worker_chromium_e2e.py
+
+      - name: Upload sanitized qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apaa-p74-real-worker-evidence
+          path: ${{ runner.temp }}/apaa-p74-real-worker-evidence.json
+          if-no-files-found: warn
+          retention-days: 7
