@@ -181,3 +181,14 @@ def test_partial_owner_auth_hash_schema_is_not_treated_as_legacy(tmp_path):
         )
     with pytest.raises(ValueError, match="partially missing"):
         LocalOwnerAuthStore(path)
+
+
+def test_missing_owner_auth_hash_head_is_not_recreated_for_existing_chain(tmp_path):
+    import sqlite3
+
+    store = _store(tmp_path)
+    store.configure("correct horse battery staple", "correct horse battery staple")
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TABLE local_owner_auth_event_head")
+    with pytest.raises(ValueError, match="head is missing"):
+        LocalOwnerAuthStore(store.path)
