@@ -120,7 +120,8 @@ def _nft_output(extra_rule=""):
  chain output {{
   type filter hook output priority filter; policy drop;
   oifname "lo" accept
-  ct state established,related accept
+  ip daddr 198.18.0.1 tcp dport 3128 ct state established,related accept
+  ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
   ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept
   ip6 saddr fe80::/10 ip6 daddr fe80::/10 icmpv6 type nd-neighbor-advert accept
   ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-advert accept
