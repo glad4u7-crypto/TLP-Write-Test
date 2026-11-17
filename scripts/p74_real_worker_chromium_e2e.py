@@ -185,6 +185,8 @@ def main() -> int:
             raise RuntimeError("OCI inspect did not confirm CPU, memory and PID limits")
         if config.get("User") != "65532:65532":
             raise RuntimeError("OCI inspect did not confirm the unprivileged worker UID/GID")
+        if host.get("CgroupParent") != str(cgroup_path):
+            raise RuntimeError("OCI inspect did not confirm the dedicated cgroup parent")
         if host.get("NetworkMode") != f"ns:{namespace_path}":
             raise RuntimeError("OCI inspect did not confirm the exact isolated network namespace")
         if state.get("Status") not in ("created", "configured"):
@@ -307,13 +309,16 @@ def main() -> int:
         evidence["cleanup_errors"] = cleanup_errors
         evidence["cleanup_confirmed"] = not cleanup_errors
         evidence["finished_at_unix"] = int(time.time())
+        if cleanup_errors:
+            evidence["result"] = "CLEANUP_REQUIRED"
+            print("CLEANUP_REQUIRED: one or more worker resources could not be confirmed removed.", file=sys.stderr)
         try:
             _evidence_write(os.environ.get("APAA_P74_EVIDENCE_PATH", ""), evidence)
         except Exception as exc:
             cleanup_errors.append(f"evidence: {type(exc).__name__}")
-        if cleanup_errors:
             evidence["result"] = "CLEANUP_REQUIRED"
-            print("CLEANUP_REQUIRED: one or more worker resources could not be confirmed removed.", file=sys.stderr)
+            evidence["cleanup_errors"] = cleanup_errors
+            evidence["cleanup_confirmed"] = False
 
     return 0 if evidence["result"] == "PASS" and not cleanup_errors else 1
 
