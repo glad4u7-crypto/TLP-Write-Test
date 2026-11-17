@@ -277,6 +277,6 @@ def test_restore_rejects_project_file_hash_tampering(tmp_path):
     tampered.chmod(0o600)
     restore_parent = tmp_path / "restore-parent"
     restore_parent.mkdir(mode=0o700)
-    with pytest.raises(PersonalBackupError, match="project file"):
+    with pytest.raises(PersonalBackupError, match="[Pp]roject file"):
         restore_personal_backup(tampered, restore_parent / "restored")
     assert not (restore_parent / "restored").exists()
