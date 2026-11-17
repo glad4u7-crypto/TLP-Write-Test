@@ -738,3 +738,67 @@ def test_read_only_web_search_is_not_called_until_owner_submits(monkeypatch):
     assert calls == ["APAA read-only integration test"]
     assert any("Safe test result" in item.value for item in app.markdown)
     assert any("https://example.org/result" in item.value for item in app.markdown)
+
+
+
+@pytest.mark.parametrize(
+    "provider_name,input_label,submit_label,query,capability",
+    [
+        (
+            "PublicWebPageReadProvider", "Read a public HTTPS page", "Read page",
+            "https://example.org/public", "WEB_PAGE_READ",
+        ),
+        (
+            "YouTubePublicSearchProvider", "Find public YouTube videos", "Search YouTube",
+            "APAA public video search", "YOUTUBE_SEARCH",
+        ),
+    ],
+)
+def test_public_page_and_youtube_ui_wait_for_explicit_submission(
+    monkeypatch, provider_name, input_label, submit_label, query, capability,
+):
+    import core.safe_network_providers as providers
+    from core.capabilities import ReadCapability, ReadItem, ReadResult
+
+    provider_class = getattr(providers, provider_name)
+    calls = []
+
+    def fake_read(self, request):
+        calls.append((request.capability.name, request.target or request.query))
+        cap = ReadCapability[capability]
+        return ReadResult(
+            cap, (ReadItem("Safe public item", "https://example.org/item", "bounded excerpt"),),
+            "test-only provider",
+        )
+
+    monkeypatch.setattr(provider_class, "read", fake_read)
+    app = _local_owner_app()
+    assert not app.exception
+    assert calls == []
+
+    query_input = next(item for item in app.text_input if item.label == input_label)
+    query_input.set_value(query)
+    submit = next(item for item in app.form_submit_button if item.label == submit_label)
+    submit.click().run()
+
+    assert not app.exception
+    assert calls == [(capability, query)]
+    assert any("Safe public item" in item.value for item in app.markdown)
+
+
+def test_read_only_page_ui_reports_provider_errors_without_failing_app(monkeypatch):
+    import core.safe_network_providers as providers
+
+    def blocked_read(self, request):
+        raise providers.SafeNetworkError("blocked by test policy")
+
+    monkeypatch.setattr(providers.PublicWebPageReadProvider, "read", blocked_read)
+    app = _local_owner_app()
+    page_input = next(
+        item for item in app.text_input if item.label == "Read a public HTTPS page"
+    )
+    page_input.set_value("https://example.org/public")
+    next(item for item in app.form_submit_button if item.label == "Read page").click().run()
+
+    assert not app.exception
+    assert any("blocked or unavailable" in item.value for item in app.error)
