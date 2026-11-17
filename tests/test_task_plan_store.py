@@ -73,11 +73,10 @@ def test_task_plan_rejects_mismatched_snapshot_and_secret_like_content(tmp_path)
 
     secret_like = plan.to_dict()
     secret_like["task_description"] = "password=supersecret"
-    secret_like["plan_id"] = plan.plan_id
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="credential"):
         store.save_task_plan(
             OWNER, project_id="project-1", plan_id=plan.plan_id,
-            task_description=plan.task_description, plan=secret_like, consent=True,
+            task_description="password=supersecret", plan=secret_like, consent=True,
         )
 
 
