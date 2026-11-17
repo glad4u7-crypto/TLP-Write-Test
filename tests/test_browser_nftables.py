@@ -98,15 +98,15 @@ def nftables():
     link_local = {"prefix": {"addr": "fe80::", "len": 10}}
     link_multicast = {"prefix": {"addr": "ff02::", "len": 16}}
     items = [
-        {"metainfo": {"version": "1.0.9", "release_name": "test"}},
-        {"table": {"family": "inet", "name": "apaa"}},
+        {"metainfo": {"version": "1.0.9", "release_name": "Old Doc Yak #3", "json_schema_version": 1}},
+        {"table": {"family": "inet", "name": "apaa", "handle": 3}},
         {"chain": {
             "family": "inet", "table": "apaa", "name": "input",
-            "type": "filter", "hook": "input", "prio": 0, "policy": "drop",
+            "type": "filter", "hook": "input", "prio": 0, "policy": "drop", "handle": 1,
         }},
         {"chain": {
             "family": "inet", "table": "apaa", "name": "output",
-            "type": "filter", "hook": "output", "prio": 0, "policy": "drop",
+            "type": "filter", "hook": "output", "prio": 0, "policy": "drop", "handle": 2,
         }},
         rule("input", [
             match({"meta": {"key": "iifname"}}, "lo"), {"accept": None},
@@ -147,6 +147,11 @@ def nftables():
         items.append(rule("input", proxy_expr(address, "input", ["established", "related"])))
         items.append(rule("output", proxy_expr(address, "output", ["established", "related"])))
         items.append(rule("output", proxy_expr(address, "output", "new")))
+    handle = 3
+    for item in items:
+        if "rule" in item:
+            item["rule"]["handle"] = handle
+            handle += 1
     return {"nftables": items}
 
 
