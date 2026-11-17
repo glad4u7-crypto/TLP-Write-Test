@@ -108,6 +108,8 @@ def _canonical_host(host: str) -> tuple[str, int | None]:
         raise BrowserPolicyError("Non-canonical numeric IP spellings are blocked.")
     if len(labels) < 2 or any(not _DNS_LABEL.fullmatch(label) for label in labels):
         raise BrowserPolicyError("Destination must be a fully-qualified DNS hostname.")
+    if labels[-1] in {"localhost", "local", "internal", "test", "invalid", "example", "onion"}:
+        raise BrowserPolicyError("Local-use, reserved, and non-public suffixes are blocked.")
     return ascii_host, None
 
 
@@ -206,6 +208,76 @@ def validate_destination(
             raise BrowserPolicyError("DNS resolution failed closed.") from exc
         validate_dns_answers(target.hostname, answers)
     return target
+
+
+@dataclass(frozen=True)
+class PinnedDestination:
+    """Validated URL plus the complete public DNS answer set to pin at connect time."""
+
+    target: CanonicalURL
+    addresses: tuple[str, ...]
+
+
+def validate_live_destination(
+    value: object,
+    allowed_origins: Sequence[str],
+    *,
+    resolver: Resolver,
+) -> PinnedDestination:
+    """Validate an actual connection target and return addresses to pin.
+
+    Unlike offline validation, this function requires an injected resolver for
+    DNS names. The network adapter must connect only to the returned addresses
+    and must not resolve the hostname a second time.
+    """
+    if not callable(resolver):
+        raise BrowserPolicyError("A trusted DNS resolver is mandatory for live navigation.")
+    target = canonicalize_https_url(value)
+    # Reuse exact-origin validation without invoking an implicit system resolver.
+    validate_destination(target.url, allowed_origins)
+    try:
+        literal = ipaddress.ip_address(target.hostname)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        addresses = validate_dns_answers(target.hostname, [target.hostname])
+    else:
+        try:
+            answers = resolver(target.hostname)
+        except Exception as exc:
+            raise BrowserPolicyError("DNS resolution failed closed.") from exc
+        addresses = validate_dns_answers(target.hostname, answers)
+    return PinnedDestination(target=target, addresses=addresses)
+
+
+def validate_redirect_chain(
+    initial_url: str,
+    locations: Sequence[str],
+    allowed_origins: Sequence[str],
+    *,
+    resolver: Resolver,
+    max_redirects: int = 5,
+) -> tuple[PinnedDestination, ...]:
+    """Validate each redirect hop, including DNS answers, and reject loops."""
+    if type(max_redirects) is not int or not 0 <= max_redirects <= 10:
+        raise BrowserPolicyError("Redirect limit must be between zero and ten.")
+    if not isinstance(locations, Sequence) or isinstance(locations, (str, bytes)):
+        raise BrowserPolicyError("Redirect chain must be a sequence.")
+    if len(locations) > max_redirects:
+        raise BrowserPolicyError("Redirect limit exceeded.")
+    first = validate_live_destination(initial_url, allowed_origins, resolver=resolver)
+    chain = [first]
+    seen = {first.target.url}
+    current = first.target.url
+    for location in locations:
+        next_url = validate_redirect(current, location, allowed_origins)
+        if next_url.url in seen:
+            raise BrowserPolicyError("Redirect loop detected.")
+        pinned = validate_live_destination(next_url.url, allowed_origins, resolver=resolver)
+        chain.append(pinned)
+        seen.add(pinned.target.url)
+        current = pinned.target.url
+    return tuple(chain)
 
 
 def validate_redirect(
