@@ -12,7 +12,7 @@ import ipaddress
 import json
 import socket
 import ssl
-from urllib.parse import parse_qs, quote_plus, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlsplit
 
 from core.capabilities import (
     CapabilityContractError,
@@ -74,25 +74,31 @@ class SafeHTTPSClient:
         host = parsed.hostname
         if not host:
             raise SafeNetworkError("HTTPS host is missing.")
-        addresses = _public_addresses(host, self._resolver)
+        try:
+            ascii_host = host.encode("idna").decode("ascii")
+        except UnicodeError:
+            raise SafeNetworkError("HTTPS hostname is invalid.") from None
+        addresses = _public_addresses(ascii_host, self._resolver)
         last_error = None
         for family, socktype, proto, sockaddr in addresses:
             raw = socket.socket(family, socktype, proto)
+            tls_sock = None
+            response = None
             try:
                 raw.settimeout(self.timeout)
                 raw.connect(sockaddr)  # connect to the validated, pinned IP
-                tls_sock = self._tls.wrap_socket(raw, server_hostname=host)
+                tls_sock = self._tls.wrap_socket(raw, server_hostname=ascii_host)
                 raw = None
-                path = parsed.path or "/"
+                path = quote(parsed.path or "/", safe="/%:@!$&'()*+,;=-._~")
                 if parsed.query:
-                    path += "?" + parsed.query
+                    path += "?" + quote(parsed.query, safe="=&?/%:@!$'()*+,;~-._")
                 request = (
-                    f"GET {path} HTTP/1.1\r\n"
-                    f"Host: {host}\r\n"
-                    f"User-Agent: {USER_AGENT}\r\n"
-                    "Accept: text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1\r\n"
-                    "Accept-Encoding: identity\r\n"
-                    "Connection: close\r\n\r\n"
+                    f"GET {path} HTTP/1.1\\r\\n"
+                    f"Host: {ascii_host}\\r\\n"
+                    f"User-Agent: {USER_AGENT}\\r\\n"
+                    "Accept: text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1\\r\\n"
+                    "Accept-Encoding: identity\\r\\n"
+                    "Connection: close\\r\\n\\r\\n"
                 ).encode("ascii")
                 tls_sock.sendall(request)
                 response = http.client.HTTPResponse(tls_sock)
@@ -100,19 +106,12 @@ class SafeHTTPSClient:
                 status = response.status
                 headers = response.headers
                 if status in (301, 302, 303, 307, 308):
-                    location = headers.get("Location")
-                    response.close()
-                    tls_sock.close()
-                    return status, location, "", ""
+                    return status, headers.get("Location"), "", ""
                 if status != 200:
-                    response.close()
-                    tls_sock.close()
                     raise SafeNetworkError(f"Remote server returned HTTP {status}.")
                 content_type = headers.get_content_type().lower()
                 encoding = headers.get("Content-Encoding", "identity").lower()
                 if encoding not in ("", "identity"):
-                    response.close()
-                    tls_sock.close()
                     raise SafeNetworkError("Compressed or encoded responses are not accepted.")
                 length = headers.get("Content-Length")
                 if length:
@@ -122,14 +121,19 @@ class SafeHTTPSClient:
                     except ValueError:
                         raise SafeNetworkError("Remote response length is invalid.") from None
                 body = response.read(self.max_bytes + 1)
-                response.close()
-                tls_sock.close()
                 if len(body) > self.max_bytes:
                     raise SafeNetworkError("Remote response exceeds the size limit.")
                 return status, None, content_type, body.decode("utf-8", errors="replace")
-            except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+            except SafeNetworkError:
+                raise
+            except (OSError, ssl.SSLError, http.client.HTTPException, UnicodeError) as exc:
                 last_error = exc
-                if raw is not None:
+            finally:
+                if response is not None:
+                    response.close()
+                if tls_sock is not None:
+                    tls_sock.close()
+                elif raw is not None:
                     raw.close()
         raise SafeNetworkError("Secure connection to public host failed.") from None
 
