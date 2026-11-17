@@ -65,6 +65,12 @@ def bind_session_identity(
     )
     if changed:
         for key in _IDENTITY_BOUND_KEYS:
+            # On a first bind after a successful local login, retain only the
+            # just-verified local session timestamps while clearing every
+            # orphaned approval/runtime capability. A real identity switch
+            # invalidates those timestamps too.
+            if previous is None and key in local_session_markers:
+                continue
             session_state.pop(key, None)
     session_state["active_identity_subject"] = identity_subject
     return changed
