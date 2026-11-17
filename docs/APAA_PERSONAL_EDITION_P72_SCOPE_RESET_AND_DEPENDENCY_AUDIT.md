@@ -91,8 +91,8 @@ Parked modules and tests must not be deleted blindly in this reset: some may be 
 **P76 — Capability contracts:** typed read-only web search/navigation, document/file access and YouTube discovery; no mutation handlers yet.  
 **P77 — Local Owner authentication event audit hardening:** tamper-evident local event chain, backup/restore verification and regression tests (implemented on the P73 branch).  
 **P78 — First safe adapters:** read-only browsing/search and file inspection with strict origin/path/user-scope boundaries.  
-**P79 — Approved mutations:** per-action payload-bound confirmation, audit, cancellation, idempotency and recovery tests.  
-**P80 — Personal release review:** dependency audit, full tests, Android acceptance, backup/restore and owner sign-off.
+**P79 — Approved mutations:** per-action payload-bound confirmation, durable tenant-scoped idempotency, pre-dispatch cancellation, metadata-only audit, uncertain-outcome recovery and regression tests. Core gateway/storage implementation is committed; P78 adapter/UI integration and exact-head CI remain gates.  
+**P80 — Personal release review:** release-readiness assessment, dependency/test/Android/backup review and owner sign-off. The 2026-11-17 review disposition is NO-GO because P78, latest exact-head CI, physical Android acceptance, owner-operated backup/restore and independent review are outstanding.
 
 ## 6. Acceptance definition for Personal Edition v1
 
