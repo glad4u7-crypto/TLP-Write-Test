@@ -248,3 +248,12 @@ def test_chromium_failure_diagnostics_are_bounded_and_redacted():
     serialized = repr(details)
     for secret in ("hidden", "secret-token", "user@example.com", "/private"):
         assert secret not in serialized
+
+
+def test_host_resolver_rules_block_target_dns_but_exempt_numeric_proxy():
+    assert qualification._host_resolver_rules("198.18.0.1") == (
+        "MAP * ~NOTFOUND, EXCLUDE 198.18.0.1"
+    )
+    assert qualification._host_resolver_rules("2001:db8:1::1") == (
+        "MAP * ~NOTFOUND, EXCLUDE 2001:db8:1::1"
+    )
