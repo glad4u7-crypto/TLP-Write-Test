@@ -1,4 +1,5 @@
 name: APAA P74 real OCI Chromium worker
+# Chromium FD diagnosis uses read-only bounded host procfs snapshots; sandbox policy is unchanged.
 
 on:
   push:
