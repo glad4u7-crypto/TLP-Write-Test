@@ -482,3 +482,17 @@ by disabling only its setuid helper; this must still prove a working namespace
 sandbox on the disposable host before Chromium is considered qualified.
 
 The user-namespace sandbox configuration is queued for a fresh disposable-host Chromium run.
+
+
+### Run #196 — direct egress passed; user-namespace sandbox still unavailable
+
+The stricter UDP evidence and TCP firewall probes passed, and OCI/cgroup
+cleanup remained confirmed. Chromium still failed at the same `sys_chroot`
+sandbox initialization step even with `--disable-setuid-sandbox`; no browser
+HTTPS or proxy-outage result was produced. The harness now captures only the
+relevant syscall rules from the exact deny-by-default seccomp profile and runs
+a separate in-container `unshare(CLONE_NEWUSER)` capability probe. The next
+decision will be based on those kernel/profile facts; no capability, SUID
+helper, seccomp-unconfined mode or `--no-sandbox` fallback will be introduced.
+
+The seccomp/user-namespace diagnostic run is queued on a fresh disposable host.
