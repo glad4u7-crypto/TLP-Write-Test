@@ -113,6 +113,13 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
         tls_context = context or ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
         if tls_context.verify_mode != ssl.CERT_REQUIRED or not tls_context.check_hostname:
             raise ValueError("TLS certificate-chain and hostname verification are mandatory.")
+        if tls_context.minimum_version < ssl.TLSVersion.TLSv1_2:
+            raise ValueError("TLS 1.2 or newer is mandatory.")
+        if (
+            tls_context.maximum_version != ssl.TLSVersion.MAXIMUM_SUPPORTED
+            and tls_context.maximum_version < ssl.TLSVersion.TLSv1_2
+        ):
+            raise ValueError("TLS context does not permit TLS 1.2 or newer.")
         super().__init__(
             destination.hostname,
             destination.port,
