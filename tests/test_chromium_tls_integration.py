@@ -5,6 +5,7 @@ CONNECT proxy is used so the browser follows the same proxy-only egress model.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import socket
 import ssl
 import threading
@@ -56,24 +57,24 @@ class _ConnectProxy:
         try:
             client.settimeout(5)
             request = b""
-            while b"\r\n\r\n" not in request and len(request) < 8192:
+            while b"\\r\\n\\r\\n" not in request and len(request) < 8192:
                 chunk = client.recv(1024)
                 if not chunk:
                     return
                 request += chunk
-            first = request.split(b"\r\n", 1)[0].decode("ascii", "replace")
+            first = request.split(b"\\r\\n", 1)[0].decode("ascii", "replace")
             parts = first.split()
             if len(parts) != 3 or parts[0] != "CONNECT":
-                client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
                 return
             host, port_text = parts[1].rsplit(":", 1)
             # This test proxy is deliberately constrained to the local TLS
             # fixture; it cannot become a general-purpose open proxy.
             if host not in ("127.0.0.1", "localhost"):
-                client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
                 return
             upstream = socket.create_connection((host, int(port_text)), timeout=5)
-            client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            client.sendall(b"HTTP/1.1 200 Connection Established\\r\\n\\r\\n")
             sockets = (client, upstream)
             client.settimeout(None)
             upstream.settimeout(None)
@@ -108,12 +109,13 @@ class _ConnectProxy:
 def _self_signed_tls_server(tmp_path):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     cert = (
         x509.CertificateBuilder()
         .subject_name(name).issuer_name(name).public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(__import__("datetime").datetime.utcnow())
-        .not_valid_after(__import__("datetime").datetime.utcnow().replace(year=__import__("datetime").datetime.utcnow().year + 1))
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=365))
         .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .sign(key, hashes.SHA256())
