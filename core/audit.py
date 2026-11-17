@@ -36,7 +36,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|password|passwd|token|secret|api[_-]?key|session(?:[_ -]?id)?)\s*[:=]\s*([^\s,;]+)"
 )
 _BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
-_URL = re.compile(r"(?i)\bhttps?://[^\s<>\\"]+")
+_URL = re.compile(r'(?i)\bhttps?://[^\s<>"]+')
 _EMAIL = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 
 
