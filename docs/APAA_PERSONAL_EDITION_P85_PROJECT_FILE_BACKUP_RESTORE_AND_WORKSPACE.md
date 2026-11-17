@@ -54,3 +54,18 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Physical Android acceptance, owner-operated restore drill and independent security review remain separate external gates.
 - PR #13 remains Draft / Open / Unmerged. No merge or deployment is authorized by this checkpoint.
 - Browser/Worker dispatch remains disabled; Auto-Run OFF. No paid provider/API key/charge, payment, purchase, trading or money movement is enabled.
+
+
+## P85 closeout decision
+
+Implementation work for the scoped P85 code changes is complete on the feature branch. The latest observed PR head when this report was updated is `07a252ce24d2d425ece419d40b732dc93b617845`.
+
+**Do not label P85 fully verified or release-ready yet.** The latest visible successful full CI run is #369 on the earlier commit `d2b534f2e706ae7d3ab936e1247bca168bfd01ae`. The workflow also triggers on branch pushes, but the available workflow-run lookup exposes only pull-request-triggered runs; no exact-head result for the latest branch push could be independently read through the current integration.
+
+Remaining external acceptance gates:
+- Confirm the latest exact-head push run in GitHub Actions and resolve any failures.
+- Run the app on a physical Android device and complete the device acceptance checklist; emulator/desktop browser smoke is not equivalent.
+- Perform an Owner-operated backup → clean restore → project-file hash/content verification drill on a separate private destination.
+- Obtain independent security review before any remote exposure or production deployment.
+
+The Android path delivered in this checkpoint is a Termux-launched loopback browser app, not a signed APK, Play Store release or native Android package. PR #13 remains Draft/Open/Unmerged. No production deployment, remote worker activation, paid provider, payment or execution dispatch is authorized.
