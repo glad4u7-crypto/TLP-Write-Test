@@ -58,11 +58,26 @@ class SafeNavigationController:
     def installed(self) -> bool:
         return self._installed
 
+    def _validate_request(self, request: Any) -> None:
+        """Validate the complete browser-reported redirect chain, then request policy."""
+        chain = [request]
+        seen = {request.url}
+        previous = getattr(request, "redirected_from", None)
+        while previous is not None:
+            previous_url = previous.url
+            if previous_url in seen:
+                raise NavigationPolicyError("Redirect loop detected.")
+            seen.add(previous_url)
+            chain.append(previous)
+            previous = getattr(previous, "redirected_from", None)
+        ordered_urls = [item.url for item in reversed(chain)]
+        self._policy.validate_redirect_chain(ordered_urls[0], ordered_urls[1:])
+        if self._request_validator is not None:
+            self._request_validator(request)
+
     def _guard(self, route: Any) -> None:
         try:
-            self._policy.validate_url(route.request.url)
-            if self._request_validator is not None:
-                self._request_validator(route.request)
+            self._validate_request(route.request)
         except Exception:
             route.abort(error_code="blockedbyclient")
         else:
@@ -103,9 +118,7 @@ class SafeNavigationController:
 
         def temporary_guard(route: Any) -> None:
             try:
-                self._policy.validate_url(route.request.url)
-                if self._request_validator is not None:
-                    self._request_validator(route.request)
+                self._validate_request(route.request)
             except Exception as exc:
                 blocked.append(exc)
                 route.abort(error_code="blockedbyclient")
