@@ -131,6 +131,7 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 - Added unit and Streamlit AppTest coverage for first-run setup, passphrase storage, wrong password, persistent lockout, passphrase rotation, login, logout, idle/absolute expiry and failed-login isolation.
 - Updated existing local AppTest fixtures to authenticate through the new gate.
 
-**Current code head:** `8cca17578f16c5d0ab12ff5849ef5b6096a211e5` (exact-head CI not yet observed for this commit). Do not mark this workstream PASS until the full P73 workflow completes successfully on the exact head.
+**Current code head:** `da83d1e0998948902524f3b1d8ae5590550e930f`.  
+**Earlier CI feedback:** workflow run `44006192350` on the prior PR validation snapshot found seven test failures (lockout-boundary expectation, identity cleanup coverage, reusable test auth setup, and planner UI fixtures). The underlying issues were corrected in follow-up commits. That failed run is not evidence for the current head. Exact-head CI for `da83d1e0998948902524f3b1d8ae5590550e930f` remains PENDING / NOT OBSERVED. Do not mark this workstream PASS until the full P73 workflow completes successfully on the exact head.
 
 **Still pending in this workstream:** dedicated passphrase-change UI, end-to-end action permission/approval coverage for every mutation surface, audit review of login/security events, and exact-head CI. Owner login implementation does not complete all Owner, Permission & Approval Security requirements.
