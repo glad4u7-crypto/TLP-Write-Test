@@ -57,6 +57,20 @@ def _probe_blocked(command: list[str], description: str) -> None:
         raise RuntimeError(f"network bypass unexpectedly succeeded: {description}")
 
 
+def _probe_proxy_outage(command: list[str], expected_marker: str, description: str) -> dict:
+    """A dead mandatory proxy must not produce the allowed page via direct fallback."""
+    result = subprocess.run(command, check=False, capture_output=True, text=True,
+                            timeout=45, shell=False)
+    output = (result.stdout or "") + (result.stderr or "")
+    if expected_marker in output:
+        raise RuntimeError(f"browser reached the allowed page while its proxy was unavailable: {description}")
+    return {
+        "exit_code": result.returncode,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+        "allowed_marker_absent": True,
+    }
+
+
 def _audit_worker_capture(
     pcap_path: Path,
     *,
@@ -465,6 +479,27 @@ def main() -> int:
         }
         if not all(evidence["proxy_accepted_connections"].values()):
             raise RuntimeError("one or both proxy families did not record an upstream pinned TCP connection")
+
+        # Shut down each mandatory proxy and prove Chromium cannot reach the
+        # allowed origin through a direct fallback. The namespace firewall
+        # remains installed and default-DROP during both negative probes.
+        for family, proxy_ip, proxy in (
+            ("ipv4", host4, proxy_servers[0]),
+            ("ipv6", host6, proxy_servers[1]),
+        ):
+            proxy.close()
+            proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
+            proxy_argument = f"http={proxy_host}:{proxy_port};https={proxy_host}:{proxy_port}"
+            outage = _probe_proxy_outage([
+                "podman", "exec", "--user", "65532:65532", container_id,
+                chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
+                "--disable-background-networking", "--disable-component-update",
+                "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
+                "--proxy-bypass-list=<-loopback>", "--dump-dom", target.url,
+            ], expected_marker, family)
+            evidence["tests"][f"proxy_outage_no_direct_fallback_{family}"] = True
+            evidence[f"proxy_outage_{family}_evidence"] = outage
+
         evidence["result"] = "PASS"
         print("PASS: Chromium ran inside the isolated OCI worker through both IPv4 and IPv6 pinned proxies.")
         print("PASS: direct DNS, direct IPv4 TCP and direct IPv6 TCP were blocked.")
