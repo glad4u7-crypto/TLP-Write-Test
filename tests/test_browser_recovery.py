@@ -245,3 +245,15 @@ def test_existing_ledger_is_migrated_with_a_verifiable_snapshot(tmp_path):
     assert history[0]["state"] == "completed"
     assert history[0]["occurred_at"] == 12.0
     assert ledger.verify_history() == history[0]["entry_hash"]
+
+
+def test_outcome_code_rejects_free_form_sensitive_text(tmp_path):
+    ledger = make_ledger(tmp_path)
+    ledger.claim("job_outcomecheck1", "d" * 64, session_id="session-value-is-private")
+    ledger.transition("job_outcomecheck1", "running")
+    with pytest.raises(ValueError, match="non-sensitive"):
+        ledger.transition("job_outcomecheck1", "failed", outcome_code="user@example.com")
+    assert ledger.get("job_outcomecheck1")["state"] == "running"
+    assert [row["state"] for row in ledger.list_history("job_outcomecheck1")] == [
+        "accepted", "running"
+    ]
