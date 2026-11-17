@@ -724,6 +724,22 @@ def main() -> int:
                 "podman", "exec", container_id, "python3", "-c",
                 "import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP6-PROBE',('2606:4700:4700::1111',443)); s.recvfrom(1)",
             ], "direct IPv6 UDP/443 QUIC-style egress", allow_seccomp_socket_denial=True),
+            "ipv4_private": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('10.0.0.1',443),2)",
+            ], "direct IPv4 private destination"),
+            "ipv4_link_local_metadata": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('169.254.169.254',80),2)",
+            ], "direct IPv4 link-local metadata destination"),
+            "ipv6_unique_local": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('fd00::1',443,0,0))",
+            ], "direct IPv6 unique-local destination"),
+            "ipv6_metadata": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('fd00:ec2::254',80,0,0))",
+            ], "direct IPv6 metadata destination"),
         }
         evidence["tests"]["direct_dns_blocked"] = True
         evidence["tests"]["direct_tcp_dns_blocked"] = True
@@ -731,6 +747,10 @@ def main() -> int:
         evidence["tests"]["direct_ipv6_blocked"] = True
         evidence["tests"]["direct_udp_443_blocked"] = True
         evidence["tests"]["direct_udp6_443_blocked"] = True
+        evidence["tests"]["direct_ipv4_private_blocked"] = True
+        evidence["tests"]["direct_ipv4_link_local_metadata_blocked"] = True
+        evidence["tests"]["direct_ipv6_unique_local_blocked"] = True
+        evidence["tests"]["direct_ipv6_metadata_blocked"] = True
 
         for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
             proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
