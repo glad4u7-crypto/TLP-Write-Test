@@ -158,3 +158,23 @@ def test_qualification_command_error_identifies_action_and_redacts_url(monkeypat
         qualification._run(["podman", "exec", "--user", "65532:65532", "id", "/usr/bin/chromium"])
     assert "podman exec chromium" in str(error.value)
     assert "secret" not in str(error.value)
+
+
+def test_udp_probe_records_seccomp_socket_creation_denial_separately(monkeypatch):
+    from subprocess import CompletedProcess
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda command, **kwargs: CompletedProcess(
+            command, 1, "", "PermissionError: [Errno 1] Operation not permitted",
+        ),
+    )
+    evidence = qualification._probe_blocked(
+        ["podman", "exec", "id", "python3"], "direct UDP DNS",
+        allow_seccomp_socket_denial=True,
+    )
+    assert evidence["denial"] == "seccomp_socket_creation_denied"
+    with pytest.raises(RuntimeError, match="recognized socket-level denial"):
+        qualification._probe_blocked(
+            ["podman", "exec", "id", "python3"], "direct TCP",
+        )
