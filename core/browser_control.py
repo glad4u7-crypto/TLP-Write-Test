@@ -145,10 +145,10 @@ class BrowserControlBoundary:
         try:
             self._require_active_owner()
         except BrowserControlSecurityError:
-            self._record_audit("browser_approval_owner_session_denied")
+            self._record_audit("browser_approval_owner_session_denied", action="browser_approval")
             raise
         if owner_confirmed is not True:
-            self._record_audit("browser_approval_missing_owner_confirmation")
+            self._record_audit("browser_approval_missing_owner_confirmation", action="browser_approval")
             raise BrowserControlSecurityError(
                 "A fresh explicit Owner confirmation is required."
             )
@@ -158,7 +158,7 @@ class BrowserControlBoundary:
         try:
             job = validate_browser_job(raw_job, now=current)
         except (TypeError, ValueError) as exc:
-            self._record_audit("browser_approval_job_validation_denied")
+            self._record_audit("browser_approval_job_validation_denied", action="browser_approval")
             raise
         remaining = job.expires_at - current
         ttl = min(BROWSER_APPROVAL_TTL_SECONDS, remaining)
