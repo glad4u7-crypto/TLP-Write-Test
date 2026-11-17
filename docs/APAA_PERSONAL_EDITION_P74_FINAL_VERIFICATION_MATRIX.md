@@ -9,13 +9,15 @@
 | Runtime | Compile/import and runtime wiring tests | PASS |
 | Persistent storage | SQLite persistence, owner scope, restart and integrity tests | PASS |
 | Approval | Project action/payload/tenant/session binding, expiry and one-time nonce | PASS |
-| Owner UI mutations | Explicit consent/approval argument on all nine mutation call sites; missing approval blocks before audit/dispatch | IMPLEMENTED; latest exact-head CI PENDING |
+| Owner UI mutations | Explicit consent/approval argument on all nine mutation call sites; missing approval blocks before audit/dispatch | PASS — run #112 exact head |
+| Owner action history | Tenant-scoped metadata-only history; full audit-chain verification before display; tamper detection | PASS — run #112 exact head |
+| Owner passphrase UI | Rotation revokes session; new passphrase required for re-login | PASS — run #112 exact head |
 | Owner authentication audit | Payload-free login/logout/lockout/passphrase events | IMPLEMENTED; local event table not independently tamper-proof |
 | Audit | Intent-before-dispatch, metadata-only records, fail-closed behavior | PASS |
 | Backup/restore | Archive validation, integrity, atomic restore and key rotation | PASS |
 | Dependency security | pip-audit on exact tested head | PASS |
-| Python regression | Full suite on prior exact tested head | PASS; new Owner/action-approval changes require fresh exact-head run |
-| Browser smoke | Android/desktop Chromium login-aware viewport and workflow checks | Fixtures corrected to authenticate Owner; fresh exact-head run PENDING |
+| Python regression | Full suite on exact head `b975d14f351bf42d72940fcea54103a2b4b384fe` | PASS — 1,417 passed, 9 skipped; run #112 |
+| Browser smoke | Android/desktop Chromium login-aware viewport and workflow checks | PASS — 9 passed; run #112 |
 | Browser execution | Security-qualified implementation and independent review | NOT IMPLEMENTED; DISABLED |
 | Android | Physical A01–A12 on the actual phone using local Owner authentication | NOT RUN; Termux/runtime compatibility unqualified |
 | Local Owner identity | Passphrase setup/login, lockout, logout, idle/absolute expiry and identity-bound session cleanup | Automated PASS; physical Android run NOT RUN |
