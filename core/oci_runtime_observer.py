@@ -91,7 +91,13 @@ class PodmanWorkerObserver:
         config = inspected.get("Config") or {}
         state = inspected.get("State") or {}
         security = host.get("SecurityOpt") or []
-        if (not host.get("ReadonlyRootfs") or "ALL" not in (host.get("CapDrop") or [])
+        cap_drop = host.get("CapDrop")
+        cap_add = host.get("CapAdd") or []
+        if (not host.get("ReadonlyRootfs")
+                or not isinstance(cap_drop, list) or not cap_drop
+                or len(cap_drop) != len(set(cap_drop))
+                or any(type(item) is not str or not re.fullmatch(r"CAP_[A-Z0-9_]+", item) for item in cap_drop)
+                or cap_add
                 or not any(x == "no-new-privileges" or x.startswith("no-new-privileges=") for x in security)
                 or f"seccomp={spec.seccomp_profile}" not in security):
             raise WorkerObservationError("OCI security options differ from the required worker profile")
@@ -145,8 +151,14 @@ class PodmanWorkerObserver:
                 or pids != str(spec.limits.pids_limit)):
             raise WorkerObservationError("effective cgroup-v2 limits differ from the worker spec")
         seccomp_lines = [line for line in status.splitlines() if line.startswith("Seccomp:")]
+        cap_eff_lines = [line for line in status.splitlines() if line.startswith("CapEff:")]
         if seccomp_lines != ["Seccomp:\t2"]:
             raise WorkerObservationError("kernel does not confirm active seccomp filtering")
+        if len(cap_eff_lines) != 1:
+            raise WorkerObservationError("kernel effective capability mask is missing or ambiguous")
+        cap_eff = cap_eff_lines[0].split(":", 1)[1].strip()
+        if not re.fullmatch(r"[0-9a-fA-F]+", cap_eff) or int(cap_eff, 16) != 0:
+            raise WorkerObservationError("kernel reports effective Linux capabilities in the worker")
         image_id = inspected.get("Image")
         if type(image_id) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
             raise WorkerObservationError("OCI runtime did not report a canonical immutable image ID")
