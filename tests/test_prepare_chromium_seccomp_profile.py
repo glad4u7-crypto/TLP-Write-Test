@@ -41,7 +41,7 @@ def test_profile_allows_chroot_syscall_but_keeps_kernel_capability_gate():
     assert chroot[0]["action"] == "SCMP_ACT_ALLOW"
     assert chroot[0]["args"] == []
     assert "includes" not in chroot[0] and "excludes" not in chroot[0]
-    assert "CAP_SYS_CHROOT" in chroot[0]["comment"]
+    assert "comment" not in chroot[0]
     assert source == source_profile()
 
 
