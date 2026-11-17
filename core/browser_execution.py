@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import http.client
 import ipaddress
+import json
 import ssl
 import threading
 import time
@@ -344,9 +345,21 @@ class BrowserExecutionCoordinator:
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
                 raise BrowserExecutionError("Worker returned an invalid result envelope.")
+            try:
+                result_dict = dict(result)
+                if any(type(key) is not str for key in result_dict):
+                    raise TypeError("Result object keys must be strings.")
+                encoded_result = json.dumps(
+                    result_dict, ensure_ascii=False, allow_nan=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+                raise BrowserExecutionError("Worker result is not a valid JSON envelope.") from exc
+            if len(encoded_result) > job.max_response_bytes:
+                raise BrowserExecutionError("Worker result exceeded the approved response byte limit.")
             cleanup_mode = "browser_context_destroyed"  # run() contract: context/profile teardown completed.
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
-            return dict(result)
+            return result_dict
         except BrowserCancelled:
             self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
             raise
