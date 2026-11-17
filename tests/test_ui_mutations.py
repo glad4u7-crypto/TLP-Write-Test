@@ -49,7 +49,7 @@ def test_ui_mutation_records_failure_without_claiming_success():
         raise ValueError("invalid user data")
 
     with pytest.raises(ValueError, match="invalid user data"):
-        execute_audited_ui_mutation(audit, "memory.add", fail)
+        execute_audited_ui_mutation(audit, "memory.add", True, fail)
     assert [event.reason for event in audit.events] == [
         "ui_mutation_pending", "ui_mutation_failed"
     ]
@@ -97,7 +97,7 @@ def test_ui_mutation_cannot_bypass_global_or_unknown_action_denials(action):
     calls = []
     with pytest.raises(UIActionAuditError):
         execute_audited_ui_mutation(
-            audit, action, lambda: calls.append("must-not-run")
+            audit, action, True, lambda: calls.append("must-not-run")
         )
     assert calls == []
     assert audit.events == []
