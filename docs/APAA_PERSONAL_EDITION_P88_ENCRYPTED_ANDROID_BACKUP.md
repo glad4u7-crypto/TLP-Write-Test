@@ -1,6 +1,6 @@
 # APAA Personal Edition P88 — Encrypted Android Backup & Restore
 
-**Status:** Implementation and exact-head CI PASS on `3e397a2f501a3d5d6a57c1f19bf69e912ef73ed8` (run #? see verification link below).
+**Status:** Implementation and exact-head CI PASS on `3e397a2f501a3d5d6a57c1f19bf69e912ef73ed8` (run #533).
 **Scope:** Protect portable Personal Edition backups before they leave the Android device.
 
 ## Implemented
