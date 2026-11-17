@@ -204,6 +204,39 @@ else:
             st.session_state.pop(key, None)
 
     st.sidebar.success("Owner session active · local device")
+    with st.sidebar.expander("Change Owner passphrase"):
+        with st.form("apaa_owner_change_passphrase"):
+            current_owner_passphrase = st.text_input(
+                "Current Owner passphrase", type="password", max_chars=1024
+            )
+            replacement_owner_passphrase = st.text_input(
+                "New Owner passphrase", type="password", max_chars=1024
+            )
+            confirm_replacement_passphrase = st.text_input(
+                "Confirm new Owner passphrase", type="password", max_chars=1024
+            )
+            change_owner_passphrase = st.form_submit_button("Change passphrase")
+        if change_owner_passphrase:
+            try:
+                changed = local_owner_auth.change_passphrase(
+                    current_owner_passphrase,
+                    replacement_owner_passphrase,
+                    confirm_replacement_passphrase,
+                )
+                if changed:
+                    clear_session_identity(st.session_state)
+                    for key in (
+                        "apaa_local_authenticated_at", "apaa_local_last_activity",
+                        "approval_session_scope", "approval_authority",
+                        "execution_gateway", "execution_gateway_owner",
+                    ):
+                        st.session_state.pop(key, None)
+                    st.success("Owner passphrase changed. Sign in again with the new passphrase.")
+                    st.rerun()
+                st.error("Passphrase change failed. Check the current passphrase or login lockout.")
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Passphrase change could not be completed safely: {exc}")
+
     st.sidebar.button("Log out", on_click=_logout_local_owner)
 
 
