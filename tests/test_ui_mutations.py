@@ -88,3 +88,16 @@ def test_sqlite_audit_distinguishes_pending_and_completed_ui_mutations(tmp_path)
         ("success", "ui_mutation_completed"),
     ]
     assert store.verify_audit_chain()
+
+
+
+@pytest.mark.parametrize("action", ["payment.transfer", "trading.place_order", "run_shell"])
+def test_ui_mutation_cannot_bypass_global_or_unknown_action_denials(action):
+    audit = RecordingAudit()
+    calls = []
+    with pytest.raises(UIActionAuditError):
+        execute_audited_ui_mutation(
+            audit, action, lambda: calls.append("must-not-run")
+        )
+    assert calls == []
+    assert audit.events == []
