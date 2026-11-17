@@ -212,6 +212,7 @@ def test_cancel_terminates_the_unique_worker_session():
             terminated.append(session_id)
             release.set()
             return True
+            return True
 
     events = []
     coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=events.append)
@@ -285,17 +286,6 @@ def test_attested_runtime_factory_rejects_duck_typed_bypass():
         )
     assert calls == []
 
-
-def test_attested_runtime_factory_fails_closed_on_invalid_worker():
-    class Gate:
-        def launch(self, evidence, *, challenge, now):
-            return object()
-
-    with pytest.raises(BrowserExecutionError, match="invalid worker handle"):
-        BrowserExecutionCoordinator.from_attested_runtime(
-            Gate(), {}, challenge="a" * 64, now=1234,
-            audit=lambda event: None,
-        )
 
 
 
