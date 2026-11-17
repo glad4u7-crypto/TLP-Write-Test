@@ -55,6 +55,10 @@ The subsequent adversarial-test commit is `6a78ba2d3cb3b3fa6221636f629f1b60e1f91
 - [ ] Completed Android/Termux qualification or explicitly kept unsupported.
 - [ ] Independent security review and explicit owner approval before any live browser enablement.
 
+## Current branch-head CI trigger
+
+The latest PR #10 branch head inspected before this update was `7b7a9cfccec7745a4055e67f888acf541bc5987c`; no pull-request workflow run was returned for that SHA. This documentation-only commit is intended to trigger the branch's existing `push` security workflow so the expanded suite can receive an exact-head CI result. The result must be read from GitHub Actions before this gate is changed to PASS.
+
 ## Safety boundary
 
 No host firewall, namespace, container, runtime, or network configuration was changed. No browser was launched and no public website was accessed. No credentials, API keys, paid provider, payment, purchase, trading, money movement, Auto-Run, merge, deployment, or production enablement occurred.
