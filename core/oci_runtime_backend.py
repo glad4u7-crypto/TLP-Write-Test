@@ -1,10 +1,4 @@
-"""Fail-closed OCI lifecycle adapter for a disposable APAA browser worker.
-
-The adapter uses argv-only Podman commands and immutable container IDs. It
-never starts a container without a pre-provisioned network namespace and a
-local digest-pinned image. This is an integration boundary, not proof of
-host-side firewall/cgroup/seccomp enforcement.
-"""
+"""Fail-closed OCI lifecycle adapter for disposable APAA Chromium workers."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,6 +15,7 @@ class OCIRuntimeError(RuntimeError):
 _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_DIGEST = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
 _WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_CGROUP_PARENT = re.compile(r"^/sys/fs/cgroup/apaa/[a-z][a-z0-9_-]{0,31}$")
 
 
 @dataclass(frozen=True)
@@ -45,6 +40,7 @@ class OCIWorkerSpec:
     seccomp_profile: str
     worker_id: str
     limits: WorkerLimits = WorkerLimits()
+    cgroup_parent: str | None = None
 
     def __post_init__(self) -> None:
         if not _IMAGE_DIGEST.fullmatch(self.image):
@@ -55,13 +51,15 @@ class OCIWorkerSpec:
             raise ValueError("seccomp profile must be an absolute normalized path")
         if not _WORKER_ID.fullmatch(self.worker_id):
             raise ValueError("worker_id is invalid")
+        if self.cgroup_parent is not None and not _CGROUP_PARENT.fullmatch(self.cgroup_parent):
+            raise ValueError("cgroup_parent must be inside the dedicated APAA cgroup subtree")
 
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class PodmanOCIRuntime:
-    """Minimal Podman lifecycle; no shell, tag-based image, or name-based cleanup."""
+    """Minimal Podman lifecycle; immutable IDs, digest references, no shell or pull."""
 
     def __init__(
         self,
@@ -82,11 +80,8 @@ class PodmanOCIRuntime:
         try:
             result = self._runner(
                 [self._executable, *args],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
-                shell=False,
+                check=False, capture_output=True, text=True,
+                timeout=self._timeout, shell=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise OCIRuntimeError("OCI runtime command could not be completed") from exc
@@ -96,8 +91,7 @@ class PodmanOCIRuntime:
 
     def create(self, spec: OCIWorkerSpec) -> str:
         args = [
-            "create",
-            "--pull=never",
+            "create", "--pull=never",
             "--name", f"apaa-{spec.worker_id}",
             "--label", f"org.apaa.worker={spec.worker_id}",
             "--network", f"ns:{spec.network_namespace}",
@@ -111,10 +105,10 @@ class PodmanOCIRuntime:
             "--cpus", str(spec.limits.cpu_count),
             "--pids-limit", str(spec.limits.pids_limit),
             "--user", "65532:65532",
-            "--entrypoint", "sleep",
-            spec.image,
-            "infinity",
         ]
+        if spec.cgroup_parent:
+            args.extend(["--cgroup-parent", spec.cgroup_parent])
+        args.extend(["--entrypoint", "sleep", spec.image, "infinity"])
         output = self._run(args)
         container_id = output.splitlines()[-1] if output else ""
         if not _CONTAINER_ID.fullmatch(container_id):
@@ -130,6 +124,8 @@ class PodmanOCIRuntime:
             raise OCIRuntimeError("OCI inspect returned invalid JSON") from exc
         if not isinstance(payload, list) or len(payload) != 1 or not isinstance(payload[0], dict):
             raise OCIRuntimeError("OCI inspect returned an unexpected object shape")
+        if payload[0].get("Id") != container_id:
+            raise OCIRuntimeError("OCI inspect identity differs from the requested immutable container ID")
         return payload[0]
 
     def start(self, container_id: str) -> None:
