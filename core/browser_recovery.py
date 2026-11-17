@@ -235,7 +235,7 @@ class SQLiteBrowserRecoveryLedger:
             latest = latest_by_job.get(job_id)
             if latest is None or latest[:3] != (state, updated_at, outcome_code):
                 raise RecoveryLedgerError("action history does not match the current job ledger state")
-        self._verify_approval_correlations_connection(db)
+        SQLiteBrowserRecoveryLedger._verify_approval_correlations_connection(db)
         return previous_hash
 
     @staticmethod
