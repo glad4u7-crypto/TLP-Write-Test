@@ -143,6 +143,29 @@ def main() -> int:
         namespace_created = True
         evidence["tests"]["namespace_provisioned"] = True
 
+        links = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "link", "show"]).stdout)
+        if {item.get("ifname") for item in links} != {"lo", worker_veth}:
+            raise RuntimeError("worker namespace contains an unexpected network interface")
+        route4 = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "route", "show", "default"]).stdout)
+        route6 = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-6", "-j", "route", "show", "default"]).stdout)
+        if (len(route4) != 1 or route4[0].get("gateway") != host4 or route4[0].get("dev") != worker_veth
+                or len(route6) != 1 or route6[0].get("gateway") != host6 or route6[0].get("dev") != worker_veth):
+            raise RuntimeError("IPv4/IPv6 default routes do not lead exclusively to the approved proxy host")
+        addresses = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "addr", "show", "dev", worker_veth]).stdout)
+        addr_values = {
+            item.get("local")
+            for device in addresses for item in device.get("addr_info", [])
+        }
+        if not {str(ipaddress.ip_interface(plan.worker_ipv4).ip), str(ipaddress.ip_interface(plan.worker_ipv6).ip)}.issubset(addr_values):
+            raise RuntimeError("worker veth does not hold the configured IPv4 and IPv6 addresses")
+        evidence["network_snapshot"] = {
+            "interfaces": sorted(item.get("ifname", "") for item in links),
+            "ipv4_default_route": route4,
+            "ipv6_default_route": route6,
+            "worker_addresses": sorted(addr_values),
+        }
+        evidence["tests"]["dual_stack_namespace_routes_and_no_alternate_interface"] = True
+
         firewall.install(namespace_name, proxy_ips, proxy_port)
         ruleset = firewall.verify_ruleset(
             namespace_name, proxy_ips=proxy_ips, proxy_port=proxy_port
