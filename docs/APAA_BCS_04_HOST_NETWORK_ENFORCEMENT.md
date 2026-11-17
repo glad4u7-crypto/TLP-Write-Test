@@ -211,3 +211,11 @@ only the exact configured cgroup-root prefix before subtree comparison and
 uses the normalized path for limit readback. A regression test covers this
 mount-prefixed procfs representation. This is a path normalization correction,
 not a relaxation of subtree isolation.
+
+
+Run #78 confirmed that the cgroup path now normalizes into the expected
+subtree, but the observer could not resolve the worker leaf directory under
+the mounted cgroup root. The next run records a bounded diagnostic of the
+candidate leaf, its parent, and sibling entries, and the observer error
+includes the exact candidate path plus OS error type. This will distinguish
+a missing Podman cgroupfs leaf from a mount-root or delegation mismatch.
