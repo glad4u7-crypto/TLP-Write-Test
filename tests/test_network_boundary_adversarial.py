@@ -33,7 +33,9 @@ def test_ssrf_sensitive_resolver_answers_are_denied(address):
 
 def test_mixed_public_private_a_aaaa_answer_is_denied_as_a_whole():
     policy=NavigationPolicy(frozenset({"example.com"}),resolver=lambda host:(PUBLIC,"10.1.2.3"))
-    with pytest.raises(NavigationPolicyError):
+    # The egress authorizer exposes its own stable denial type; the lower-level
+    # NavigationPolicyError is wrapped at this public boundary.
+    with pytest.raises(EgressAuthorizationError):
         EgressDestinationAuthorizer(policy).authorize("https://example.com/")
 
 def test_redirect_to_loopback_or_metadata_is_denied():
