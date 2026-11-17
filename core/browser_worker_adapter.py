@@ -152,6 +152,43 @@ class AttestedBrowserWorkerAdapter:
         self._challenge_factory = challenge_factory
         self._challenge_ledger = challenge_ledger
         self._cleanup_wait = float(cleanup_wait_seconds)
+    @classmethod
+    def from_keyring(
+        cls,
+        spec: WorkerLaunchSpec,
+        *,
+        backend: IsolatedWorkerBackend,
+        keyring: Any,
+        expected_proxy_addresses: Sequence[str],
+        challenge_ledger: Any,
+        cleanup_wait_seconds: float = 15.0,
+    ) -> "AttestedBrowserWorkerAdapter":
+        """Build an adapter from an explicit owner keyring and durable replay ledger.
+
+        This factory requires durable replay protection. The keyring's software
+        storage is not an HSM or out-of-band key custody mechanism.
+        """
+        if keyring is None or not callable(getattr(keyring, "signing_key", None)):
+            raise TypeError("an owner-managed attestation keyring is required")
+        if not callable(getattr(keyring, "trusted_public_keys", None)):
+            raise TypeError("keyring must expose trusted_public_keys()")
+        if challenge_ledger is None or not callable(getattr(challenge_ledger, "consume", None)):
+            raise TypeError("a durable atomic challenge ledger is required")
+        status = keyring.status() if callable(getattr(keyring, "status", None)) else None
+        if not isinstance(status, dict) or type(status.get("active_key_id")) is not str:
+            raise TypeError("keyring must report exactly one active key ID")
+        key_id = status["active_key_id"]
+        return cls(
+            spec,
+            backend=backend,
+            signing_key=keyring.signing_key(),
+            key_id=key_id,
+            trusted_public_keys=keyring.trusted_public_keys(),
+            expected_proxy_addresses=expected_proxy_addresses,
+            challenge_ledger=challenge_ledger,
+            cleanup_wait_seconds=cleanup_wait_seconds,
+        )
+
         self._states: dict[str, _WorkerState] = {}
         # Challenges are single-use for this adapter process. The default 256-bit
         # CSPRNG makes cross-process collisions negligible; deployments requiring
