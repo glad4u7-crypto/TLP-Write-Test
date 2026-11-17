@@ -111,16 +111,20 @@ def test_nftables_install_uses_namespace_and_stdin_ruleset():
 
 def _nft_output(extra_rule=""):
     return f"""table inet apaa {{
- chain input {{ type filter hook input priority filter; policy drop; }}
- chain output {{ type filter hook output priority filter; policy drop; }}
- iifname "lo" accept
- oifname "lo" accept
- ct state established,related accept
- ct state established,related accept
- ip6 saddr fe80::/10 icmpv6 type {{ nd-neighbor-solicit, nd-neighbor-advert }} accept
- ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept
- ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
- {extra_rule}
+ chain input {{
+  type filter hook input priority filter; policy drop;
+  iifname "lo" accept
+  ct state established,related accept
+  ip6 saddr fe80::/10 icmpv6 type {{ nd-neighbor-solicit, nd-neighbor-advert }} accept
+ }}
+ chain output {{
+  type filter hook output priority filter; policy drop;
+  oifname "lo" accept
+  ct state established,related accept
+  ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept
+  ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
+  {extra_rule}
+ }}
 }}"""
 
 
