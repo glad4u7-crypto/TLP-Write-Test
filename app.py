@@ -632,10 +632,18 @@ with st.sidebar:
                 key="apaa_backup_encrypt_passphrase",
                 max_chars=1024,
             )
+            backup_passphrase_confirm = st.text_input(
+                "Confirm backup encryption passphrase",
+                type="password",
+                key="apaa_backup_encrypt_passphrase_confirm",
+                max_chars=1024,
+            )
             if st.button("Create encrypted backup", key="apaa_create_personal_backup"):
                 try:
                     if len(backup_passphrase) < 12:
                         raise EncryptedBackupError("Use a backup passphrase with at least 12 characters.")
+                    if not hmac.compare_digest(backup_passphrase, backup_passphrase_confirm):
+                        raise EncryptedBackupError("Backup passphrases do not match.")
                     backup_parent = Path(personal_data_dir).expanduser().absolute().parent
                     with tempfile.TemporaryDirectory(
                         prefix=".apaa-backup-download-", dir=str(backup_parent)
