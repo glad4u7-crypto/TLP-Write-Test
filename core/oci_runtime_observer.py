@@ -1,0 +1,164 @@
+"""Read-only Podman/procfs/cgroup observer for isolated APAA workers."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import re
+from typing import Any
+
+from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
+
+
+class WorkerObservationError(RuntimeError):
+    """Runtime state cannot be independently confirmed."""
+
+
+@dataclass(frozen=True)
+class WorkerObservation:
+    container_id: str
+    host_pid: int
+    process_start_time_ticks: int
+    network_namespace_inode: int
+    cgroup_path: str
+    memory_max: str
+    cpu_max: str
+    pids_max: str
+    seccomp_mode: int
+    image_id: str
+
+
+class PodmanWorkerObserver:
+    """Cross-check independent runtime/kernel observations against an immutable spec."""
+
+    def __init__(
+        self,
+        runtime: PodmanOCIRuntime,
+        *,
+        proc_root: str | Path = "/proc",
+        cgroup_root: str | Path = "/sys/fs/cgroup",
+        namespace_root: str | Path = "/run/netns",
+    ) -> None:
+        if not isinstance(runtime, PodmanOCIRuntime):
+            raise TypeError("runtime must be PodmanOCIRuntime")
+        self.runtime = runtime
+        self.proc_root = Path(proc_root)
+        self.cgroup_root = Path(cgroup_root)
+        self.namespace_root = Path(namespace_root)
+
+    @staticmethod
+    def _start_time(stat_text: str) -> int:
+        if type(stat_text) is not str:
+            raise WorkerObservationError("proc stat is malformed")
+        closing = stat_text.rfind(")")
+        if closing < 0:
+            raise WorkerObservationError("proc stat has no process-name terminator")
+        fields = stat_text[closing + 1:].split()
+        # The first token after comm is field 3 (state); starttime is field 22.
+        if len(fields) <= 19 or not fields[19].isdigit():
+            raise WorkerObservationError("proc start-time field is missing")
+        return int(fields[19])
+
+    @staticmethod
+    def _unified_cgroup(cgroup_text: str) -> str:
+        if type(cgroup_text) is not str:
+            raise WorkerObservationError("proc cgroup data is malformed")
+        matches = []
+        for line in cgroup_text.splitlines():
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[0] == "0" and parts[1] == "":
+                matches.append(parts[2])
+        if len(matches) != 1:
+            raise WorkerObservationError("exactly one unified cgroup-v2 membership is required")
+        value = matches[0]
+        if not value.startswith("/") or ".." in Path(value).parts:
+            raise WorkerObservationError("unified cgroup path is unsafe")
+        return value
+
+    @staticmethod
+    def _read(path: Path) -> str:
+        try:
+            return path.read_text(encoding="ascii").strip()
+        except OSError as exc:
+            raise WorkerObservationError("required kernel observation is unavailable") from exc
+
+    def observe(self, container_id: str, spec: OCIWorkerSpec) -> WorkerObservation:
+        if not isinstance(spec, OCIWorkerSpec):
+            raise TypeError("spec must be OCIWorkerSpec")
+        # Runtime.inspect validates the immutable 64-hex ID and returned identity.
+        inspected = self.runtime.inspect(container_id)
+        host = inspected.get("HostConfig") or {}
+        config = inspected.get("Config") or {}
+        state = inspected.get("State") or {}
+        security = host.get("SecurityOpt") or []
+        if (not host.get("ReadonlyRootfs") or "ALL" not in (host.get("CapDrop") or [])
+                or not any(x == "no-new-privileges" or x.startswith("no-new-privileges=") for x in security)
+                or f"seccomp={spec.seccomp_profile}" not in security):
+            raise WorkerObservationError("OCI security options differ from the required worker profile")
+        expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
+        if (host.get("Memory") != spec.limits.memory_bytes
+                or host.get("PidsLimit") != spec.limits.pids_limit
+                or host.get("NanoCpus") != expected_cpu_nanos):
+            raise WorkerObservationError("OCI resource limits differ from the immutable worker spec")
+        if config.get("User") != "65532:65532":
+            raise WorkerObservationError("OCI worker is not running with the required non-root UID/GID")
+        expected_network = f"ns:{spec.network_namespace}"
+        if host.get("NetworkMode") != expected_network:
+            raise WorkerObservationError("OCI worker network namespace differs from the requested namespace")
+        if state.get("Running") is not True:
+            raise WorkerObservationError("OCI worker is not confirmed running")
+        pid = state.get("Pid")
+        if type(pid) is not int or pid <= 1:
+            raise WorkerObservationError("OCI runtime did not report a valid host PID")
+        proc = self.proc_root / str(pid)
+        try:
+            start_before = self._start_time(self._read(proc / "stat"))
+            net_inode = (proc / "ns" / "net").stat().st_ino
+            namespace_inode = (self.namespace_root / Path(spec.network_namespace).name).stat().st_ino
+            cgroup_path = self._unified_cgroup(self._read(proc / "cgroup"))
+            status = self._read(proc / "status")
+            start_after = self._start_time(self._read(proc / "stat"))
+        except OSError as exc:
+            raise WorkerObservationError("host process identity could not be inspected") from exc
+        if start_before != start_after:
+            raise WorkerObservationError("host PID was reused during observation")
+        if net_inode != namespace_inode:
+            raise WorkerObservationError("worker process is outside the provisioned network namespace")
+        parent = spec.cgroup_parent
+        if not parent:
+            raise WorkerObservationError("an explicit delegated cgroup parent is required")
+        expected_parent = "/" + str(Path(parent).relative_to("/sys/fs/cgroup")).strip("/")
+        if cgroup_path != expected_parent and not cgroup_path.startswith(expected_parent.rstrip("/") + "/"):
+            raise WorkerObservationError("worker process is outside its dedicated APAA cgroup subtree")
+        relative = cgroup_path.lstrip("/")
+        cgroup_dir = self.cgroup_root / relative
+        try:
+            if not cgroup_dir.resolve(strict=True).is_relative_to(self.cgroup_root.resolve(strict=True)):
+                raise WorkerObservationError("observed cgroup path escapes the cgroup-v2 mount")
+        except OSError as exc:
+            raise WorkerObservationError("worker cgroup directory is unavailable") from exc
+        memory = self._read(cgroup_dir / "memory.max")
+        cpu = self._read(cgroup_dir / "cpu.max")
+        pids = self._read(cgroup_dir / "pids.max")
+        expected_cpu = f"{int(spec.limits.cpu_count * 100000)} 100000"
+        if (memory != str(spec.limits.memory_bytes) or cpu != expected_cpu
+                or pids != str(spec.limits.pids_limit)):
+            raise WorkerObservationError("effective cgroup-v2 limits differ from the worker spec")
+        seccomp_lines = [line for line in status.splitlines() if line.startswith("Seccomp:")]
+        if seccomp_lines != ["Seccomp:\t2"]:
+            raise WorkerObservationError("kernel does not confirm active seccomp filtering")
+        image_id = inspected.get("Image")
+        if type(image_id) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            raise WorkerObservationError("OCI runtime did not report a canonical immutable image ID")
+        return WorkerObservation(
+            container_id=container_id,
+            host_pid=pid,
+            process_start_time_ticks=start_before,
+            network_namespace_inode=net_inode,
+            cgroup_path=cgroup_path,
+            memory_max=memory,
+            cpu_max=cpu,
+            pids_max=pids,
+            seccomp_mode=2,
+            image_id=image_id,
+        )
