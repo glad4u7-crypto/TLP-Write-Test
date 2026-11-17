@@ -330,9 +330,10 @@ def test_execution_coordinator_keeps_dispatch_disabled_until_owner_approval_is_i
     assert calls == []
 
 
-def test_execution_coordinator_rejects_invalid_worker_from_verified_gate(tmp_path):
+def test_execution_coordinator_never_calls_untrusted_worker_adapter_before_approval_integration(tmp_path):
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
+    calls = []
     recovery_dir = tmp_path / "private-recovery"
     recovery_dir.mkdir(mode=0o700)
     recovery_dir.chmod(0o700)
@@ -341,9 +342,9 @@ def test_execution_coordinator_rejects_invalid_worker_from_verified_gate(tmp_pat
         spec,
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP],
-        worker_start=lambda passed_spec, evidence: object(),
+        worker_start=lambda *_: calls.append(True),
     )
-    with pytest.raises(BrowserExecutionError, match="invalid worker handle"):
+    with pytest.raises(BrowserExecutionError, match="trusted Owner approval consumption"):
         BrowserExecutionCoordinator.from_attested_runtime(
             gate,
             signed_evidence(spec, key),
@@ -352,3 +353,4 @@ def test_execution_coordinator_rejects_invalid_worker_from_verified_gate(tmp_pat
             audit=lambda event: None,
             recovery_ledger=recovery_ledger,
         )
+    assert calls == []
