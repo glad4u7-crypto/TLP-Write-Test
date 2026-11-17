@@ -29,9 +29,8 @@ class NftablesPolicy:
             if (address.is_unspecified or address.is_multicast or address.is_loopback
                     or address.is_link_local or address.compressed != value):
                 raise ValueError("proxy IP must be canonical unicast")
-            if address.version == 4 and address in (ipaddress.ip_network("0.0.0.0/32"),
-                                                     ipaddress.ip_network("255.255.255.255/32")):
-                raise ValueError("proxy IP cannot be an unspecified or broadcast address")
+            if address.version == 4 and address == ipaddress.IPv4Address("255.255.255.255"):
+                raise ValueError("proxy IP cannot be a broadcast address")
             normalized.append(value)
         if len(set(normalized)) != len(normalized):
             raise ValueError("duplicate proxy IPs are forbidden")
