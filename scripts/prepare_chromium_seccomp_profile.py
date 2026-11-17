@@ -81,7 +81,7 @@ def prepare_profile_file(source_path: str | Path, output_path: str | Path) -> st
             or source.resolve(strict=True) != source):
         raise SeccompProfilePreparationError("source seccomp profile must be an absolute regular non-symlink file")
     if (not output.is_absolute() or output.exists() or output.is_symlink()
-            or not output.parent.is_dir() or output.parent.is_symlink()):
+            or not output.parent.is_dir() or output.parent.is_symlink() or output.parent.resolve(strict=True) != output.parent):
         raise SeccompProfilePreparationError("output must be a new absolute file in a real existing directory")
 
     try:
