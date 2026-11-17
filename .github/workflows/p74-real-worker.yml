@@ -45,6 +45,7 @@ jobs:
 
       - name: Prepare Chromium user-namespace seccomp profile
         run: |
+          set -euo pipefail
           python3 -m scripts.prepare_chromium_seccomp_profile \
             --source "$APAA_SECCOMP_PROFILE" \
             --output "$RUNNER_TEMP/apaa-chromium-seccomp.json"
