@@ -36,13 +36,15 @@ class NamespacePlan:
         for value in (self.name, self.host_veth, self.worker_veth):
             if not _NAME.fullmatch(value):
                 raise ValueError("namespace and interface names must be short safe identifiers")
-        for host, worker, version in (
-            (self.host_ipv4, self.worker_ipv4, 4),
-            (self.host_ipv6, self.worker_ipv6, 6),
+        for host, worker, version, prefix in (
+            (self.host_ipv4, self.worker_ipv4, 4, 30),
+            (self.host_ipv6, self.worker_ipv6, 6, 64),
         ):
             h, w = ipaddress.ip_interface(host), ipaddress.ip_interface(worker)
             if h.version != version or w.version != version or h.network != w.network:
                 raise ValueError("host and worker addresses must share the expected IP subnet")
+            if h.network.prefixlen != prefix:
+                raise ValueError("veth subnet must use the required point-to-point prefix")
             if h.ip == w.ip or h.ip.is_loopback or w.ip.is_loopback or h.ip.is_multicast or w.ip.is_multicast:
                 raise ValueError("invalid point-to-point addresses")
 
@@ -99,9 +101,19 @@ class LinuxNetworkNamespaceProvisioner:
                     pass
             raise
 
-    def remove(self, name: str) -> None:
-        if not _NAME.fullmatch(name):
-            raise ValueError("invalid namespace name")
+    def remove(self, plan: NamespacePlan) -> None:
+        if not isinstance(plan, NamespacePlan):
+            raise TypeError("cleanup requires the original immutable NamespacePlan")
         if self._require_root and os.geteuid() != 0:
-            raise NamespaceProvisionError("CAP_NET_ADMIN/root is required for namespace removal")
-        self._run(["ip", "netns", "del", name])
+            raise NamespaceProvisionError("CAP_NET_ADMIN/root is required for namespace cleanup")
+        errors = []
+        try:
+            self._run(["ip", "link", "del", plan.host_veth])
+        except Exception as exc:
+            errors.append(exc)
+        try:
+            self._run(["ip", "netns", "del", plan.name])
+        except Exception as exc:
+            errors.append(exc)
+        if errors:
+            raise NamespaceProvisionError("namespace or host veth cleanup was incomplete") from errors[0]
