@@ -159,7 +159,10 @@ def _expected(policy: NftablesPolicy) -> Counter[tuple[str, tuple[tuple[str, str
             inside("ct.state", ("established", "related")))
         add("output", eq(destination, raw_ip), eq("tcp.dport", policy.proxy_port),
             inside("ct.state", ("established", "related")))
-        add("output", eq(destination, raw_ip), eq("tcp.dport", policy.proxy_port))
+        # The installed nftables policy explicitly constrains new
+        # connections with ct state new; the live JSON emits that match.
+        add("output", eq(destination, raw_ip), eq("tcp.dport", policy.proxy_port),
+            eq("ct.state", "new"))
     return expected
 
 
