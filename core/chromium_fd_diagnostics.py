@@ -146,7 +146,7 @@ def _read_process(
         executable = None
     cmdline = b""
     try:
-        cmdline = (base / "cmdline").read_bytes()[:8192]
+        with (base / "cmdline").open("rb") as stream:\n            cmdline = stream.read(8192)
     except OSError:
         pass
     role = _process_role(cmdline)
