@@ -45,5 +45,5 @@ def test_proxy_failure_is_closed(response):
  assert s.closed
 
 def test_tls_verification_cannot_be_disabled():
- p,*_=setup(); ctx=TLS(); ctx.verify_mode=ssl.CERT_NONE
+ p,*_=setup(); ctx=TLS(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
  with pytest.raises(ValueError): MandatoryProxyConnector(p,proxy_tls_context=ctx)
