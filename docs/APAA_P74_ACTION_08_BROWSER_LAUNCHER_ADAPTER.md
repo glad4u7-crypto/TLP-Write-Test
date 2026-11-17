@@ -1,6 +1,6 @@
 # APAA P74 Action 08 — Browser Launcher Adapter
 
-**Status:** Adapter and deterministic tests committed; CI verification pending.  
+**Status:** Adapter committed; Chromium TLS integration test and CI execution added; latest CI result pending.  
 **Branch:** `feature/apaa-s09-c01-p01-browser-launch`
 
 ## Previous-action audit
@@ -29,6 +29,7 @@ If launch or context creation fails, the adapter closes any partially created br
 - Valid signed inspector evidence launches through the exact numeric proxy IP pin.
 - Unsigned/tampered evidence and challenge mismatch block browser startup.
 - TLS verification remains enabled in the browser context.
+- A real headless Chromium process connects through a constrained local CONNECT proxy and rejects a locally generated untrusted HTTPS certificate (`ERR_CERT_AUTHORITY_INVALID`).
 - Unsafe firewall, direct-egress, DNS-egress, worker-state, and missing-field evidence blocks launch before browser startup.
 - Stale attestation blocks launch.
 - Context creation failure closes the browser.
@@ -38,13 +39,12 @@ If launch or context creation fails, the adapter closes any partially created br
 ## Remaining acceptance work
 
 - [ ] CI test suite passes on the latest commit.
-- [ ] Execute Chromium integration tests with a locally generated trusted test CA.
-- [ ] Prove hostname mismatch and expired certificate rejection in a real browser.
+- [ ] Execute trusted-test-CA hostname-mismatch and expired-certificate rejection in a real browser.
 - [ ] Test IPv4/IPv6 fallback against a controlled local test endpoint.
 - [ ] Test redirect chains and loops in a real browser through the mandatory proxy.
 - [ ] Verify DNS answer changes cause fresh authorization and no stale-pin reuse.
 - [ ] Independently prove OS/container direct-egress denial.
 - [ ] Independent security review.
 
-**Safety state:** No browser session has been launched. No live browsing, login, form submission, downloads, purchases, payments, trading, money movement, paid services, Auto-Run, deployment, or firewall changes are enabled.
+**Safety state:** CI launches a disposable headless Chromium process only against a local test TLS server through a constrained local test proxy. This is not live public-web browsing and does not enable user-facing browsing, login, form submission, downloads, purchases, payments, trading, money movement, paid services, Auto-Run, deployment, or firewall changes.
 \n\n## Important trust-boundary correction\n\nAn earlier adapter revision accepted a plain runtime-attestation mapping. That interface was removed because it could be caller-forged and bypass the Ed25519 inspector gate. The current public entry point requires a concrete `AttestedBrowserRuntime` and signed evidence; the browser worker callback receives only `VerifiedInspectorEvidence` after the gate passes.\n
