@@ -97,3 +97,20 @@ The following repository documents were added on the Personal Edition branch:
 These additions complete the preparation/documentation work possible without a physical device, private HTTPS/OIDC environment, independent security reviewer or qualified network host. They do not implement a browser engine, create a native APK, or close C01.
 
 **Updated disposition:** Browser Security design contract = DOCUMENTED; secure Browser implementation = NOT IMPLEMENTED / DISABLED. Android A01–A12 = PROCEDURE READY / NOT RUN. Final verification matrix = DOCUMENTED; final acceptance = OPEN. C01 remains OPEN; C02 remains NOT STARTED.
+
+
+## 7. P74 Browser Security implementation work started
+
+The existing offline browser policy module was hardened with:
+- Additional rejection for local-use and reserved DNS suffixes (`localhost`, `local`, `internal`, `test`, `invalid`, `example`, `onion`).
+- `PinnedDestination` and `validate_live_destination`: live DNS-name navigation requires an injected trusted resolver, validates the complete answer set, and returns the exact public addresses that a future connector must pin. Public IP literals are validated directly.
+- `validate_redirect_chain`: every hop is revalidated, every hostname's DNS set is independently checked, redirects are bounded and loops rejected.
+- New regression tests for reserved suffixes, missing resolver, DNS pinning, mixed public/private answers, IP literals, per-hop redirect resolution, DNS failure, redirect loops and hop limits.
+
+**Exact implementation commit:** `eceae46d0c4fb2b70ee92fa298025e0548a799cd`.
+
+**Verification:** GitHub Actions run [#43993237426](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43993237426) was started for this exact head. Its Python test and browser-smoke jobs were still running at the time of this update; do not mark the implementation verified until both jobs finish successfully.
+
+**Not implemented / deliberately disabled:** no browser process, socket connector, TLS pinning/hostname-verification adapter, container sandbox, network egress firewall, browser session manager, download/upload path, or Browser/Worker ExecutionGateway handler was added. The returned pinned addresses are a contract for a future connector, not proof that network connections are currently pinned. Browser execution remains DISABLED.
+
+P74 therefore has real policy code and regression coverage added, but Browser Security is not complete. Android A01–A12 remain procedure-ready/not run, and final acceptance remains open. C01 remains OPEN; C02 remains NOT STARTED.
