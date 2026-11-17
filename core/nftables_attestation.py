@@ -89,7 +89,19 @@ def _rule_signature(rule: dict[str, Any]) -> tuple[str, tuple[tuple[str, str, st
             raise NftablesAttestationError("unsupported nftables match operator")
         left = _field(match.get("left"))
         right = match.get("right")
-        if isinstance(right, (dict, list)):
+        if isinstance(right, dict) and set(right) == {"prefix"}:
+            prefix = right["prefix"]
+            if (not isinstance(prefix, dict) or set(prefix) != {"addr", "len"}
+                    or type(prefix["len"]) is not int):
+                raise NftablesAttestationError("malformed nftables prefix match")
+            try:
+                right_value = json.dumps(
+                    str(ipaddress.ip_network(f"{prefix['addr']}/{prefix['len']}", strict=False)),
+                    separators=(",", ":"),
+                )
+            except (TypeError, ValueError) as exc:
+                raise NftablesAttestationError("invalid nftables prefix match") from exc
+        elif isinstance(right, (dict, list)):
             right_value = json.dumps(right, sort_keys=True, separators=(",", ":"))
         elif type(right) in (str, int, bool):
             right_value = json.dumps(right, separators=(",", ":"))
