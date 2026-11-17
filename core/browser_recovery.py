@@ -7,6 +7,7 @@ cannot know whether a remote side effect happened before the crash.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from contextlib import contextmanager
 import os
@@ -181,7 +182,7 @@ class SQLiteBrowserRecoveryLedger:
             expected_hash = SQLiteBrowserRecoveryLedger._history_entry_hash(
                 previous_hash, job_id, state, occurred_at, outcome_code
             )
-            if not isinstance(stored_hash, str) or not __import__("hmac").compare_digest(
+            if not isinstance(stored_hash, str) or not hmac.compare_digest(
                 expected_hash, stored_hash
             ):
                 raise RecoveryLedgerError("action history integrity verification failed")
@@ -203,8 +204,10 @@ class SQLiteBrowserRecoveryLedger:
         if job_id is not None and (type(job_id) is not str or not 8 <= len(job_id) <= 128):
             raise ValueError("job ID is invalid")
         try:
-            self.verify_history()
             with self._database() as db:
+                # Verify and read under the same SQLite snapshot so a concurrent
+                # writer cannot append between verification and result retrieval.
+                self._verify_history_connection(db)
                 if job_id is None:
                     rows = db.execute(
                         """SELECT sequence,job_id,state,occurred_at,outcome_code,entry_hash
@@ -229,8 +232,9 @@ class SQLiteBrowserRecoveryLedger:
         if not target.is_absolute() or target.parent != self.path.parent:
             raise ValueError("backup must use an absolute path in the private ledger directory")
         parent = target.parent.lstat()
-        if stat.S_ISLNK(parent.st_mode) or not stat.S_ISDIR(parent.st_mode) or stat.S_IMODE(parent.st_mode) & 0o077:
-            raise ValueError("backup directory must remain owner-private")
+        if (stat.S_ISLNK(parent.st_mode) or not stat.S_ISDIR(parent.st_mode)
+                or parent.st_uid != os.geteuid() or stat.S_IMODE(parent.st_mode) & 0o077):
+            raise ValueError("backup directory must remain owner-owned and private")
         try:
             fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
         except FileExistsError as exc:
@@ -243,6 +247,7 @@ class SQLiteBrowserRecoveryLedger:
             source = self._connect()
             destination_db = sqlite3.connect(target, isolation_level=None)
             try:
+                destination_db.execute("PRAGMA synchronous=FULL")
                 source.backup(destination_db)
                 result = destination_db.execute("PRAGMA integrity_check").fetchone()
                 if not result or result[0] != "ok":
@@ -281,12 +286,22 @@ class SQLiteBrowserRecoveryLedger:
                 if not result or result[0] != "ok":
                     raise RecoveryLedgerError("restore source failed SQLite integrity check")
                 self._verify_history_connection(destination_db)
-                required = {"browser_jobs", "browser_control", "browser_job_history"}
-                present = {row[0] for row in destination_db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
+                required_columns = {
+                    "browser_jobs": {"job_id", "request_digest", "state", "created_at", "updated_at", "session_id", "outcome_code"},
+                    "browser_control": {"key", "value", "updated_at"},
+                    "browser_job_history": {"sequence", "job_id", "state", "occurred_at", "outcome_code", "previous_hash", "entry_hash"},
+                }
+                for table, required in required_columns.items():
+                    columns = {row[1] for row in destination_db.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()}
+                    if not required.issubset(columns):
+                        raise RecoveryLedgerError("restore source has an incompatible ledger schema")
+                triggers = {row[0] for row in destination_db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'"
                 ).fetchall()}
-                if not required.issubset(present):
-                    raise RecoveryLedgerError("restore source is missing required ledger tables")
+                if not {"browser_history_no_update", "browser_history_no_delete"}.issubset(triggers):
+                    raise RecoveryLedgerError("restore source is missing append-only history protections")
             finally:
                 source_db.close()
                 destination_db.close()
