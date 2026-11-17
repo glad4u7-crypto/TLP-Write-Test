@@ -405,7 +405,7 @@ class BrowserExecutionCoordinator:
         if termination_error is not None:
             raise BrowserExecutionError("Worker termination failed; job remains cancelled.") from termination_error
         if audit_error is not None:
-            raise BrowserExecutionError("Cancellation audit write failed after worker termination.") from audit_error
+            raise BrowserExecutionError("Cancellation recovery or audit record failed after worker termination.") from audit_error
         return changed
 
     def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
@@ -535,8 +535,15 @@ class BrowserExecutionCoordinator:
             return result_dict
         except BrowserCancelled:
             if self._recovery_ledger is not None and ledger_state in {"accepted", "running", "cancel_requested"}:
-                self._recovery_ledger.transition(job.job_id, "cancelled", outcome_code="owner_cancel")
-                ledger_state = "cancelled"
+                try:
+                    self._recovery_ledger.transition(job.job_id, "cancelled", outcome_code="owner_cancel")
+                    ledger_state = "cancelled"
+                except RecoveryLedgerError:
+                    self._audit_failed = True
+                    try:
+                        self._recovery_ledger.latch_dispatch_block("recovery_state_failure")
+                    except Exception:
+                        pass
             self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
             raise
         except BrowserTimeout:
