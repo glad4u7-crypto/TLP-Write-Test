@@ -307,8 +307,12 @@ def test_cancel_terminates_worker_even_if_audit_storage_fails():
             terminated.append(session_id)
             release.set()
 
+    events = []
+
     def broken_audit(event):
-        raise OSError("audit unavailable")
+        if event["event"] == "cancel_requested":
+            raise OSError("audit unavailable")
+        events.append(event)
 
     coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=broken_audit)
     errors = []
