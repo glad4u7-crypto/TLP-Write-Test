@@ -369,6 +369,7 @@ def test_cancel_wakes_coordinator_without_waiting_for_worker_callback():
 
         def terminate(self, session_id):
             terminated.append(session_id)
+            release.set()
             return True
 
     events = []
