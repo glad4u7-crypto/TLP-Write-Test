@@ -186,11 +186,19 @@ class BrowserControlBoundary:
         before any side effect. A valid receipt is consumed once and the gateway
         records a denied disabled outcome. This is not browser execution.
         """
-        self._require_active_owner()
+        try:
+            self._require_active_owner()
+        except BrowserControlSecurityError:
+            self._record_audit("browser_dispatch_owner_session_denied")
+            raise
         current = int(time.time()) if now is None else now
         if type(current) is not int or current < 0:
             raise ValueError("Browser dispatch time is invalid.")
-        job = validate_browser_job(raw_job, now=current)
+        try:
+            job = validate_browser_job(raw_job, now=current)
+        except (TypeError, ValueError):
+            self._record_audit("browser_dispatch_job_validation_denied")
+            raise
         return self._gateway.execute(
             BROWSER_APPROVAL_ACTION,
             _job_payload(job),
