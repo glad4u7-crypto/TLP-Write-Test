@@ -8,6 +8,7 @@ from core.browser_execution import (
     BrowserCancelled,
     BrowserExecutionCoordinator,
     BrowserExecutionError,
+    BrowserTimeout,
     CancellationToken,
     PinnedDestination,
     PinnedHTTPSConnection,
@@ -225,4 +226,35 @@ def test_cancel_terminates_the_unique_worker_session():
     assert isinstance(errors[0], BrowserCancelled)
     assert [event["event"] for event in events] == [
         "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
+    ]
+
+
+
+def test_hard_deadline_terminates_worker_and_audits_timeout():
+    started = threading.Event()
+    release = threading.Event()
+    terminated = []
+
+    class SlowWorker(FakeWorker):
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            started.set()
+            release.wait(timeout=4)
+            cancellation.raise_if_cancelled()
+            return {"text": "too late"}
+
+        def terminate(self, session_id):
+            terminated.append(session_id)
+            release.set()
+
+    events = []
+    coordinator = BrowserExecutionCoordinator(SlowWorker(), audit=events.append)
+    with pytest.raises(BrowserTimeout, match="hard runtime deadline"):
+        coordinator.execute(
+            valid_job(max_runtime_seconds=1),
+            resolver=lambda host: ["93.184.216.34"],
+        )
+    assert started.is_set()
+    assert len(terminated) == 1
+    assert [event["event"] for event in events] == [
+        "job_accepted", "job_timed_out", "session_closed"
     ]
