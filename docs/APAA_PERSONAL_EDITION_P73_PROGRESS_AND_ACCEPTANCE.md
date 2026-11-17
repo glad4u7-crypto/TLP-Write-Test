@@ -119,7 +119,7 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 ### P74 latest-head correction
 - Reserved suffix hardening intentionally rejects `.example`; an inherited IDN normalization test had used `bücher.example` as an accepted fixture. CI exposed the mismatch (1 failed, 1,393 passed, 9 skipped on the earlier snapshot); the fixture was corrected to `bücher.com`.
 - Latest branch head after the fixture correction and verification notes: `7cf35d218a32edc4bb194633539653619548790e`.
-- Exact-head workflow [#43993446488](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43993446488) is running on this latest head. Do not claim PASS until both Python tests and browser smoke complete successfully.
+- Exact-head workflow [#43993446488](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43993446488) completed PASS on this head: 1,396 Python tests passed, 9 skipped; browser smoke passed; dependency audit reported no known vulnerabilities.
 
 
 ## 8. S09-C01 Owner, Permission & Approval Security — implementation started
@@ -153,3 +153,12 @@ A further source audit identified two verification weaknesses and corrected them
 The earlier run #90 had Python tests PASS while the browser-smoke job remained in progress. That run predates these fixture corrections and cannot verify the latest source. A fresh exact-head workflow is required.
 
 The source review also reconfirmed that the local auth-event SQLite table is payload-free but not independently tamper-proof; this limitation remains documented. The execution audit hash chain remains a separate tamper-evident control.
+
+
+## 10. Final documentation-head verification
+
+- Code/test head `b975d14f351bf42d72940fcea54103a2b4b384fe` passed in run #112 with 1,417 Python tests passed / 9 skipped, compile PASS, dependency audit clean and 9 browser smoke tests PASS.
+- Documentation-alignment head `c6d6117022c2d66b54750c49fe5bc68eb456a6df` passed in run [#114](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44008819721) with 1,417 Python tests passed / 9 skipped, compile PASS, dependency audit clean and 9 browser smoke tests PASS.
+- The runbook now treats Android acceptance as a same-device, loopback-only local Owner workflow. Physical A01–A12 and Android/Termux runtime compatibility remain NOT RUN / UNQUALIFIED. Remote HTTPS/OIDC and two-account grant/revoke are future remote deployment scope, not current Personal Edition prerequisites.
+- The action-history UI is now included in the Owner sidebar and verifies the full audit chain before showing the latest tenant-scoped metadata. The local Owner authentication event table remains a separate non-tamper-evident convenience log.
+- The separate PR #10 browser-runtime branch remains unmerged and unqualified: no trusted host adapter, real network isolation, or direct-egress proof. It is not imported into this Personal Edition branch; live Browser/Worker execution remains disabled.
