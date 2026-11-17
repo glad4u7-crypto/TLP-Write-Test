@@ -149,6 +149,10 @@ class AttestedBrowserWorkerAdapter:
         self._challenge_factory = challenge_factory
         self._cleanup_wait = float(cleanup_wait_seconds)
         self._states: dict[str, _WorkerState] = {}
+        # Challenges are single-use for this adapter process. The default 256-bit
+        # CSPRNG makes cross-process collisions negligible; deployments requiring
+        # restart-surviving replay protection must add a durable owner-controlled ledger.
+        self._used_challenges: set[str] = set()
         self._lock = threading.RLock()
 
     def run(
@@ -179,8 +183,13 @@ class AttestedBrowserWorkerAdapter:
             if not isinstance(source, HostSnapshotSource):
                 raise BrowserWorkerBootstrapError("Backend did not provide a trusted host snapshot source.")
             challenge = self._challenge_factory(32)
-            if type(challenge) is not str or len(challenge) != 64:
+            if type(challenge) is not str or not re.fullmatch(r"[0-9a-f]{64}", challenge):
                 raise BrowserWorkerBootstrapError("Challenge factory did not return a 256-bit hex challenge.")
+            with self._lock:
+                if challenge in self._used_challenges:
+                    raise BrowserWorkerBootstrapError("A host-attestation challenge cannot be reused.")
+                # Consume before collection: failed collection cannot make the nonce reusable.
+                self._used_challenges.add(challenge)
 
             evidence = collect_signed_inspector_evidence(
                 source,
