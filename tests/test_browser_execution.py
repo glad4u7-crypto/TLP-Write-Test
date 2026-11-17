@@ -228,6 +228,7 @@ def test_cancel_terminates_the_unique_worker_session():
     thread.start()
     assert started.wait(timeout=2)
     assert coordinator.cancel("job_p74_123456") is True
+    assert coordinator.cancel("job_p74_123456") is False
     thread.join(timeout=3)
     assert not thread.is_alive()
     assert len(terminated) == 1
