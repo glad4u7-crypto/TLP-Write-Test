@@ -20,6 +20,10 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
       - name: Compile
         run: python -m compileall -q app.py core tests scripts
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r requirements.txt
       - name: Run complete test suite
         run: python -m pytest -q
   browser-smoke:
