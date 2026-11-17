@@ -110,15 +110,21 @@ def _probe_blocked(
 def _probe_user_namespace(container_id: str) -> dict[str, object]:
     """Verify unprivileged userns mapping and chroot without adding capabilities."""
     code = (
-        "import ctypes,os,sys; uid=os.getuid(); gid=os.getgid(); "
-        "libc=ctypes.CDLL(None,use_errno=True); "
-        "r=libc.unshare(0x10000000); "
-        "if r != 0: print('USERNS_UNSHARE_ERR',ctypes.get_errno()); sys.exit(10); "
-        "open('/proc/self/setgroups','w').write('deny'); "
-        "open('/proc/self/uid_map','w').write(f'0 {uid} 1'); "
-        "open('/proc/self/gid_map','w').write(f'0 {gid} 1'); "
-        "try: os.chroot('/proc/self/fdinfo'); print('USERNS_CHROOT_OK') "
-        "except OSError as e: print('USERNS_CHROOT_ERR',e.errno); sys.exit(11)"
+        "import ctypes,os,sys\n"
+        "uid=os.getuid(); gid=os.getgid()\n"
+        "libc=ctypes.CDLL(None,use_errno=True)\n"
+        "if libc.unshare(0x10000000) != 0:\n"
+        " print('USERNS_UNSHARE_ERR',ctypes.get_errno()); sys.exit(10)\n"
+        "try:\n"
+        " open('/proc/self/setgroups','w').write('deny')\n"
+        " open('/proc/self/uid_map','w').write(f'0 {uid} 1')\n"
+        " open('/proc/self/gid_map','w').write(f'0 {gid} 1')\n"
+        "except OSError as e:\n"
+        " print('USERNS_MAP_ERR',e.errno); sys.exit(11)\n"
+        "try:\n"
+        " os.chroot('/proc/self/fdinfo'); print('USERNS_CHROOT_OK')\n"
+        "except OSError as e:\n"
+        " print('USERNS_CHROOT_ERR',e.errno); sys.exit(12)\n"
     )
     result = subprocess.run(
         ["podman", "exec", container_id, "python3", "-c", code],
