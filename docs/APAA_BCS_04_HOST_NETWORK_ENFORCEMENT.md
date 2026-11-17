@@ -663,3 +663,11 @@ system-default profile first, then derive the owner-only Chromium profile, then
 create the worker. That run produced no host qualification evidence.
 
 The corrected profile-step ordering is queued for a new disposable-host run.
+
+
+The first retry attempt after adding the profile generator stopped before
+container creation because the workflow step order still referenced the
+baseline seccomp path before it had been located. The workflow is corrected:
+it now locates the Podman baseline, derives the private Chromium profile, then
+provisions cgroup/image and passes the derived profile to the OCI runtime.
+The failed attempt skipped all destructive provisioning steps.
