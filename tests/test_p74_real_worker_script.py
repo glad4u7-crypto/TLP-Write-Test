@@ -192,3 +192,30 @@ def test_proxy_outage_probe_rejects_container_or_chromium_setup_failure(monkeypa
     )
     with pytest.raises(RuntimeError, match="did not reach a Chromium proxy failure"):
         qualification._probe_proxy_outage(["podman", "exec"], "Allowed Marker", "ipv4")
+
+
+def test_user_namespace_probe_requires_mapping_and_chroot(monkeypatch):
+    from subprocess import CompletedProcess
+
+    captured = {}
+    def successful(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(command, 0, "USERNS_CHROOT_OK\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", successful)
+    evidence = qualification._probe_user_namespace("worker-container")
+    assert evidence["user_namespace_chroot_available"] is True
+    assert "unshare(0x10000000)" in captured["command"][-1]
+    assert "USERNS_CHROOT_OK" in captured["command"][-1]
+
+
+def test_user_namespace_probe_fails_closed_when_mapping_or_chroot_fails(monkeypatch):
+    from subprocess import CompletedProcess
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda command, **kwargs: CompletedProcess(command, 12, "USERNS_CHROOT_ERR 1\\n", ""),
+    )
+    evidence = qualification._probe_user_namespace("worker-container")
+    assert evidence["user_namespace_chroot_available"] is False
+    assert evidence["exit_code"] == 12
