@@ -214,6 +214,40 @@ def test_parser_rejects_unsafe_or_unknown_output_rules(mutate):
         )
 
 
+
+def _first_proxy_input_rule(document):
+    return next(
+        item["rule"] for item in document["nftables"]
+        if "rule" in item and item["rule"]["chain"] == "input"
+        and item["rule"]["expr"][0].get("match", {}).get("left", {}).get("payload", {}).get("field") == "saddr"
+        and item["rule"]["expr"][0].get("match", {}).get("right") == PROXY_IP
+    )
+
+
+def test_parser_rejects_input_chain_or_return_path_weakening():
+    doc = nftables()
+    doc["nftables"] = [
+        item for item in doc["nftables"]
+        if not (item.get("chain", {}).get("name") == "input")
+    ]
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(doc, expected_proxy_addresses=PROXY_IPS, expected_proxy_port=PROXY_PORT)
+
+    doc = nftables()
+    _first_proxy_input_rule(doc)["expr"][0]["match"]["right"] = "172.20.0.99"
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(doc, expected_proxy_addresses=PROXY_IPS, expected_proxy_port=PROXY_PORT)
+
+    doc = nftables()
+    next(
+        item["rule"] for item in doc["nftables"]
+        if "rule" in item and item["rule"]["chain"] == "input"
+        and len(item["rule"]["expr"]) == 3
+    )["expr"][1]["match"]["right"] = "echo-request"
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(doc, expected_proxy_addresses=PROXY_IPS, expected_proxy_port=PROXY_PORT)
+
+
 def test_parser_rejects_wrong_proxy_ip_or_port():
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
