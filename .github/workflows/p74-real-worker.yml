@@ -8,6 +8,7 @@ name: APAA P74 real OCI Chromium worker
 # Evidence distinguishes the prefixed browser log PID from the stack-matched child image.
 # This rerun skips unavailable dbgsym and keeps symbolication best-effort.
 # Exported close symbol addresses are inspected from the pinned worker ELF.
+# Full local symbols are checked before falling back to dynamic symbols.
 
 on:
   push:
