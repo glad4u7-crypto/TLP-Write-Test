@@ -81,7 +81,14 @@ def _probe_blocked(command: list[str], description: str) -> dict[str, object]:
     if denial is None:
         # A failed podman exec, missing executable, seccomp denial or malformed
         # probe is not evidence that the network firewall blocked the packet.
-        raise RuntimeError(f"direct network probe did not reach a recognized socket-level denial: {description}")
+        diagnostic = " ".join(output.split())
+        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)[:240]
+        digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        raise RuntimeError(
+            f"direct network probe did not reach a recognized socket-level denial: "
+            f"{description} (exit={result.returncode}; sha256={digest}; "
+            f"{diagnostic or 'no diagnostic output'})"
+        )
     return {
         "exit_code": result.returncode,
         "denial": denial,
