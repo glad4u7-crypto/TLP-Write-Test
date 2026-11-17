@@ -113,6 +113,21 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
         for process in snapshot.get("processes", []):
             namespace_pids = process.get("status", {}).get("nspid", "").split()
             if namespace_pids and namespace_pids[-1].isdigit() and int(namespace_pids[-1]) == container_pid:
+                frames = []
+                for frame in failure.get("fd_ownership_stack_frames", []):
+                    try:
+                        address = int(frame["address"], 16)
+                    except (KeyError, TypeError, ValueError):
+                        frames.append(dict(frame))
+                        continue
+                    mapped_frame = dict(frame)
+                    for mapping in process.get("executable_mappings", []):
+                        start, end = int(mapping["start"], 16), int(mapping["end"], 16)
+                        if start <= address < end:
+                            mapped_frame["module"] = mapping["module"]
+                            mapped_frame["module_offset"] = hex(address - start + int(mapping["file_offset"], 16))
+                            break
+                    frames.append(mapped_frame)
                 matches.append({
                     "snapshot_index": snapshot_index,
                     "host_pid": process["pid"],
@@ -123,6 +138,8 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
                     "role": process.get("role"),
                     "start_time_ticks": process.get("start_time_ticks"),
                     "fd_count_observed": process.get("fd_count_observed"),
+                    "executable_mappings": process.get("executable_mappings", []),
+                    "stack_frames_with_module_offsets": frames,
                     "status": process.get("status"),
                 })
     return matches[-1] if matches else None
