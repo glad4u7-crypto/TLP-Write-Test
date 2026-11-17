@@ -91,7 +91,7 @@ approved before C02 starts.
 ## Current checkpoint record
 
 - Latest implementation branch head: `20e9f3e311ea85adc888aace4c0004932a0bcd61`.
-- New P74 regression tests authored: 20 in `test_browser_execution.py` and 15 in `test_attested_browser_runtime.py` (35 total).
+- New P74 regression tests authored: 21 in `test_browser_execution.py` and 15 in `test_attested_browser_runtime.py` (36 total).
 - Exact-head GitHub combined status and PR workflow lookup returned no check results. Therefore automated PASS is **not verified**.
 - No physical Android/device testing was performed.
 - Browser execution remains disabled until a real isolated worker, host-enforced egress boundary, durable audit adapter, and successful exact-head CI/security verification exist.
