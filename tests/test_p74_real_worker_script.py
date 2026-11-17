@@ -418,3 +418,32 @@ def test_crash_pid_mapping_prefers_process_whose_executable_contains_stack_pc():
     assert mapped["nspid_match_index"] == 1
     assert mapped["stack_frame_match_count"] == 1
     assert mapped["stack_frames_with_module_offsets"][0]["module_offset"] == "0x250"
+
+
+
+def test_unprefixed_fd_crash_stack_maps_to_child_process_not_log_prefix_pid():
+    failure = {
+        "fd_ownership_log_pid": 17,
+        "fd_ownership_stack_frames": [{"frame": 0, "address": "0x1150"}],
+    }
+    diagnostics = {
+        "snapshots": [
+            {"wall_time_ns": 100, "processes": [
+                {"pid": 8632, "ppid": 8629, "comm": "chromium", "executable": "chromium",
+                 "role": "other", "start_time_ticks": "6877", "fd_count_observed": 148,
+                 "executable_mappings": [{"start": "0x3000", "end": "0x4000",
+                                           "file_offset": "0x100", "module": "chromium"}],
+                 "status": {"nspid": "8632 17"}},
+                {"pid": 15027, "ppid": 8632, "comm": "chromium", "executable": "chromium",
+                 "role": "other", "start_time_ticks": "11475", "fd_count_observed": 12,
+                 "executable_mappings": [{"start": "0x1000", "end": "0x2000",
+                                           "file_offset": "0x100", "module": "chromium"}],
+                 "status": {"nspid": "15027 255"}},
+            ]},
+        ],
+    }
+    mapped = qualification._map_failure_to_fd_snapshot(failure, diagnostics)
+    assert mapped["host_pid"] == 15027
+    assert mapped["container_pid"] == "255"
+    assert mapped["mapping_confidence"] == "all_stack_frames_match_candidate_process_image"
+    assert mapped["log_process_mapping"]["host_pid"] == 8632
