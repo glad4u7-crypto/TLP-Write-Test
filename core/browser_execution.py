@@ -26,6 +26,7 @@ from core.browser_security import (
     validate_browser_job,
     validate_dns_answers,
     validate_redirect,
+    validate_destination,
 )
 
 
@@ -104,7 +105,10 @@ def resolve_pinned_destination(
         literal = ipaddress.ip_address(target.hostname)
         answers: Sequence[str] = [literal.compressed]
     except ValueError:
-        answers = resolver(target.hostname)
+        try:
+            answers = resolver(target.hostname)
+        except Exception as exc:
+            raise BrowserExecutionError("Destination DNS resolution failed closed.") from exc
     try:
         addresses = validate_dns_answers(target.hostname, answers)
         destination = PinnedDestination(target.hostname, target.port, addresses)
@@ -128,6 +132,7 @@ def authorize_redirect_and_pin(
     if not callable(resolver):
         raise BrowserExecutionError("Redirects require a live DNS resolver.")
     try:
+        validate_destination(current_url, allowed_origins)
         target = validate_redirect(current_url, location, allowed_origins)
     except BrowserPolicyError as exc:
         raise BrowserExecutionError("Redirect target failed URL/origin policy.") from exc
