@@ -187,10 +187,13 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
                     source = project_dir / entry.name
                     _reject_symlink_components(source)
                     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                    project_dir_fd = None
                     try:
-                        descriptor = os.open(entry.name, flags, dir_fd=os.open(
-                            project_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-                        ))
+                        project_dir_fd = os.open(
+                            project_dir,
+                            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                        )
+                        descriptor = os.open(entry.name, flags, dir_fd=project_dir_fd)
                         with os.fdopen(descriptor, "rb") as stream:
                             metadata = os.fstat(stream.fileno())
                             if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_PROJECT_FILE_BYTES:
@@ -199,10 +202,8 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
                     except OSError as exc:
                         raise PersonalBackupError("A project file could not be read safely.") from exc
                     finally:
-                        try:
-                            os.close(_project_dir_fd)
-                        except (NameError, OSError):
-                            pass
+                        if project_dir_fd is not None:
+                            os.close(project_dir_fd)
                     if len(payload) != entry.size or hashlib.sha256(payload).hexdigest() != entry.sha256:
                         raise PersonalBackupError("A project file changed during backup; retry the backup.")
                     project_file_total += len(payload)
