@@ -20,6 +20,10 @@ from typing import Any
 import zipfile
 
 from core.personal_auth import LocalOwnerAuthStore
+from core.personal_project_files import (
+    MAX_PROJECT_FILE_BYTES, ProjectFileError, list_project_files,
+    project_files_directory,
+)
 from core.personal_runtime import (
     ensure_private_data_dir,
     load_or_create_approval_signing_key,
@@ -29,13 +33,15 @@ from core.sqlite_security_store import SQLiteSecurityStore
 
 
 _FORMAT = "APAA_PERSONAL_BACKUP"
-_VERSION = 2
+_VERSION = 3
 _DATABASES_V1 = ("projects.sqlite3", "security.sqlite3", "memory.sqlite3")
 _DATABASES = ("projects.sqlite3", "security.sqlite3", "owner-auth.sqlite3", "memory.sqlite3")
 _MANIFEST = "manifest.json"
 _MAX_DATABASE_BYTES = 256 * 1024 * 1024
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
-_MAX_MANIFEST_BYTES = 64 * 1024
+_MAX_MANIFEST_BYTES = 256 * 1024
+_MAX_PROJECT_FILES = 500
+_MAX_PROJECT_FILES_TOTAL = 32 * 1024 * 1024
 _CHUNK = 1024 * 1024
 
 
@@ -158,11 +164,64 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
             "sha256": _sha256(owner_auth_snapshot),
         }
 
+        project_file_manifest: dict[str, dict[str, Any]] = {}
+        project_files_root = paths.data_dir / "project-files"
+        project_file_total = 0
+        if project_files_root.exists():
+            _reject_symlink_components(project_files_root)
+            root_stat = project_files_root.lstat()
+            if not stat.S_ISDIR(root_stat.st_mode) or (os.name == "posix" and root_stat.st_mode & 0o077):
+                raise PersonalBackupError("Project files root is not a private real directory.")
+            project_ids = sorted(item.name for item in project_files_root.iterdir())
+            if len(project_ids) > _MAX_PROJECT_FILES:
+                raise PersonalBackupError("Project file inventory exceeds its item limit.")
+            for project_id in project_ids:
+                try:
+                    entries = list_project_files(paths.data_dir, project_id)
+                    project_dir = project_files_directory(paths.data_dir, project_id)
+                except (ProjectFileError, OSError) as exc:
+                    raise PersonalBackupError("Project file inventory is unsafe; backup was refused.") from exc
+                for entry in entries:
+                    if len(project_file_manifest) >= _MAX_PROJECT_FILES:
+                        raise PersonalBackupError("Project file inventory exceeds its item limit.")
+                    source = project_dir / entry.name
+                    _reject_symlink_components(source)
+                    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                    try:
+                        descriptor = os.open(entry.name, flags, dir_fd=os.open(
+                            project_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                        ))
+                        with os.fdopen(descriptor, "rb") as stream:
+                            metadata = os.fstat(stream.fileno())
+                            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_PROJECT_FILE_BYTES:
+                                raise PersonalBackupError("A project file is not a bounded regular file.")
+                            payload = stream.read(MAX_PROJECT_FILE_BYTES + 1)
+                    except OSError as exc:
+                        raise PersonalBackupError("A project file could not be read safely.") from exc
+                    finally:
+                        try:
+                            os.close(_project_dir_fd)
+                        except (NameError, OSError):
+                            pass
+                    if len(payload) != entry.size or hashlib.sha256(payload).hexdigest() != entry.sha256:
+                        raise PersonalBackupError("A project file changed during backup; retry the backup.")
+                    project_file_total += len(payload)
+                    if project_file_total > _MAX_PROJECT_FILES_TOTAL:
+                        raise PersonalBackupError("Project files exceed the aggregate backup limit.")
+                    archive_name = f"project-files/{project_id}/{entry.name}"
+                    project_file_manifest[archive_name] = {
+                        "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()
+                    }
+                    staged_file = temporary_dir / ("project-" + hashlib.sha256(archive_name.encode()).hexdigest())
+                    staged_file.write_bytes(payload)
+                    os.chmod(staged_file, 0o600)
+
         manifest = {
             "format": _FORMAT,
             "version": _VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "files": manifest_files,
+            "project_files": project_file_manifest,
             "approval_signing_key_included": False,
             "restore_behavior": "Owner authentication is preserved; a fresh local approval signing key is generated on restore.",
         }
@@ -185,6 +244,9 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
         ) as archive:
             for filename in (*_DATABASES, _MANIFEST):
                 archive.write(temporary_dir / filename, arcname=filename)
+            for archive_name in project_file_manifest:
+                staged_file = temporary_dir / ("project-" + hashlib.sha256(archive_name.encode()).hexdigest())
+                archive.write(staged_file, arcname=archive_name)
         if temporary_archive.stat().st_size > _MAX_ARCHIVE_BYTES:
             raise PersonalBackupError("The resulting backup exceeds the archive size limit.")
         with temporary_archive.open("rb") as stream:
@@ -240,9 +302,20 @@ def restore_personal_backup(
             total_uncompressed = 0
             for info in infos:
                 mode = info.external_attr >> 16
-                if stat.S_ISLNK(mode) or info.is_dir() or "/" in info.filename or "\\" in info.filename:
+                is_project_file = info.filename.startswith("project-files/")
+                if stat.S_ISLNK(mode) or info.is_dir() or "\\" in info.filename:
                     raise PersonalBackupError("Backup archive contains an unsafe entry.")
-                limit = _MAX_MANIFEST_BYTES if info.filename == _MANIFEST else _MAX_DATABASE_BYTES
+                if is_project_file:
+                    parts = info.filename.split("/")
+                    if len(parts) != 3 or any(part in {"", ".", ".."} for part in parts):
+                        raise PersonalBackupError("Backup archive contains an unsafe project-file path.")
+                    if info.file_size > MAX_PROJECT_FILE_BYTES:
+                        raise PersonalBackupError("A project file exceeds its size limit.")
+                    limit = MAX_PROJECT_FILE_BYTES
+                else:
+                    if "/" in info.filename:
+                        raise PersonalBackupError("Backup archive contains an unsafe entry.")
+                    limit = _MAX_MANIFEST_BYTES if info.filename == _MANIFEST else _MAX_DATABASE_BYTES
                 if info.file_size > limit:
                     raise PersonalBackupError("Backup archive entry exceeds its size limit.")
                 total_uncompressed += info.file_size
@@ -261,11 +334,15 @@ def restore_personal_backup(
                 raise PersonalBackupError("Backup manifest version is unsupported.")
             if version == 1:
                 restore_databases = _DATABASES_V1
-            elif version == _VERSION:
+            elif version in (2, _VERSION):
                 restore_databases = _DATABASES
             else:
                 raise PersonalBackupError("Backup manifest version is unsupported.")
-            expected_names = set(restore_databases) | {_MANIFEST}
+            project_files_meta = manifest.get("project_files", {}) if version >= 3 else {}
+            if not isinstance(project_files_meta, dict) or len(project_files_meta) > _MAX_PROJECT_FILES:
+                raise PersonalBackupError("Project file manifest is invalid.")
+            expected_project_names = set(project_files_meta)
+            expected_names = set(restore_databases) | {_MANIFEST} | expected_project_names
             if (
                 set(names) != expected_names
                 or manifest.get("approval_signing_key_included") is not False
@@ -313,6 +390,63 @@ def restore_personal_backup(
                 ):
                     raise PersonalBackupError("Backup file hash or size verification failed.")
                 _sqlite_integrity(target)
+
+            project_total = 0
+            for archive_name, metadata in project_files_meta.items():
+                parts = archive_name.split("/")
+                if (
+                    len(parts) != 3 or parts[0] != "project-files"
+                    or any(part in {"", ".", ".."} for part in parts)
+                    or not parts[1].isalnum() and not all(ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-" for ch in parts[1])
+                    or len(parts[1]) > 128
+                    or Path(parts[2]).name != parts[2]
+                    or Path(parts[2]).suffix.lower() not in {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".py", ".log"}
+                    or parts[2].startswith(".")
+                    or not isinstance(metadata, dict)
+                    or type(metadata.get("size")) is not int
+                    or not 1 <= metadata["size"] <= MAX_PROJECT_FILE_BYTES
+                    or not isinstance(metadata.get("sha256"), str)
+                    or len(metadata["sha256"]) != 64
+                ):
+                    raise PersonalBackupError("Project file archive metadata is invalid.")
+                project_total += metadata["size"]
+                if project_total > _MAX_PROJECT_FILES_TOTAL:
+                    raise PersonalBackupError("Project files exceed the aggregate restore limit.")
+                target = stage / "project-files" / parts[1] / parts[2]
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                os.chmod(target.parent, 0o700)
+                flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+                descriptor = os.open(target, flags, 0o600)
+                digest = hashlib.sha256()
+                written = 0
+                try:
+                    with os.fdopen(descriptor, "wb") as output, archive.open(archive_name) as source:
+                        while True:
+                            chunk = source.read(_CHUNK)
+                            if not chunk:
+                                break
+                            written += len(chunk)
+                            if written > metadata["size"]:
+                                raise PersonalBackupError("Project file size does not match its manifest.")
+                            digest.update(chunk)
+                            output.write(chunk)
+                        output.flush()
+                        os.fsync(output.fileno())
+                except Exception:
+                    try:
+                        target.unlink()
+                    except OSError:
+                        pass
+                    raise
+                if written != metadata["size"] or not hmac.compare_digest(digest.hexdigest(), metadata["sha256"]):
+                    raise PersonalBackupError("Project file hash or size verification failed.")
+                try:
+                    decoded = target.read_text(encoding="utf-8")
+                except (UnicodeError, OSError):
+                    raise PersonalBackupError("Restored project file is not valid UTF-8.") from None
+                if "\\x00" in decoded:
+                    raise PersonalBackupError("Restored project file contains binary data.")
+                os.chmod(target, 0o600)
 
         security_store = SQLiteSecurityStore(stage / "security.sqlite3")
         if not security_store.verify_audit_chain():
