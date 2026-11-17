@@ -280,3 +280,24 @@ those steps.
 The cgroup hierarchy-path correction is now committed with a gated disposable-host
 requalification trigger. The next exact-head CI and real-host evidence determine
 whether the Podman cgroup leaf is actually created and populated.
+
+
+### Run #100 — cgroup hierarchy path now resolves; image identity and teardown blocked
+
+The corrected Podman cgroup hierarchy path produced the expected real host
+`libpod-<container-id>` child directory. The dedicated parent reported
+`populated 1`, and the worker process path resolved beneath
+`/apaa/worker-p74-01`; the observer therefore advanced beyond the previous
+missing-membership failure. It next rejected Podman's reported image ID because
+the runtime representation was not the observer's expected canonical
+`sha256:<64 hex>` form. The observer now normalizes only a bare, full 64-hex
+image ID to that canonical form and rejects all short IDs/tags; sanitized
+evidence now records the raw inspect image identity. Cleanup also exposed that
+Podman leaves nested `conmon`/container cgroup directories under the
+dedicated worker parent. The cleanup path now checks every descendant's
+`cgroup.procs`, refuses removal if any process remains, and removes only
+empty descendants bottom-up within the dedicated APAA subtree. New regression
+tests cover both safe empty-tree cleanup and refusal when a descendant still
+contains a process. Run #100 was **BLOCKED**, with cleanup not fully confirmed;
+no Chromium request or network-bypass result ran. A fresh disposable-host
+qualification is required for both corrections.
