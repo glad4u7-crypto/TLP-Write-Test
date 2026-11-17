@@ -250,6 +250,28 @@ def validate_live_destination(
     return PinnedDestination(target=target, addresses=addresses)
 
 
+@dataclass(frozen=True)
+class LiveBrowserJob:
+    """Validated read-only job paired with its pinned initial destination."""
+
+    job: BrowserJob
+    destination: PinnedDestination
+
+
+def validate_live_browser_job(
+    raw: object,
+    *,
+    resolver: Resolver,
+    now: int | None = None,
+) -> LiveBrowserJob:
+    """Strict entry point for a future live adapter; DNS names cannot skip pinning."""
+    job = validate_browser_job(raw, now=now)
+    destination = validate_live_destination(
+        job.url, job.allowed_origins, resolver=resolver
+    )
+    return LiveBrowserJob(job=job, destination=destination)
+
+
 def validate_redirect_chain(
     initial_url: str,
     locations: Sequence[str],
