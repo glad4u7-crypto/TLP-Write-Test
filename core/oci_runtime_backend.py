@@ -20,7 +20,7 @@ class OCIRuntimeError(RuntimeError):
 
 _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_DIGEST = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
-_LABEL_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+_WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class OCIWorkerSpec:
             raise ValueError("network namespace must be an absolute path under /run/netns")
         if not self.seccomp_profile.startswith("/") or ".." in self.seccomp_profile.split("/"):
             raise ValueError("seccomp profile must be an absolute normalized path")
-        if not _LABEL_VALUE.fullmatch(self.worker_id):
+        if not _WORKER_ID.fullmatch(self.worker_id):
             raise ValueError("worker_id is invalid")
 
 
