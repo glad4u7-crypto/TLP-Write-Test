@@ -128,3 +128,4 @@ See [Android-primary, PC-optional architecture](docs/APAA_CROSS_PLATFORM_ANDROID
 - [P81 Local Runtime Diagnostics](docs/APAA_PERSONAL_EDITION_P81_LOCAL_RUNTIME_DIAGNOSTICS.md)
 - [P82 Owner Backup & Restore UI](docs/APAA_PERSONAL_EDITION_P82_OWNER_BACKUP_RESTORE_UI.md)
 - [P83 Persistent Task Plans](docs/APAA_PERSONAL_EDITION_P83_PERSISTENT_TASK_PLANS.md)
+- [P84 Owner Project File Workspace](docs/APAA_PERSONAL_EDITION_P84_OWNER_PROJECT_FILE_WORKSPACE.md)
