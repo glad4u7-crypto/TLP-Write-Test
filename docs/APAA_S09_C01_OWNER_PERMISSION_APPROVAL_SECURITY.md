@@ -10,15 +10,19 @@
 - Authentication state is separate from project/task content and approval receipts.
 - This module is a local single-owner gate, not a substitute for HTTPS/OIDC on any network-exposed deployment.
 
-## Session requirements for app wiring
+## App integration now present
 
-- Do not instantiate the local Owner Principal, approval authority, gateway, memory store or project registry until login succeeds.
-- Login creates a fresh approval session scope; logout/expiry clears identity-bound state and invalidates pending approvals.
+- The local Owner gate runs before the local Principal, approval authority, gateway, memory store, project registry or task surfaces are initialized.
+- First launch requires Owner passphrase setup; subsequent visits require explicit unlock.
+- Successful login creates a fresh approval session scope.
+- Logout and idle/absolute expiry clear identity-bound state, pending drafts and cached approval/runtime objects.
 - Idle expiry: 15 minutes. Absolute session lifetime: 12 hours.
-- Explicit logout must clear pending drafts, approval capabilities and cached owner runtime objects.
-- Browser refresh must not extend the session unless an authenticated request is actually processed.
+- Login throttling is persisted across restarts. Passphrase rotation is available in the authentication service; a dedicated UI control remains pending.
+- The Owner authentication SQLite database is included in private backups and restored with the existing Owner verifier; the signing key remains excluded and is regenerated on restore.
 
 ## Verification
 
-- Focused tests cover first-run setup, scrypt storage, wrong-password rejection, persistent lockout, passphrase rotation and symlink rejection.
-- UI integration, logout/session expiry, exact-head CI and Android acceptance are separate gates and must not be inferred from the unit tests.
+- Focused unit tests cover first-run setup, scrypt storage, wrong-password rejection, persistent lockout, passphrase rotation and symlink rejection.
+- Streamlit AppTest coverage has been added for first-run gating, login, logout, idle expiry, absolute expiry and failed-login isolation.
+- Backup/restore tests now verify Owner credential preservation.
+- Exact-head CI is still required before any PASS claim. Physical Android acceptance remains separate and is not inferred from browser tests.
