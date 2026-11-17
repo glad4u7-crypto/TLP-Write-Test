@@ -54,6 +54,8 @@ class MandatoryProxyConnector:
         # so a forged target cannot turn the proxy into an SSRF relay.
         if not isinstance(origin.hostname,str) or not origin.hostname or len(origin.hostname)>253:
             raise EgressAuthorizationError("Origin hostname is malformed.")
+        if isinstance(origin.port,bool) or not isinstance(origin.port,int) or not 1 <= origin.port <= 65535:
+            raise EgressAuthorizationError("Origin port is malformed.")
         for candidate in origin.pinned_addresses:
             try:
                 parsed=ipaddress.ip_address(candidate)
