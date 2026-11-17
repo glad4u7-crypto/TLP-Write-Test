@@ -74,3 +74,6 @@ Implemented policy primitives:
 Regression tests were added for reserved suffixes, mandatory live DNS resolution, public-address pinning, mixed-answer rejection, per-hop redirect re-resolution, redirect loops and hop limits.
 
 **Important limitation:** the policy module cannot enforce socket-level DNS pinning, TLS hostname verification, egress firewall rules, browser sandboxing or process isolation by itself. Those remain mandatory before any real browser adapter can be implemented or enabled. Offline `validate_destination` remains useful for deterministic tests; live code must call `validate_live_destination` and pass the returned pinned addresses into a separately reviewed connector.
+
+
+A strict live-entry helper, `validate_live_browser_job`, now combines the closed-schema job validator with mandatory DNS pinning and returns both the immutable job and `PinnedDestination`. A future live adapter should accept this return type rather than the offline-only `BrowserJob` result. Tests cover missing resolver and private DNS answers at this entry point.
