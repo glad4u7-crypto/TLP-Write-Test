@@ -275,3 +275,8 @@ The observer unit fixtures were also corrected to model the kernel-provided
 `cgroup.procs` pseudo-file at each directory traversed. The real-host run must
 be repeated; no Chromium or network-bypass PASS is claimed until it reaches
 those steps.
+
+
+The cgroup hierarchy-path correction is now committed with a gated disposable-host
+requalification trigger. The next exact-head CI and real-host evidence determine
+whether the Podman cgroup leaf is actually created and populated.
