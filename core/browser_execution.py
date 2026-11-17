@@ -336,11 +336,13 @@ class BrowserExecutionCoordinator:
     def _record(self, event: str, *, job_id: str, session_id: str, detail: str) -> None:
         # Never place cookies, page contents, credentials, or URL query values
         # in the audit record. The caller may attach a separate approved digest.
+        # Job/session identifiers are opaque correlation handles, but callers
+        # may choose a job ID. Persist only one-way references, never raw IDs.
         record = {
             "schema_version": 1,
             "event": event,
-            "job_id": job_id,
-            "session_id": session_id,
+            "job_ref": hashlib.sha256(job_id.encode("utf-8")).hexdigest()[:24],
+            "session_ref": hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:24],
             "detail": detail,
             "timestamp_unix": time.time(),
         }
