@@ -280,3 +280,14 @@ def test_restore_rejects_project_file_hash_tampering(tmp_path):
     with pytest.raises(PersonalBackupError, match="[Pp]roject file"):
         restore_personal_backup(tampered, restore_parent / "restored")
     assert not (restore_parent / "restored").exists()
+
+
+
+def test_backup_refuses_dangling_project_files_root_symlink(tmp_path):
+    source_dir = tmp_path / "source"
+    paths, _key, _project, _audit = _seed_runtime(source_dir)
+    (paths.data_dir / "project-files").symlink_to(
+        tmp_path / "missing-project-files", target_is_directory=True
+    )
+    with pytest.raises(PersonalBackupError, match="symlinks"):
+        create_personal_backup(source_dir, tmp_path / "exports" / "unsafe.apaa-backup")
