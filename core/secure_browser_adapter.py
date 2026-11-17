@@ -12,7 +12,7 @@ from typing import Any
 
 from core.browser_launch import BrowserSession, PlaywrightBrowserLauncher
 from core.browser_navigation import NavigationPolicy, NavigationPolicyError
-from core.safe_navigation import SafeNavigationController, SafeNavigationError
+from core.safe_navigation import SafeNavigationController
 
 
 EgressGuard = Callable[[str, str], bool]
@@ -56,7 +56,6 @@ class SecureBrowserAdapter:
         self._allowed_resource_types = allowed_resource_types
         self._session: BrowserSession | None = None
         self._navigation: SafeNavigationController | None = None
-        self._websocket_handler: Any | None = None
         self._started = False
 
     @property
@@ -98,6 +97,13 @@ class SecureBrowserAdapter:
         except Exception as exc:
             raise SecureBrowserAdapterError("Could not reject file selection.") from exc
 
+    def _attach_page(self, page: Any) -> None:
+        """Apply upload prevention to every page and popup in the context."""
+        try:
+            page.on("filechooser", self._clear_file_selection)
+        except Exception as exc:
+            raise SecureBrowserAdapterError("Could not enforce file chooser policy.") from exc
+
     def start(self) -> None:
         if self._started:
             raise SecureBrowserAdapterError("Adapter is already started.")
@@ -105,10 +111,7 @@ class SecureBrowserAdapter:
         try:
             context = session.context
             page = session.page
-            if not callable(getattr(context, "route_web_socket", None)):
-                raise SecureBrowserAdapterError(
-                    "Browser runtime cannot enforce the required WebSocket-deny policy."
-                )
+            if not callable(getattr(context, "route_web_socket", None)):\n                raise SecureBrowserAdapterError(\n                    "Browser runtime cannot enforce the required WebSocket-deny policy."\n                )\n            if not callable(getattr(context, "on", None)):\n                raise SecureBrowserAdapterError(\n                    "Browser runtime cannot enforce page-wide file chooser policy."\n                )
             navigation = SafeNavigationController(
                 page,
                 self._policy,
@@ -117,7 +120,8 @@ class SecureBrowserAdapter:
             )
             navigation.install()
             context.route_web_socket("**/*", self._block_websocket)
-            page.on("filechooser", self._clear_file_selection)
+            context.on("page", self._attach_page)
+            self._attach_page(page)
             self._session = session
             self._navigation = navigation
             self._started = True
