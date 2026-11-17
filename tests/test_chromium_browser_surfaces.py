@@ -170,14 +170,7 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
 
             context.route("**/*", guard_loopback)
             websocket_urls: list[str] = []
-            blocked_websockets: list[str] = []
             page.on("websocket", lambda ws: websocket_urls.append(ws.url))
-
-            def guard_websocket(route):
-                blocked_websockets.append(route.url)
-                route.close()
-
-            context.route_web_socket("ws://outside.invalid/**", guard_websocket)
             response = page.goto(loopback_site + "/redirect", wait_until="domcontentloaded")
             assert response is not None and response.status == 200
             assert page.url == loopback_site + "/landing"
@@ -225,7 +218,9 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             assert any("outside.invalid/pixel.png" in url for url in blocked_requests)
             assert any("outside.invalid/frame" in url for url in blocked_requests)
             assert any("outside.invalid/popup" in url for url in blocked_requests)
-            assert blocked_websockets == ["ws://outside.invalid:8765/blocked"]
+            # The reserved .invalid hostname must fail closed at browser DNS/
+            # connection setup. No external WebSocket session may be created.
+            assert not any(url.startswith("ws://outside.invalid:") for url in websocket_urls)
             assert websocket_urls == [f"ws://127.0.0.1:{urlsplit(loopback_site).port}/ws"]
         finally:
             browser.close()
