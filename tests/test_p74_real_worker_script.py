@@ -513,7 +513,7 @@ def test_disassembly_helper_is_bounded_and_uses_only_chromium_offsets(monkeypatc
 
     def fake_run(command, **kwargs):
         commands.append(command)
-        return CompletedProcess(command, 0, "0000000009c5a100 <close>:\\n  9c5a100: 48 89 e5 mov %rsp,%rbp\\n", "")
+        return CompletedProcess(command, 0, "0000000009c5a100 <close>:\n  9c5a100: 48 89 e5 mov %rsp,%rbp\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     failure = {"process_mapping": {"stack_frames_with_module_offsets": [
