@@ -39,8 +39,8 @@ class PodmanWorkerObserver:
         cgroup_root: str | Path = "/sys/fs/cgroup",
         namespace_root: str | Path = "/run/netns",
     ) -> None:
-        if not isinstance(runtime, PodmanOCIRuntime):
-            raise TypeError("runtime must be PodmanOCIRuntime")
+        if not callable(getattr(runtime, "inspect", None)):
+            raise TypeError("runtime must expose a trusted inspect(container_id) operation")
         self.runtime = runtime
         self.proc_root = Path(proc_root)
         self.cgroup_root = Path(cgroup_root)
