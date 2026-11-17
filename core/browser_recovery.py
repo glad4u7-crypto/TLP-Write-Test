@@ -101,6 +101,21 @@ class SQLiteBrowserRecoveryLedger:
                 db.execute("""CREATE TRIGGER IF NOT EXISTS browser_history_no_delete
                     BEFORE DELETE ON browser_job_history
                     BEGIN SELECT RAISE(ABORT, 'action history is append-only'); END""")
+                # One-time migration: existing jobs predate the history table.
+                # Seed a current-state snapshot; prior transitions cannot be reconstructed.
+                marker = db.execute(
+                    "SELECT value FROM browser_control WHERE key='history_schema_version'"
+                ).fetchone()
+                if marker is None:
+                    legacy_jobs = db.execute(
+                        "SELECT job_id,state,updated_at,outcome_code FROM browser_jobs ORDER BY job_id"
+                    ).fetchall()
+                    for job_id, state, updated_at, outcome_code in legacy_jobs:
+                        self._append_history(db, job_id, state, updated_at, outcome_code)
+                    db.execute(
+                        "INSERT INTO browser_control(key,value,updated_at) VALUES('history_schema_version','1',?)",
+                        (self._now(),),
+                    )
             os.chmod(path, 0o600)
         except (OSError, sqlite3.Error) as exc:
             raise RecoveryLedgerError("recovery ledger initialization failed") from exc
@@ -187,6 +202,22 @@ class SQLiteBrowserRecoveryLedger:
             ):
                 raise RecoveryLedgerError("action history integrity verification failed")
             previous_hash = stored_hash
+
+        # Detect missing/truncated history tails by reconciling each job's
+        # authoritative current state with its latest chained history event.
+        latest_by_job = {}
+        for row in rows:
+            _, job_id, state, occurred_at, outcome_code, _, entry_hash = row
+            latest_by_job[job_id] = (state, occurred_at, outcome_code, entry_hash)
+        jobs = db.execute(
+            "SELECT job_id,state,updated_at,outcome_code FROM browser_jobs"
+        ).fetchall()
+        if len(latest_by_job) != len(jobs):
+            raise RecoveryLedgerError("action history is missing or contains orphaned job records")
+        for job_id, state, updated_at, outcome_code in jobs:
+            latest = latest_by_job.get(job_id)
+            if latest is None or latest[:3] != (state, updated_at, outcome_code):
+                raise RecoveryLedgerError("action history does not match the current job ledger state")
         return previous_hash
 
     def verify_history(self) -> str:
