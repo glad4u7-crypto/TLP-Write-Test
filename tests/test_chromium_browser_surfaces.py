@@ -198,6 +198,7 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
                 page.locator("#blocked-popup-link").click()
             page.evaluate("""() => {
               const socket = new WebSocket("ws://outside.invalid:8765/blocked");
+              socket.onclose = () => document.body.dataset.blockedWebsocket = "blocked";
               socket.onerror = () => document.body.dataset.blockedWebsocket = "blocked";
             }""")
             page.wait_for_function("document.body.dataset.blockedWebsocket === 'blocked'", timeout=5000)
