@@ -235,7 +235,7 @@ def test_chromium_failure_diagnostics_are_bounded_and_redacted():
     page = CompletedProcess(
         ["chromium"], 0,
         "<html>ERR_TUNNEL_CONNECTION_FAILED https://example.com/private?token=hidden</html>",
-        "Authorization: Bearer secret-token user@example.com",
+        "ERR_TUNNEL_CONNECTION_FAILED Authorization: Bearer secret-token user@example.com",
     )
     details = qualification._chromium_failure_details(page, "ipv4", "Example Domain")
 
@@ -243,6 +243,8 @@ def test_chromium_failure_diagnostics_are_bounded_and_redacted():
     assert details["exit_code"] == 0
     assert details["stdout_html_present"] is True
     assert details["expected_marker_present"] is False
+    assert details["stderr_bytes"] > 0
+    assert "ERR_TUNNEL_CONNECTION_FAILED" in details["stderr_markers"]
     serialized = repr(details)
     for secret in ("hidden", "secret-token", "user@example.com", "/private"):
         assert secret not in serialized
