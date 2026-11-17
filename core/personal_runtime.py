@@ -28,6 +28,7 @@ class PersonalRuntimePaths:
     data_dir: Path
     projects_db: Path
     security_db: Path
+    owner_auth_db: Path
     memory_db: Path
     audit_log: Path
     signing_key: Path
@@ -39,6 +40,7 @@ def personal_runtime_paths(data_dir: str | Path) -> PersonalRuntimePaths:
         data_dir=root,
         projects_db=root / "projects.sqlite3",
         security_db=root / "security.sqlite3",
+        owner_auth_db=root / "owner-auth.sqlite3",
         memory_db=root / "memory.sqlite3",
         audit_log=root / "execution-audit.jsonl",
         signing_key=root / SIGNING_KEY_FILENAME,
