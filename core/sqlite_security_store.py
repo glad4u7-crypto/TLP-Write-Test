@@ -429,8 +429,35 @@ class SQLiteSecurityStore:
                          AND status = 'uncertain'""",
                     (resolution, current, tenant.issuer, tenant.subject, request_key),
                 )
+                if cursor.rowcount != 1:
+                    connection.commit()
+                    return False
+                # Reconciliation is a security-sensitive owner decision. Record
+                # it in the same transaction as the terminal state transition.
+                timestamp = datetime.fromtimestamp(current, timezone.utc).isoformat()
+                event = DurableAuditEvent(
+                    action="execution.reconcile",
+                    result=resolution,
+                    reason_code="owner_confirmed_execution_reconciliation",
+                    principal_fingerprint=hashlib.sha256(
+                        (tenant.issuer + "\\n" + tenant.subject).encode("utf-8")
+                    ).hexdigest(),
+                    request_id=request_key,
+                )
+                event_data = self._canonical_event(event, timestamp)
+                previous_hash = self._verify_audit_connection(connection)
+                entry_hash = self._hash(previous_hash, event_data)
+                connection.execute(
+                    """INSERT INTO durable_audit_events
+                       (timestamp, action, result, reason_code, principal_fingerprint,
+                        request_id, previous_hash, entry_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (timestamp, event.action, event.result, event.reason_code,
+                     event.principal_fingerprint, event.request_id,
+                     previous_hash, entry_hash),
+                )
                 connection.commit()
-                return cursor.rowcount == 1
+                return True
             except Exception:
                 connection.rollback()
                 raise
