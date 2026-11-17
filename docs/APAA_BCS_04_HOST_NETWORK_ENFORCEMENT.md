@@ -618,3 +618,5 @@ mandatory. The generated profile is owner-only, atomically written, hashed,
 and post-validated. Exact-host Chromium qualification is still required.
 
 The minimal chroot-syscall profile is queued for unit tests, exact-head CI and disposable-host Chromium requalification.
+
+The generated profile has been updated to use only OCI-standard syscall fields; no capability is added. The full workflow is queued for exact-head requalification.
