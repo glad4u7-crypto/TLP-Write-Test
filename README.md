@@ -110,3 +110,10 @@ See [Android-primary, PC-optional architecture](docs/APAA_CROSS_PLATFORM_ANDROID
 - Styling is isolated in `core/mobile_ui.py`; it changes presentation only and does not grant task execution authority.
 - Automated style contract tests live in `tests/test_mobile_ui.py`; Pixel 7-profile browser emulation is covered in CI.
 - This remains a responsive web prototype, not a PWA install package or native Android APK. Physical Android Chrome verification is required before marking Android usability fully complete.
+
+
+### Personal Edition checkpoints
+- [P76 read-only capability contracts](docs/APAA_PERSONAL_EDITION_P76_READ_ONLY_CAPABILITY_CONTRACTS.md)
+- [P78 safe read-only adapters and Owner Recovery UI](docs/APAA_PERSONAL_EDITION_P78_SAFE_READ_ONLY_ADAPTERS.md)
+- [P79 approved mutation safety](docs/APAA_PERSONAL_EDITION_P79_APPROVED_MUTATION_SAFETY.md)
+- [P80 release readiness review](docs/APAA_PERSONAL_EDITION_P80_RELEASE_READINESS_REVIEW.md)
