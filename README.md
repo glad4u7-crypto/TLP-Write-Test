@@ -24,7 +24,7 @@ A safety-first, zero-cost foundation for a personal digital-task agent. The curr
 - Payment, purchase, checkout, trading, money movement and paid-service action identifiers are denied by the safety policy.
 - Auto-Run remains disabled; no task text can grant execution authority.
 - No real-world browser, shell, email, arbitrary network, filesystem or device handlers are registered.
-- A controlled read-only Chromium browsing controller is implemented under P74, with exact-origin request checks, GET/HEAD-only access, WebSocket denial, bounded results and audit gating. It is not registered in the UI and remains blocked until a reviewed host/container worker adapter and real isolation evidence are available.
+- P74 now includes a controlled read-only Chromium browsing controller, per-job signed-evidence worker bootstrap, and a read-only Linux host inspector for procfs/network-namespace/nftables observations. Exact-origin request checks, GET/HEAD-only access, WebSocket denial, bounded results and audit gating are implemented. A concrete OCI/container provisioner and network-namespace/firewall provisioner are still not bundled; the controller is not registered in the UI and public live browsing remains disabled until those host components are independently reviewed and attested.
 
 ## Run locally
 
