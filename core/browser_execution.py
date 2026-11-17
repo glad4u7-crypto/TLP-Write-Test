@@ -169,6 +169,22 @@ class BrowserWorker(Protocol):
 AuditWriter = Callable[[Mapping[str, Any]], None]
 
 
+def _validate_json_tree(value: Any, *, depth: int = 0) -> None:
+    """Reject non-JSON objects, non-string object keys, and excessive nesting."""
+    if depth > 64:
+        raise ValueError("Worker result nesting exceeds the safety limit.")
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if type(key) is not str:
+                raise TypeError("JSON object keys must be strings.")
+            _validate_json_tree(child, depth=depth + 1)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _validate_json_tree(child, depth=depth + 1)
+    elif value is not None and type(value) not in (str, bool, int, float):
+        raise TypeError("Worker result contains a non-JSON value.")
+
+
 class BrowserExecutionCoordinator:
     """Fail-closed coordinator joining validation, cancellation and audit.
 
@@ -348,8 +364,7 @@ class BrowserExecutionCoordinator:
                 raise BrowserExecutionError("Worker returned an invalid result envelope.")
             try:
                 result_dict = dict(result)
-                if any(type(key) is not str for key in result_dict):
-                    raise TypeError("Result object keys must be strings.")
+                _validate_json_tree(result_dict)
                 encoded_result = json.dumps(
                     result_dict, ensure_ascii=False, allow_nan=False,
                     separators=(",", ":"),
