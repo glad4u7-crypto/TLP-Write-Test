@@ -23,6 +23,9 @@ _APPROVABLE_MUTATIONS = {
     "rename_file", "move_file", "create_draft_email",
     "send_email", "send_message", "publish_post",
     "create_playlist", "add_video_to_playlist",
+    "memory_add", "memory_delete", "knowledge_add", "knowledge_delete",
+    "conversation_append_turn", "conversation_delete",
+    "preference_save", "preference_delete", "checkpoint_save",
 }
 
 _BLOCKED_TOKENS = {
