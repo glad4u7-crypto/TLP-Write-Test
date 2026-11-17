@@ -1,13 +1,19 @@
-"""Chromium's real TLS stack: reject an untrusted HTTPS certificate.
+"""Real Chromium TLS acceptance tests (not Python ssl-only checks).
 
-This is a browser-process integration test, not a Python ssl-only test. A tiny
-CONNECT proxy is used so the browser follows the same proxy-only egress model.
+The tests launch a disposable headless Chromium process through a constrained
+CONNECT proxy. A private test CA is installed into Chromium's isolated NSS
+trust database; no certificate-ignore switch is used.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
+import select
+import shutil
 import socket
 import ssl
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -23,14 +29,16 @@ class _QuietHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"unexpected TLS success")
+        self.wfile.write(b"chromium TLS accepted")
 
     def log_message(self, *_args):
         pass
 
 
 class _ConnectProxy:
-    def __init__(self):
+    """A local-only CONNECT proxy; it cannot be used as a general open proxy."""
+    def __init__(self, upstream_port: int):
+        self.upstream_port = upstream_port
         self.server = socket.socket()
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind(("127.0.0.1", 0))
@@ -51,37 +59,32 @@ class _ConnectProxy:
                 break
             threading.Thread(target=self._tunnel, args=(client,), daemon=True).start()
 
-    @staticmethod
-    def _tunnel(client):
+    def _tunnel(self, client):
         upstream = None
         try:
             client.settimeout(5)
             request = b""
-            while b"\\r\\n\\r\\n" not in request and len(request) < 8192:
+            while b"\r\n\r\n" not in request and len(request) < 8192:
                 chunk = client.recv(1024)
                 if not chunk:
                     return
                 request += chunk
-            first = request.split(b"\\r\\n", 1)[0].decode("ascii", "replace")
+            first = request.split(b"\r\n", 1)[0].decode("ascii", "replace")
             parts = first.split()
             if len(parts) != 3 or parts[0] != "CONNECT":
-                client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
+                client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 return
             host, port_text = parts[1].rsplit(":", 1)
-            # This test proxy is deliberately constrained to the local TLS
-            # fixture; it cannot become a general-purpose open proxy.
-            if host not in ("127.0.0.1", "localhost"):
-                client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
+            if host not in ("localhost", "127.0.0.1", "wrong.test") or int(port_text) != self.upstream_port:
+                client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 return
-            upstream = socket.create_connection((host, int(port_text)), timeout=5)
-            client.sendall(b"HTTP/1.1 200 Connection Established\\r\\n\\r\\n")
-            sockets = (client, upstream)
+            upstream = socket.create_connection(("127.0.0.1", self.upstream_port), timeout=5)
+            client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
             client.settimeout(None)
             upstream.settimeout(None)
+            sockets = (client, upstream)
             while True:
-                readable, _, _ = __import__("select").select(sockets, [], [], 5)
-                if not readable:
-                    continue
+                readable, _, _ = select.select(sockets, [], [], 5)
                 for source in readable:
                     data = source.recv(65536)
                     if not data:
@@ -90,15 +93,9 @@ class _ConnectProxy:
         except (OSError, ValueError):
             pass
         finally:
-            try:
-                client.close()
-            except OSError:
-                pass
+            client.close()
             if upstream is not None:
-                try:
-                    upstream.close()
-                except OSError:
-                    pass
+                upstream.close()
 
     def close(self):
         self.stop.set()
@@ -106,28 +103,43 @@ class _ConnectProxy:
         self.thread.join(timeout=2)
 
 
-def _self_signed_tls_server(tmp_path):
+def _write_certificates(tmp_path: Path, *, leaf_name: str, expired: bool):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(name).issuer_name(name).public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + timedelta(days=365))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
-        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-        .sign(key, hashes.SHA256())
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.now(timezone.utc)
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "APAA Chromium Test Root")])
+    ca = (
+        x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
+        .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+            key_encipherment=False, data_encipherment=False, key_agreement=False,
+            key_cert_sign=True, crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+        .sign(ca_key, hashes.SHA256())
     )
-    cert_path, key_path = tmp_path / "chromium-cert.pem", tmp_path / "chromium-key.pem"
-    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    key_path.write_bytes(key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ))
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, leaf_name)])
+    not_before = now - timedelta(days=10) if expired else now - timedelta(minutes=5)
+    not_after = now - timedelta(days=1) if expired else now + timedelta(days=10)
+    leaf = (
+        x509.CertificateBuilder().subject_name(subject).issuer_name(ca_name)
+        .public_key(key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(not_before).not_valid_after(not_after)
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(leaf_name)]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    ca_path, cert_path, key_path = (tmp_path / "test-ca.pem", tmp_path / "server-cert.pem", tmp_path / "server-key.pem")
+    ca_path.write_bytes(ca.public_bytes(serialization.Encoding.PEM))
+    cert_path.write_bytes(leaf.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return ca_path, cert_path, key_path
+
+
+def _start_tls_server(cert_path: Path, key_path: Path):
     server = HTTPServer(("127.0.0.1", 0), _QuietHandler)
+    server.daemon_threads = True
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(str(cert_path), str(key_path))
     server.socket = context.wrap_socket(server.socket, server_side=True)
@@ -136,40 +148,85 @@ def _self_signed_tls_server(tmp_path):
     return server, thread
 
 
-@pytest.mark.chromium
-def test_real_chromium_rejects_untrusted_certificate_through_proxy(tmp_path):
+def _browser_with_test_ca(tmp_path: Path, ca_path: Path, proxy_port: int, monkeypatch):
+    certutil = shutil.which("certutil")
+    if not certutil:
+        pytest.fail("NSS certutil is required to install the test CA into Chromium's isolated trust database")
+    home = tmp_path / "chromium-home"
+    nssdb = home / ".pki" / "nssdb"
+    nssdb.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    subprocess.run([certutil, "-N", "-d", f"sql:{nssdb}", "--empty-password"],
+                   check=True, capture_output=True, text=True)
+    subprocess.run([certutil, "-A", "-d", f"sql:{nssdb}", "-n", "APAA Test Root",
+                    "-t", "C,,", "-i", str(ca_path)],
+                   check=True, capture_output=True, text=True)
+    playwright = sync_playwright().start()
+    context = playwright.chromium.launch_persistent_context(
+        str(tmp_path / "chromium-profile"), headless=True, chromium_sandbox=False,
+        proxy={"server": f"http://127.0.0.1:{proxy_port}"},
+        ignore_https_errors=False, accept_downloads=False, service_workers="block",
+        args=["--proxy-bypass-list=<-loopback>", "--disable-background-networking",
+              "--disable-component-update", "--disable-sync"],
+    )
+    return playwright, context
+
+
+def _run_case(tmp_path, monkeypatch, *, cert_name: str, expired: bool, url_host: str):
+    ca_path, cert_path, key_path = _write_certificates(
+        tmp_path, leaf_name=cert_name, expired=expired
+    )
+    server, server_thread = _start_tls_server(cert_path, key_path)
+    proxy = _ConnectProxy(server.server_port)
+    playwright = context = None
     try:
-        playwright = sync_playwright().start()
-    except PlaywrightError as exc:
-        pytest.fail(f"Playwright runtime is required for Chromium integration: {exc}")
-    server, server_thread = _self_signed_tls_server(tmp_path)
-    proxy = _ConnectProxy()
-    browser = None
-    try:
-        browser = playwright.chromium.launch(
-            headless=True,
-            # GitHub-hosted Ubuntu runners block Chromium user namespaces via AppArmor.
-            # This test isolates TLS behavior only; production launcher still requires
-            # chromium_sandbox=True and is not relaxed by this CI-only setting.
-            chromium_sandbox=False,
-            proxy={"server": f"http://127.0.0.1:{proxy.port}"},
-            args=["--proxy-bypass-list=<-loopback>", "--disable-background-networking",
-                  "--disable-component-update", "--disable-sync"],
-        )
-        context = browser.new_context(
-            ignore_https_errors=False,
-            accept_downloads=False,
-            service_workers="block",
-        )
+        playwright, context = _browser_with_test_ca(tmp_path, ca_path, proxy.port, monkeypatch)
         page = context.new_page()
-        with pytest.raises(PlaywrightError, match="ERR_CERT_AUTHORITY_INVALID"):
-            page.goto(f"https://127.0.0.1:{server.server_port}/", wait_until="domcontentloaded", timeout=10000)
-        context.close()
-    finally:
-        if browser is not None:
-            browser.close()
-        playwright.stop()
+        return page, f"https://{url_host}:{server.server_port}/", context, playwright
+    except Exception:
+        if context is not None:
+            context.close()
+        if playwright is not None:
+            playwright.stop()
         proxy.close()
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=2)
+        raise
+
+
+def test_chromium_accepts_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
+    page, url, context, playwright = _run_case(
+        tmp_path, monkeypatch, cert_name="localhost", expired=False, url_host="localhost"
+    )
+    try:
+        response = page.goto(url, wait_until="domcontentloaded", timeout=10000)
+        assert response is not None and response.status == 200
+        assert page.locator("body").inner_text() == "chromium TLS accepted"
+    finally:
+        context.close()
+        playwright.stop()
+
+
+def test_chromium_rejects_trusted_certificate_with_hostname_mismatch(tmp_path, monkeypatch):
+    page, url, context, playwright = _run_case(
+        tmp_path, monkeypatch, cert_name="localhost", expired=False, url_host="wrong.test"
+    )
+    try:
+        with pytest.raises(PlaywrightError, match="ERR_CERT_COMMON_NAME_INVALID"):
+            page.goto(url, wait_until="domcontentloaded", timeout=10000)
+    finally:
+        context.close()
+        playwright.stop()
+
+
+def test_chromium_rejects_expired_certificate_signed_by_trusted_test_ca(tmp_path, monkeypatch):
+    page, url, context, playwright = _run_case(
+        tmp_path, monkeypatch, cert_name="localhost", expired=True, url_host="localhost"
+    )
+    try:
+        with pytest.raises(PlaywrightError, match="ERR_CERT_DATE_INVALID"):
+            page.goto(url, wait_until="domcontentloaded", timeout=10000)
+    finally:
+        context.close()
+        playwright.stop()
