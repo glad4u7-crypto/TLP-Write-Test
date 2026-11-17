@@ -75,7 +75,7 @@ class _ConnectProxy:
                 client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 return
             host, port_text = parts[1].rsplit(":", 1)
-            if host not in ("localhost", "127.0.0.1", "wrong.test") or int(port_text) != self.upstream_port:
+            if host not in ("localhost", "127.0.0.1", "wrong.test", "live.example.test") or int(port_text) != self.upstream_port:
                 client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 return
             upstream = socket.create_connection(("127.0.0.1", self.upstream_port), timeout=5)
@@ -243,3 +243,62 @@ def test_chromium_rejects_expired_certificate_signed_by_trusted_test_ca(tmp_path
             page.goto(url, wait_until="domcontentloaded", timeout=10000)
     finally:
         _cleanup(context, playwright, proxy, server, server_thread)
+
+
+
+def test_live_browsing_controller_reads_from_real_chromium_over_restricted_local_proxy(
+    tmp_path, monkeypatch
+):
+    """End-to-end live-browsing path: real Chromium, local-only CONNECT, TLS verified."""
+    import time
+
+    from core.live_browsing import LiveBrowsingController
+
+    page, url, context, playwright, proxy, server, server_thread = _run_case(
+        tmp_path,
+        monkeypatch,
+        cert_name="live.example.test",
+        expired=False,
+        url_host="live.example.test",
+    )
+
+    class _Session:
+        def __init__(self):
+            self.context = context
+
+        def close(self):
+            _cleanup(context, playwright, proxy, server, server_thread)
+
+    session = _Session()
+    monkeypatch.setattr(
+        "core.live_browsing.launch_chromium",
+        lambda *args, **kwargs: session,
+    )
+    now = int(time.time())
+    job_url = url
+    from urllib.parse import urlsplit
+    parsed = urlsplit(job_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    events = []
+    controller = LiveBrowsingController(object(), audit=events.append)
+
+    result = controller.execute(
+        {
+            "job_id": "job_live_chromium_01",
+            "url": job_url,
+            "allowed_origins": [origin],
+            "action": "read_visible_text",
+            "expires_at": now + 120,
+            "max_response_bytes": 4096,
+            "max_runtime_seconds": 10,
+        },
+        signed_evidence={"test_only": "real Chromium fixture"},
+        challenge="c" * 64,
+        now=now,
+        resolver=lambda hostname: ("93.184.216.34",),
+    )
+
+    assert result.text == "chromium TLS accepted"
+    assert result.final_url == job_url
+    assert [event["event"] for event in events] == ["job_accepted", "job_completed"]
+    assert session.context is context
