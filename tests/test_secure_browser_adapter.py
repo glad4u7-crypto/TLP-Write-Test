@@ -127,10 +127,10 @@ def test_adapter_requires_trusted_egress_guard():
     Request(resource_type="eventsource"),
     Request(resource_type="other"),
 ])
-def test_request_policy_rejects_upload_mutation_and_background_traffic(request):
+def test_request_policy_rejects_upload_mutation_and_background_traffic(request_case):
     adapter, _ = make_adapter()
     with pytest.raises(Exception):
-        adapter._validate_request(request)
+        adapter._validate_request(request_case)
 
 
 def test_request_policy_requires_literal_true_from_egress_guard():
