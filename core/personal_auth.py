@@ -86,12 +86,16 @@ class LocalOwnerAuthStore:
             raise ValueError("Owner authentication database must be a regular file.")
         os.chmod(self.path, 0o600)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         self._secure_path(create_parent=False)
         db = sqlite3.connect(str(self.path), timeout=10, isolation_level=None)
-        db.execute("PRAGMA busy_timeout = 10000")
-        db.execute("PRAGMA foreign_keys = ON")
-        return db
+        try:
+            db.execute("PRAGMA busy_timeout = 10000")
+            db.execute("PRAGMA foreign_keys = ON")
+            yield db
+        finally:
+            db.close()
 
     @staticmethod
     def _derive(passphrase: str, salt: bytes) -> bytes:
