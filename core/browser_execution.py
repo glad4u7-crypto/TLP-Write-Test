@@ -69,6 +69,9 @@ class PinnedDestination:
     def __post_init__(self) -> None:
         if not self.hostname or type(self.port) is not int or not 1 <= self.port <= 65535:
             raise ValueError("Invalid pinned destination.")
+        canonical = canonicalize_https_url(f"https://{self.hostname}:{self.port}/")
+        if canonical.hostname != self.hostname.lower() or canonical.port != self.port:
+            raise ValueError("Pinned hostname/port must be canonical.")
         if not self.addresses:
             raise ValueError("At least one pinned address is required.")
         normalized = []
@@ -180,6 +183,26 @@ class BrowserExecutionCoordinator:
         self._clock = clock
         self._active: dict[str, tuple[CancellationToken, str]] = {}
         self._lock = threading.RLock()
+
+    @classmethod
+    def from_attested_runtime(
+        cls,
+        runtime_gate: Any,
+        signed_evidence: object,
+        *,
+        challenge: str,
+        now: int,
+        audit: AuditWriter,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> "BrowserExecutionCoordinator":
+        """Create a coordinator only after the signed runtime/firewall gate passes."""
+        launch = getattr(runtime_gate, "launch", None)
+        if not callable(launch):
+            raise TypeError("runtime_gate must expose the attested launch() method.")
+        worker = launch(signed_evidence, challenge=challenge, now=now)
+        if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
+            raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
+        return cls(worker, audit=audit, clock=clock)
 
     def _record(self, event: str, *, job_id: str, session_id: str, detail: str) -> None:
         # Never place cookies, page contents, credentials, or URL query values
