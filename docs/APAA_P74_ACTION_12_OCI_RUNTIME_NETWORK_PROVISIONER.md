@@ -24,16 +24,32 @@ network isolation.
 - `core/cgroup_seccomp_provisioner.py`: cgroup-v2 memory/CPU/PID limit writer
   and read-back verification; strict seccomp profile preflight requires a
   deny-by-default action.
-- `core/pinned_egress.py`: validates the complete DNS answer set and dials only
-  a selected numeric IP from that set; it does not resolve the hostname again.
-  The caller must preserve the original hostname for TLS SNI/certificate checks.
+- `core/pinned_egress.py`: validates canonical DNS records and the complete
+  IPv4/IPv6 answer set, then dials only a selected numeric IP; no second DNS
+  lookup or hostname fallback is possible.
+- `core/pinned_connect_proxy.py`: a bounded CONNECT proxy permits only the
+  configured exact HTTPS hostname on port 443. It preserves Chromium's
+  end-to-end TLS SNI/certificate validation while pinning the proxy's upstream
+  TCP connection to one validated numeric DNS answer.
+- `scripts/p74_real_worker_chromium_e2e.py`: provisions a fresh dual-stack
+  namespace/veth, exact nftables policy, delegated cgroup parent and OCI
+  container; runs real Chromium through both IPv4 and IPv6 proxy listeners;
+  probes direct DNS/IPv4/IPv6 bypass; and attempts full resource cleanup.
+- `containers/chromium-worker/Containerfile`: builds the disposable Chromium
+  worker image. Its final local image ID is passed to OCI as an immutable
+  `sha256:` identifier with `--pull=never`.
+- `.github/workflows/p74-real-worker.yml`: manual-only qualification on a
+  disposable GitHub-hosted Linux VM. It requires an owner-supplied exact HTTPS
+  test URL and origin, builds the worker image, and uploads a short-retention
+  evidence artifact. It does not enable product browsing.
 - Focused unit tests exercise command construction, invalid inputs, rollback,
   default-DROP rules, mixed public/private DNS answers, IPv4/IPv6 pins and
   numeric-IP dialing.
 
 ## Important integration boundary
 
-The modules are not yet composed into one worker provisioning transaction.
+The qualification script is an opt-in host-side integration harness, not the
+production browser-worker backend and not permission to dispatch user browsing.
 The cgroup-v2 helper requires a host-provided delegated subtree and has not
 been qualified against the target host's systemd/cgroup delegation. Podman
 also applies the requested cgroup limits itself; inspect/read-back evidence
@@ -48,9 +64,10 @@ interface bypass still require sink-side verification on the real host.
 
 ## Required real-host acceptance — all are mandatory
 
-1. Disposable Linux host with cgroup v2, Podman/OCI runtime, iproute2, nftables,
-   Chromium image available locally by immutable sha256 digest, and a dedicated
-   delegated cgroup subtree.
+1. Run the manual `APAA P74 real OCI Chromium worker` workflow with an
+   owner-approved HTTPS test URL and exact origin. It creates a disposable
+   GitHub-hosted Linux VM, installs Podman/iproute2/nftables, builds the
+   Chromium worker image and requires a dedicated delegated cgroup subtree.
 2. Provision namespace and veth; prove the worker has no route outside the
    approved proxy path. Confirm both IPv4 and IPv6.
 3. Install nftables and capture `nft list ruleset` from the namespace and host.
@@ -61,10 +78,12 @@ interface bypass still require sink-side verification on the real host.
    immutable container ID and verify read-only rootfs, non-root user, dropped
    capabilities, no-new-privileges, seccomp profile, memory, CPU, PID limits,
    and actual cgroup membership before permitting browser work.
-5. Run Chromium **inside that container** against a controlled test origin
-   through the approved proxy. Verify TLS certificate/hostname validation,
-   allowed destination success, blocked destination failure, DNS rebinding
-   rejection, dial-time IP equality, and that no direct socket escapes.
+5. Run Chromium **inside that container** against the exact owner-approved
+   HTTPS test origin through both IPv4 and IPv6 proxy listeners. The script
+   verifies allowed-page success, direct DNS failure, direct IPv4/IPv6 TCP
+   failure, DNS answer-set validation and numeric dial peer equality. A
+   separate Chromium TLS suite verifies trusted CA, hostname mismatch and
+   expired-certificate behavior.
 6. Kill the runtime/proxy during traffic; verify fail-closed behavior, bounded
    cleanup, no orphan container, no orphan namespace, no stale veth and no
    residual cgroup.
