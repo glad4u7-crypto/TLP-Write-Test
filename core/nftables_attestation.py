@@ -135,7 +135,7 @@ def _rule_signature(rule: dict[str, Any]) -> tuple[str, tuple[tuple[str, str, st
 
 def _expected(policy: NftablesPolicy) -> Counter[tuple[str, tuple[tuple[str, str, str], ...]]]:
     eq = lambda field, value: (field, "==", json.dumps(value, separators=(",", ":")))
-    inside = lambda field, values: (field, "in", json.dumps({"set": list(values)}, sort_keys=True, separators=(",", ":")))
+    inside = lambda field, values: (field, "in", json.dumps(list(values), separators=(",", ":")))
     expected: Counter[tuple[str, tuple[tuple[str, str, str], ...]]] = Counter()
 
     def add(chain: str, *matches: tuple[str, str, str]) -> None:
