@@ -155,7 +155,7 @@ def test_worker_cleanup_runs_when_snapshot_collection_fails(monkeypatch):
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP], cleanup_wait_seconds=2,
     )
-    with pytest.raises(BrowserWorkerBootstrapError, match="failed closed"):
+    with pytest.raises(BrowserWorkerBootstrapError, match="trusted host snapshot source"):
         execute(worker)
     assert [call[0] for call in backend.calls] == ["provision", "snapshot", "destroy"]
 
@@ -198,8 +198,7 @@ def test_duplicate_session_ids_are_rejected(monkeypatch):
 
 
 def test_cancel_terminates_remote_process_and_waits_for_cleanup(monkeypatch):
-    backend = FakeBackend()
-    worker, backend, _ = make_adapter(monkeypatch)
+    worker, backend, _ = make_adapter(monkeypatch, FakeBackend(process=FakeProcess(block=True)))
     cancellation = CancellationToken()
     outcome = {}
 
@@ -218,8 +217,9 @@ def test_cancel_terminates_remote_process_and_waits_for_cleanup(monkeypatch):
     thread = threading.Thread(target=run)
     thread.start()
     deadline = time.monotonic() + 2
-    while not backend.calls and time.monotonic() < deadline:
+    while not any(call[0] == "start" for call in backend.calls) and time.monotonic() < deadline:
         time.sleep(0.01)
+    assert any(call[0] == "start" for call in backend.calls)
     cancellation.cancel()
     assert worker.terminate("session-cancel-1234") is True
     thread.join(timeout=2)
