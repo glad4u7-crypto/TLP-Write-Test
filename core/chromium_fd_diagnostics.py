@@ -232,11 +232,44 @@ def snapshot_cgroup(
         process = _read_process(pid, proc, max_fds_per_process, expected_cgroup_prefix)
         if process is not None:
             processes.append(process)
+    by_pid = {process["pid"]: process for process in processes}
+    kernel_object_classes = {
+        "pipe", "socket", "eventfd", "eventpoll", "timerfd", "anon_inode", "memfd",
+    }
+    inherited_candidates = []
+    for child in processes:
+        parent = by_pid.get(child["ppid"])
+        if parent is None:
+            continue
+        parent_fds = {
+            (fd["target_class"], fd["device"], fd["inode"]): fd["fd"]
+            for fd in parent["fds"] if fd["target_class"] in kernel_object_classes
+        }
+        for fd in child["fds"]:
+            if fd["target_class"] not in kernel_object_classes:
+                continue
+            key = (fd["target_class"], fd["device"], fd["inode"])
+            parent_fd = parent_fds.get(key)
+            if parent_fd is not None:
+                inherited_candidates.append({
+                    "parent_pid": parent["pid"],
+                    "parent_role": parent["role"],
+                    "parent_fd": parent_fd,
+                    "child_pid": child["pid"],
+                    "child_role": child["role"],
+                    "child_fd": fd["fd"],
+                    "target_class": fd["target_class"],
+                    "device": fd["device"],
+                    "inode": fd["inode"],
+                    "same_fd_number": parent_fd == fd["fd"],
+                    "interpretation": "shared_kernel_object_candidate_not_proof_of_inheritance",
+                })
     return {
         "monotonic_time_ns": time.monotonic_ns(),
         "process_count_observed": len(processes),
         "process_limit_reached": len(pids) >= max_processes,
         "fd_limit_per_process": max_fds_per_process,
+        "parent_child_fd_candidates": inherited_candidates[:2048],
         "processes": processes,
     }
 
