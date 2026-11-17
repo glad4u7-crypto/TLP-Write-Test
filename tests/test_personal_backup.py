@@ -219,3 +219,74 @@ def test_restore_rejects_owner_auth_chain_tampering_even_if_manifest_is_rehashed
     restore_parent.mkdir(mode=0o700)
     with pytest.raises(PersonalBackupError, match="Owner authentication audit chain"):
         restore_personal_backup(tampered, restore_parent / "restored")
+
+
+
+def test_backup_restore_includes_owner_project_files(tmp_path):
+    from core.personal_project_files import (
+        project_files_directory, save_project_file,
+    )
+
+    source_dir = tmp_path / "source"
+    paths, _key, project, _audit = _seed_runtime(source_dir)
+    save_project_file(
+        source_dir, project.project_id, "research-notes.md",
+        b"# Research notes\\nRead-only project material.\\n", consent=True,
+    )
+    save_project_file(
+        source_dir, project.project_id, "data.csv",
+        b"symbol,value\\nABC,10\\n", consent=True,
+    )
+    backup = create_personal_backup(
+        source_dir, tmp_path / "exports" / "with-project-files.apaa-backup"
+    )
+    with zipfile.ZipFile(backup) as archive:
+        assert "project-files/" + project.project_id + "/research-notes.md" in archive.namelist()
+        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        assert manifest["version"] == 3
+        assert len(manifest["project_files"]) == 2
+
+    restore_parent = tmp_path / "restore-parent"
+    restore_parent.mkdir(mode=0o700)
+    restored_dir = restore_personal_backup(backup, restore_parent / "restored")
+    restored_files = project_files_directory(restored_dir, project.project_id)
+    assert (restored_files / "research-notes.md").read_bytes() == (
+        b"# Research notes\\nRead-only project material.\\n"
+    )
+    assert (restored_files / "data.csv").read_bytes() == b"symbol,value\\nABC,10\\n"
+    if __import__("os").name == "posix":
+        assert (restored_files.stat().st_mode & 0o777) == 0o700
+        assert ((restored_files / "research-notes.md").stat().st_mode & 0o777) == 0o600
+
+
+def test_restore_rejects_project_file_hash_tampering(tmp_path):
+    import hashlib
+
+    from core.personal_project_files import save_project_file
+
+    source_dir = tmp_path / "source"
+    paths, _key, project, _audit = _seed_runtime(source_dir)
+    save_project_file(source_dir, project.project_id, "notes.txt", b"original", consent=True)
+    backup = create_personal_backup(source_dir, tmp_path / "exports" / "original.apaa-backup")
+    tampered = tmp_path / "exports" / "tampered-project-file.apaa-backup"
+    with zipfile.ZipFile(backup, "r") as source:
+        contents = {name: source.read(name) for name in source.namelist()}
+    archive_name = f"project-files/{project.project_id}/notes.txt"
+    contents[archive_name] = b"modified"
+    manifest = json.loads(contents["manifest.json"].decode("utf-8"))
+    manifest["project_files"][archive_name]["size"] = len(contents[archive_name])
+    manifest["project_files"][archive_name]["sha256"] = hashlib.sha256(
+        contents[archive_name]
+    ).hexdigest()
+    contents["manifest.json"] = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for name, data in contents.items():
+            target.writestr(name, data)
+    tampered.chmod(0o600)
+    restore_parent = tmp_path / "restore-parent"
+    restore_parent.mkdir(mode=0o700)
+    with pytest.raises(PersonalBackupError, match="project file"):
+        restore_personal_backup(tampered, restore_parent / "restored")
+    assert not (restore_parent / "restored").exists()
