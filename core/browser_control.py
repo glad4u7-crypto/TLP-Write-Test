@@ -15,7 +15,7 @@ from typing import Any
 from core.approvals import ApprovalAuthority, ApprovalReceipt
 from core.audit import JsonlAuditLog
 from core.browser_security import BrowserJob, validate_browser_job
-from core.execution import ExecutionGateway, ExecutionResult
+from core.execution import ActionHandlerDisabled, ExecutionGateway, ExecutionResult
 from core.identity import Principal, require_authenticated
 from core.storage import TenantKey
 
@@ -85,9 +85,9 @@ class BrowserControlBoundary:
         self._approval_authority = approval_authority
         self._audit_log = audit_log
         self._owner_session_check = owner_session_check
-        # Empty by design: browser handlers cannot be supplied to this class.
+        # Register an explicit disabled handler to provide a clear, audited stop.
         self._gateway = ExecutionGateway(
-            {},
+            {BROWSER_APPROVAL_ACTION: self._browser_handler_disabled},
             approval_authority=approval_authority,
             audit_log=audit_log,
             session_scope=session_scope,
@@ -97,6 +97,19 @@ class BrowserControlBoundary:
     def browser_handler_enabled(self) -> bool:
         """Always false in BCS-01; no enable switch exists in this boundary."""
         return self.BROWSER_HANDLER_ENABLED
+
+    @property
+    def browser_handler_registered(self) -> bool:
+        """True: a guarded handler is registered with an explicit disabled outcome."""
+        return True
+
+    @staticmethod
+    def _browser_handler_disabled(_payload: Mapping[str, Any]) -> None:
+        """Fail closed before any browser, network, process, or filesystem side effect."""
+        raise ActionHandlerDisabled(
+            "Browser handler is registered but DISABLED: a reviewed host adapter "
+            "and verified isolated-worker egress evidence are not configured."
+        )
 
     def _require_active_owner(self) -> None:
         require_authenticated(self._principal)
@@ -147,11 +160,11 @@ class BrowserControlBoundary:
         approval_receipt: ApprovalReceipt | None,
         now: int | None = None,
     ) -> ExecutionResult:
-        """Consume the exact Owner receipt and audit a blocked no-handler dispatch.
+        """Consume the exact Owner receipt and audit a blocked disabled-handler dispatch.
 
-        The empty gateway intentionally has no browser handler. A valid receipt
-        is consumed once, then the gateway records that no trusted handler is
-        registered. This is integration verification, not browser execution.
+        A guarded handler is registered, but it raises ActionHandlerDisabled
+        before any side effect. A valid receipt is consumed once and the gateway
+        records a denied disabled outcome. This is not browser execution.
         """
         self._require_active_owner()
         current = int(time.time()) if now is None else now
