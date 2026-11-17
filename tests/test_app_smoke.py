@@ -689,3 +689,17 @@ def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monk
     assert "global_owner_authorized" not in app.session_state
     assert "global_owner_admin_context" not in app.session_state
     assert "global_owner_approval_receipt" not in app.session_state
+
+
+def test_local_owner_sidebar_exposes_read_only_runtime_health_and_backup_tools():
+    app = _local_owner_app()
+    assert not app.exception
+    labels = [button.label for button in app.button]
+    assert "Run local health checks" in labels
+    assert "Create backup" in labels
+    assert "Validate and restore into a new directory" in labels
+
+    _click_button_by_label(app, "Run local health checks")
+    assert not app.exception
+    assert any("data_dir:" in item.value for item in app.success)
+    assert any("PASS" in item.value for item in app.metric)
