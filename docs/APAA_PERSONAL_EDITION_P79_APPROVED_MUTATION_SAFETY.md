@@ -46,3 +46,11 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 - Browser/Worker remain disabled. No deployment, merge, or public exposure.
 
 **Disposition:** P79 safety primitives implemented; integration and exact-head verification pending.
+
+
+## Verification update
+
+- Earlier P79 integration head `63174c17cbb60958ca746aaf76886b7bb12eb355`, P73 Verification run #148: **PASS** — Python **1,463 passed, 9 skipped**; compile PASS; dependency audit found no known vulnerabilities; responsive browser smoke **9 passed**.
+- Follow-up hardening after #148: handler dispatch now uses a private JSON snapshot of the approved payload; malformed ledger transition values are rejected; regression tests cover payload snapshot isolation and malformed state inputs.
+- Latest follow-up head `a9cf556de7f38a6bae876c9cd3fbe9d8e1526df4`, P73 Verification run #157: **IN PROGRESS** at the time of this update. Do not treat #148 as verification of the later snapshot/input-validation commits.
+- P79 remains implementation-pending-final-exact-head-verification and Owner UI integration.
