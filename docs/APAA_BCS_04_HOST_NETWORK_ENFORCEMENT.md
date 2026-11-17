@@ -480,3 +480,5 @@ no-new-privileges policy. No sandbox capability was added and `--no-sandbox`
 was not used. The next qualification selects Chromium's user-namespace sandbox
 by disabling only its setuid helper; this must still prove a working namespace
 sandbox on the disposable host before Chromium is considered qualified.
+
+The user-namespace sandbox configuration is queued for a fresh disposable-host Chromium run.
