@@ -1,0 +1,42 @@
+name: APAA Security CI
+
+on:
+  push:
+    branches:
+      - feature/apaa-s09-c01-p01-browser-launch
+  pull_request:
+    branches:
+      - main
+      - master
+      - feature/apaa-s09-c01-p01-browser-launch
+      - feature/agent-v0.3-zero-cost-core
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-security-${{ github.workflow }}-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  security-tests:
+    name: Python security tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run test suite
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -q

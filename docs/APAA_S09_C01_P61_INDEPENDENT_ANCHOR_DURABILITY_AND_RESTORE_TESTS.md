@@ -1,0 +1,66 @@
+# APAA-S09-C01-P61 — Independent anchor durability and recovery conformance
+
+**Date:** 2026-11-16  
+**Scope:** Restart persistence, monotonic high-water mark, concurrent compare-and-swap, backup/restore rollback resistance.  
+**Status:** Reference-model and fail-closed adapter-path software tests verified by exact-commit CI (4/4 PASS on both the test commit and documentation commit); independent production anchor remains NOT QUALIFIED.
+
+**Verified commits:** test `84ccb0288102d19263c52817b99a25074543bfdf`; documentation `6eb76990ab3fcf6eb970d6f26f6bd0491736867d`.
+
+**CI evidence:** Agent Foundation CI #1188/#1189, Python Demo CI #1277/#1278, P20 Rootless Podman Qualification #317/#318, and P23 Executor Integration #299/#300 all completed successfully on the respective commits (4/4 each).  
+**Production anchor status:** NOT QUALIFIED. No independent remote anchor service or production credentials were accessed.
+
+## Implemented tests
+
+Added `tests/test_apaa_p61_independent_anchor_durability.py`.
+
+The tests exercise the existing `MonotonicSequenceBackend` protocol and signed-bundle acceptance path:
+
+1. **Restart persistence:** recreate the adapter over the same durable-store fixture and confirm the accepted sequence remains visible; replay of the same bundle is rejected.
+2. **Old-backup rollback:** reject restoring a snapshot older than the accepted high-water mark.
+3. **Current backup restore:** accept restoring a snapshot that does not lower the high-water mark.
+4. **Concurrent CAS:** race two writers from the same expected sequence and require exactly one successful advance.
+5. **Stale/non-increasing writes:** reject a stale expected value and reject a non-increasing sequence.
+6. **Newer-backup rollback:** reject restoring an earlier snapshot after a later sequence has been committed.
+7. **Anchor read outage:** reject bundle acceptance when the anchor cannot be read; do not attempt an advance.
+8. **Invalid anchor values:** reject negative, boolean, null, and non-integer high-water marks.
+9. **Anchor update exception:** reject bundle acceptance when the compare-and-advance operation raises an error.
+10. **CAS rejection:** reject bundle acceptance when the backend reports a concurrent sequence change.
+
+## Critical qualification boundary
+
+The included `DurableReferenceAnchor` is a deterministic in-memory reference model. It demonstrates the expected contract and tests the caller's behavior; it is **not** an independent remote service, hardware monotonic counter, durable database adapter, or disaster-recovery system.
+
+A production adapter still needs all of the following evidence:
+
+- independent administrative and credential boundary from the APAA worker/host;
+- durable atomic compare-and-swap under concurrent clients;
+- commit durability confirmed before acknowledging success;
+- restart and service-recovery persistence against the actual service;
+- backup/restore procedure that cannot lower the high-water mark;
+- stale backup and disaster-recovery drills;
+- service outage, timeout and partial-failure behavior that fails closed;
+- independent audit of operator access, retention and recovery controls.
+
+A backup stored in the same administrative or rollback domain as the worker does not qualify as an independent anchor. A local file, SQLite database, or ordinary host snapshot is not sufficient evidence.
+
+## Safety and project gates
+
+No production endpoint, credential, token, private key, paid service, deployment or merge was used. No real backup was restored or altered.
+
+PR #11 remains Draft/Open/Unmerged. Auto-Run OFF. Worker OFF. C02 NOT STARTED. C01 remains OPEN pending exact-head CI and external qualification evidence.
+
+## Acceptance
+
+P61 reference-model and fail-closed software tests may be accepted only after exact-head CI passes for the latest test commit. Production independent-anchor qualification remains BLOCKED until a real independently administered adapter and its restart/backup/restore evidence are available.
+
+
+## 6. Latest branch-head regression verification
+
+The P61 tests remain included in current branch head `c5908fe926c1e3ba37b446d26fe765652d6e4fdb`. On that exact head, Agent Foundation CI #1214, Python Demo CI #1303, P20 #343 and P23 #325 all completed successfully (4/4 PASS); each pytest job reported 1,348 passed and 9 skipped. This validates the reference-model and fail-closed software tests in the current tree only. An independently administered production anchor and real backup/restore anti-rollback drill remain NOT QUALIFIED.
+
+
+## 7. Remediation clarification — protected floor model
+
+The action-audit remediation extends the reference tests with a separately supplied protected-floor fixture shared across adapter recreation. The rollback-capable data-store snapshot does not contain that floor. A restored data store below the protected floor now causes anchor reads to fail closed, and an old backup is rejected after adapter recreation.
+
+This is still an in-memory test fixture representing two separate persistence domains. It is **not** proof that a real independent service, hardware monotonic counter, or separately administered durable store exists. Production anchor qualification remains NOT QUALIFIED until those external controls are implemented and independently tested.

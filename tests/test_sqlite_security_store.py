@@ -1,0 +1,933 @@
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
+import sqlite3
+
+import pytest
+
+from core.storage import TenantKey
+from core.sqlite_security_store import DurableAuditEvent, SQLiteSecurityStore
+from core.sqlite_project_store import SQLiteProjectStore
+
+
+@pytest.fixture
+def security_store(tmp_path):
+    return SQLiteSecurityStore(tmp_path / "security.sqlite3")
+
+
+def test_nonce_is_single_use_and_tenant_scoped(security_store):
+    alice = TenantKey("https://issuer.example", "alice")
+    bob = TenantKey("https://issuer.example", "bob")
+    assert security_store.consume_approval_nonce(alice, "nonce-1", 500, now=100)
+    assert not security_store.consume_approval_nonce(alice, "nonce-1", 500, now=100)
+    assert security_store.consume_approval_nonce(bob, "nonce-1", 500, now=100)
+
+
+def test_expired_nonce_is_rejected(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    assert not security_store.consume_approval_nonce(tenant, "expired", 100, now=100)
+
+
+def test_invalid_nonce_inputs_fail_closed(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    assert not security_store.consume_approval_nonce(tenant, "", 500, now=100)
+    assert not security_store.consume_approval_nonce(tenant, "n", True, now=100)
+
+
+def test_concurrent_duplicate_nonce_has_exactly_one_winner(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    def attempt(_):
+        return security_store.consume_approval_nonce(tenant, "race-nonce", 500, now=100)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(attempt, range(16)))
+    assert sum(results) == 1
+
+
+def test_nonce_persists_after_store_reopen(tmp_path):
+    path = tmp_path / "security.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    assert SQLiteSecurityStore(path).consume_approval_nonce(tenant, "persist", 500, now=100)
+    assert not SQLiteSecurityStore(path).consume_approval_nonce(tenant, "persist", 500, now=100)
+
+
+def test_audit_events_are_payload_free_and_chain_verifies(security_store):
+    event = DurableAuditEvent(
+        action="project.update",
+        result="denied",
+        reason_code="tenant_mismatch",
+        principal_fingerprint="sha256:principal",
+        request_id="req-123",
+    )
+    security_store.append_audit_event(event)
+    security_store.append_audit_event(
+        DurableAuditEvent("project.read", "allowed", "ok", "sha256:principal", "req-124")
+    )
+    assert security_store.verify_audit_chain()
+
+
+def test_audit_event_rejects_payload_like_or_unbounded_fields(security_store):
+    with pytest.raises(ValueError):
+        security_store.append_audit_event(
+            DurableAuditEvent("x" * 257, "ok", "ok", "fp", "req")
+        )
+
+
+def test_audit_chain_detects_modified_row(security_store, tmp_path):
+    path = tmp_path / "tamper.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("action", "ok", "ok", "fp", "req"))
+    import sqlite3
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE durable_audit_events SET action = 'tampered'")
+    assert not store.verify_audit_chain()
+
+
+def test_execution_audit_adapter_satisfies_gateway_append_verify_contract(tmp_path):
+    from types import SimpleNamespace
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    store = SQLiteSecurityStore(tmp_path / "adapter.sqlite3")
+    tenant = TenantKey("https://issuer.example", "alice")
+    audit = SQLiteExecutionAuditLog(store, tenant)
+    assert audit.verify() == audit.GENESIS
+    audit.append(SimpleNamespace(action="project.create", executed=False, reason="denied"))
+    assert audit.verify() != audit.GENESIS
+    assert store.verify_audit_chain()
+
+
+def test_execution_audit_adapter_persists_only_principal_fingerprint(tmp_path):
+    from types import SimpleNamespace
+    import sqlite3
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    path = tmp_path / "adapter.sqlite3"
+    store = SQLiteSecurityStore(path)
+    audit = SQLiteExecutionAuditLog(store, TenantKey("https://issuer.example", "alice"))
+    audit.append(SimpleNamespace(action="project.create", executed=False, reason="denied"))
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT principal_fingerprint FROM durable_audit_events"
+        ).fetchone()
+    assert row[0] == __import__("hashlib").sha256(
+        b"https://issuer.example\nalice"
+    ).hexdigest()
+    assert "alice" not in row[0]
+
+
+def test_audit_append_fails_closed_when_existing_chain_is_tampered(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "tampered-before-append.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("first", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE durable_audit_events SET action = 'forged'")
+    with pytest.raises(ValueError, match="audit"):
+        store.append_audit_event(DurableAuditEvent("second", "ok", "ok", "fp", "req-2"))
+
+
+def test_audit_chain_detects_deleted_tail_row(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "tail-truncated.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("one", "ok", "ok", "fp", "req-1"))
+    store.append_audit_event(DurableAuditEvent("two", "ok", "ok", "fp", "req-2"))
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "DELETE FROM durable_audit_events WHERE sequence = "
+            "(SELECT MAX(sequence) FROM durable_audit_events)"
+        )
+    assert not store.verify_audit_chain()
+    with pytest.raises(ValueError, match="tail entries"):
+        store.append_audit_event(DurableAuditEvent("three", "ok", "ok", "fp", "req-3"))
+
+
+def test_audit_chain_detects_deletion_of_all_rows(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "all-rows-deleted.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("one", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("DELETE FROM durable_audit_events")
+    assert not store.verify_audit_chain()
+
+
+def test_security_database_file_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "private" / "security.sqlite3"
+    SQLiteSecurityStore(path)
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="symlinks unavailable")
+def test_security_database_preexisting_file_permissions_are_restricted(tmp_path):
+    import os
+
+    path = tmp_path / "security-existing.sqlite3"
+    path.write_bytes(b"")
+    if os.name == "posix":
+        path.chmod(0o644)
+
+    SQLiteSecurityStore(path)
+
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX directory permissions required")
+def test_security_database_rejects_shared_parent_directory(tmp_path):
+    import os
+
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir(mode=0o700)
+    shared_dir.chmod(0o755)
+
+    with pytest.raises(ValueError, match="parent directory must be owner-only"):
+        SQLiteSecurityStore(shared_dir / "security.sqlite3")
+
+    assert not (shared_dir / "security.sqlite3").exists()
+
+
+def test_security_database_rejects_symlink_target(tmp_path):
+    target = tmp_path / "outside.sqlite3"
+    target.write_bytes(b"do-not-open")
+    link = tmp_path / "security.sqlite3"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        SQLiteSecurityStore(link)
+    assert target.read_bytes() == b"do-not-open"
+
+
+def test_security_database_rejects_symlinked_parent_directory(tmp_path):
+    target_dir = tmp_path / "actual"
+    target_dir.mkdir()
+    link_dir = tmp_path / "linked"
+    try:
+        link_dir.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="parent path.*symlinks"):
+        SQLiteSecurityStore(link_dir / "security.sqlite3")
+    assert not (target_dir / "security.sqlite3").exists()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX file permissions required")
+def test_security_sqlite_wal_sidecars_have_owner_only_permissions(tmp_path):
+    import os
+
+    path = tmp_path / "security.sqlite3"
+    store = SQLiteSecurityStore(path)
+    connection = store._connect()
+    try:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("CREATE TABLE sidecar_permission_probe (value TEXT)")
+
+        for suffix in ("-wal", "-shm"):
+            sidecar = path.with_name(path.name + suffix)
+            assert sidecar.exists()
+            assert sidecar.stat().st_mode & 0o777 == 0o600
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX file permissions required")
+def test_security_sqlite_rollback_journal_has_owner_only_permissions(tmp_path):
+    import os
+
+    path = tmp_path / "rollback-journal.sqlite3"
+    store = SQLiteSecurityStore(path)
+    connection = store._connect()
+    try:
+        assert connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0].lower() == "delete"
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("CREATE TABLE rollback_journal_permission_probe (value TEXT)")
+
+        journal = path.with_name(path.name + "-journal")
+        assert journal.exists()
+        assert journal.stat().st_mode & 0o777 == 0o600
+        assert path.stat().st_mode & 0o777 == 0o600
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_nonce_expiry_cleanup_rolls_back_when_insert_fails(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "nonce-rollback.sqlite3"
+    store = SQLiteSecurityStore(path)
+    tenant = TenantKey("https://issuer.example", "alice")
+    assert store.consume_approval_nonce(tenant, "expired-row", 150, now=100)
+
+    trigger_connection = sqlite3.connect(path)
+    try:
+        trigger_connection.execute(
+            """CREATE TRIGGER reject_nonce_insert
+               BEFORE INSERT ON consumed_approval_nonces
+               WHEN NEW.nonce = 'new-row'
+               BEGIN SELECT RAISE(ABORT, 'forced nonce insert failure'); END"""
+        )
+        trigger_connection.commit()
+    finally:
+        trigger_connection.close()
+
+    # Duplicate/constraint-style nonce insertion failures are deliberately
+    # handled as a rejected nonce by the store API (False), not propagated.
+    assert not store.consume_approval_nonce(tenant, "new-row", 500, now=200)
+
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT nonce FROM consumed_approval_nonces ORDER BY nonce"
+        ).fetchall()
+    # The expiry cleanup and failed insert share one transaction: rollback
+    # must restore the row deleted during cleanup.
+    assert rows == [("expired-row",)]
+
+
+def test_audit_append_rolls_back_when_sqlite_insert_fails(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "audit-rollback.sqlite3"
+    store = SQLiteSecurityStore(path)
+    first_hash = store.append_audit_event(
+        DurableAuditEvent("first", "ok", "ok", "fp", "req-1")
+    )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TRIGGER reject_audit_insert
+               BEFORE INSERT ON durable_audit_events
+               BEGIN SELECT RAISE(ABORT, 'forced audit insert failure'); END"""
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="forced audit insert failure"):
+        store.append_audit_event(
+            DurableAuditEvent("second", "ok", "ok", "fp", "req-2")
+        )
+
+    assert store.verify_audit_chain()
+    assert store.last_audit_hash() == first_hash
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0] == 1
+
+
+def test_security_store_rejects_unvalidated_tenant_before_database_access(tmp_path):
+    store = SQLiteSecurityStore(tmp_path / "invalid-tenant.sqlite3")
+    with pytest.raises(TypeError, match="validated TenantKey"):
+        store.consume_approval_nonce(("issuer", "alice"), "nonce", 500, now=100)
+
+
+def _consume_nonce_in_process(database_path, gate, ready_queue, result_queue):
+    store = SQLiteSecurityStore(database_path, timeout=20)
+    ready_queue.put(True)
+    if not gate.wait(timeout=30):
+        result_queue.put(("error", "start gate timed out"))
+        return
+    result_queue.put((
+        "ok",
+        store.consume_approval_nonce(
+            TenantKey("https://issuer.example", "alice"),
+            "multiprocess-race-nonce",
+            500,
+            now=100,
+        ),
+    ))
+
+
+def _append_audit_in_process(database_path, gate, ready_queue, result_queue, index):
+    store = SQLiteSecurityStore(database_path, timeout=20)
+    ready_queue.put(True)
+    if not gate.wait(timeout=30):
+        result_queue.put(("error", "start gate timed out"))
+        return
+    event = DurableAuditEvent(
+        "concurrent.process.append",
+        "ok",
+        "ok",
+        "process-fingerprint",
+        f"process-request-{index}",
+    )
+    result_queue.put(("ok", store.append_audit_event(event)))
+
+
+def _run_process_race(context, target, args, worker_count):
+    gate = context.Event()
+    ready_queue = context.Queue()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(target=target, args=(*args, gate, ready_queue, result_queue))
+        for _ in range(worker_count)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            ready_queue.get(timeout=45)
+        gate.set()
+        results = [result_queue.get(timeout=45) for _ in processes]
+        for process in processes:
+            process.join(timeout=45)
+        assert all(not process.is_alive() for process in processes)
+        assert all(process.exitcode == 0 for process in processes)
+        assert all(status == "ok" for status, _ in results), results
+        return [value for _, value in results]
+    finally:
+        gate.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+        result_queue.close()
+
+
+def test_nonce_is_single_use_across_independent_processes(tmp_path):
+    path = tmp_path / "multiprocess-nonce.sqlite3"
+    SQLiteSecurityStore(path)
+    context = multiprocessing.get_context("spawn")
+
+    results = _run_process_race(
+        context,
+        _consume_nonce_in_process,
+        (str(path),),
+        worker_count=6,
+    )
+
+    assert sum(results) == 1
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM consumed_approval_nonces"
+        ).fetchone()[0] == 1
+
+
+def test_concurrent_process_audit_appends_preserve_one_valid_chain(tmp_path):
+    path = tmp_path / "multiprocess-audit.sqlite3"
+    store = SQLiteSecurityStore(path)
+    context = multiprocessing.get_context("spawn")
+    gate = context.Event()
+    ready_queue = context.Queue()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_append_audit_in_process,
+            args=(str(path), gate, ready_queue, result_queue, index),
+        )
+        for index in range(6)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            ready_queue.get(timeout=45)
+        gate.set()
+        results = [result_queue.get(timeout=45) for _ in processes]
+        for process in processes:
+            process.join(timeout=45)
+        assert all(not process.is_alive() for process in processes)
+        assert all(process.exitcode == 0 for process in processes)
+        assert all(status == "ok" for status, _ in results), results
+    finally:
+        gate.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        ready_queue.close()
+        result_queue.close()
+
+    hashes = [value for _, value in results]
+    assert len(set(hashes)) == 6
+    assert store.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0] == 6
+
+def _crash_with_uncommitted_nonce(database_path, ready_connection):
+    import os
+    import sqlite3
+
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """INSERT INTO consumed_approval_nonces
+           (issuer, subject, nonce, expires_at, consumed_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        ("https://issuer-crash.example", "crash-owner", "crash-uncommitted-nonce", 9999999999, 100),
+    )
+    ready_connection.send(True)
+    # Simulate abrupt process termination without commit, rollback, or close.
+    os._exit(0)
+
+
+def test_sqlite_recovers_uncommitted_nonce_after_process_crash(tmp_path):
+    path = tmp_path / "security-crash-recovery.sqlite3"
+    store = SQLiteSecurityStore(path)
+    tenant = TenantKey("https://issuer-crash.example", "crash-owner")
+    assert store.consume_approval_nonce(tenant, "committed-nonce", 9999999999, now=100)
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_crash_with_uncommitted_nonce,
+        args=(str(path), send_connection),
+    )
+    process.start()
+    try:
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_connection.close()
+        send_connection.close()
+
+    recovered = SQLiteSecurityStore(path)
+    with sqlite3.connect(path) as connection:
+        nonces = connection.execute(
+            "SELECT nonce FROM consumed_approval_nonces ORDER BY nonce"
+        ).fetchall()
+    assert nonces == [("committed-nonce",)]
+
+def _crash_with_uncommitted_audit_event(database_path, ready_connection):
+    import os
+    import sqlite3
+
+    connection = sqlite3.connect(database_path, isolation_level=None)
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """INSERT INTO durable_audit_events
+           (timestamp, action, result, reason_code, principal_fingerprint,
+            request_id, previous_hash, entry_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "2026-11-15T00:00:00+00:00",
+            "uncommitted.crash.event",
+            "denied",
+            "simulated_crash",
+            "crash-fingerprint",
+            "crash-request",
+            "0" * 64,
+            "f" * 64,
+        ),
+    )
+    ready_connection.send(True)
+    # Simulate abrupt process termination without commit, rollback, or close.
+    os._exit(0)
+
+
+def test_sqlite_recovers_uncommitted_audit_event_after_process_crash(tmp_path):
+    path = tmp_path / "audit-crash-recovery.sqlite3"
+    store = SQLiteSecurityStore(path)
+    committed_hash = store.append_audit_event(
+        DurableAuditEvent("committed.before.crash", "ok", "ok", "fp", "req-1")
+    )
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_crash_with_uncommitted_audit_event,
+        args=(str(path), send_connection),
+    )
+    process.start()
+    try:
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_connection.close()
+        send_connection.close()
+
+    recovered = SQLiteSecurityStore(path)
+    assert recovered.verify_audit_chain()
+    assert recovered.last_audit_hash() == committed_hash
+    recovered.append_audit_event(
+        DurableAuditEvent("committed.after.recovery", "ok", "ok", "fp", "req-2")
+    )
+    assert recovered.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("committed.before.crash",),
+        ("committed.after.recovery",),
+    ]
+
+def test_security_schema_initialization_rolls_back_on_ddl_failure(tmp_path, monkeypatch):
+    path = tmp_path / "schema-init-rollback.sqlite3"
+    original_connect = SQLiteSecurityStore._connect
+
+    def connect_with_denied_index(self):
+        connection = original_connect(self)
+
+        def authorizer(action, _arg1, _arg2, _database, _trigger):
+            if action == sqlite3.SQLITE_CREATE_INDEX:
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        connection.set_authorizer(authorizer)
+        return connection
+
+    monkeypatch.setattr(SQLiteSecurityStore, "_connect", connect_with_denied_index)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteSecurityStore(path)
+
+    # A failed schema/index migration must not leave earlier DDL committed.
+    with sqlite3.connect(path) as connection:
+        objects = connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    assert objects == []
+
+
+def test_security_store_fails_closed_on_non_sqlite_database_without_replacing_it(tmp_path):
+    path = tmp_path / "not-a-database.sqlite3"
+    original = b"preserve-this-unrecognized-file"
+    path.write_bytes(original)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteSecurityStore(path)
+
+    assert path.read_bytes() == original
+
+
+def test_nonce_replay_scope_includes_both_issuer_and_subject(security_store):
+    issuer_one_alice = TenantKey("https://issuer-one.example", "alice")
+    issuer_two_alice = TenantKey("https://issuer-two.example", "alice")
+    issuer_one_bob = TenantKey("https://issuer-one.example", "bob")
+
+    assert security_store.consume_approval_nonce(
+        issuer_one_alice, "shared-nonce", 500, now=100
+    )
+    # Same subject under another trusted issuer is a distinct tenant.
+    assert security_store.consume_approval_nonce(
+        issuer_two_alice, "shared-nonce", 500, now=100
+    )
+    # Same issuer with another subject is also a distinct tenant.
+    assert security_store.consume_approval_nonce(
+        issuer_one_bob, "shared-nonce", 500, now=100
+    )
+    # Replays are denied only inside the exact composite tenant boundary.
+    assert not security_store.consume_approval_nonce(
+        issuer_one_alice, "shared-nonce", 500, now=100
+    )
+
+
+def test_execution_audit_fingerprint_distinguishes_same_subject_across_issuers(
+    tmp_path,
+):
+    from types import SimpleNamespace
+    import hashlib
+    import sqlite3
+
+    from core.sqlite_security_store import SQLiteExecutionAuditLog
+
+    path = tmp_path / "issuer-fingerprint.sqlite3"
+    store = SQLiteSecurityStore(path)
+    action = SimpleNamespace(
+        action="project.read", executed=False, reason="denied"
+    )
+    first = SQLiteExecutionAuditLog(
+        store, TenantKey("https://issuer-one.example", "alice")
+    )
+    second = SQLiteExecutionAuditLog(
+        store, TenantKey("https://issuer-two.example", "alice")
+    )
+
+    first.append(action)
+    second.append(action)
+
+    with sqlite3.connect(path) as connection:
+        fingerprints = [
+            row[0]
+            for row in connection.execute(
+                "SELECT principal_fingerprint FROM durable_audit_events ORDER BY sequence"
+            ).fetchall()
+        ]
+
+    assert fingerprints == [
+        hashlib.sha256(f"https://issuer-one.example\n{'alice'}".encode("utf-8")).hexdigest(),
+        hashlib.sha256(f"https://issuer-two.example\n{'alice'}".encode("utf-8")).hexdigest(),
+    ]
+    assert fingerprints[0] != fingerprints[1]
+    assert "alice" not in repr(fingerprints)
+    assert store.verify_audit_chain()
+
+
+def test_security_store_rejects_in_memory_database_path():
+    with pytest.raises(ValueError, match="filesystem-backed"):
+        SQLiteSecurityStore(":memory:")
+
+
+
+def test_security_database_path_is_anchored_when_working_directory_changes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store = SQLiteSecurityStore("relative-security/security.sqlite3")
+    expected_path = tmp_path / "relative-security" / "security.sqlite3"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    monkeypatch.chdir(elsewhere)
+    tenant = TenantKey("https://issuer.example", "cwd-anchor")
+    assert store.consume_approval_nonce(tenant, "anchored", 500, now=100)
+
+    assert expected_path.is_file()
+    assert not (elsewhere / "relative-security" / "security.sqlite3").exists()
+
+
+def test_security_store_rejects_database_symlink_replacement_after_initialization(tmp_path):
+    path = tmp_path / "security.sqlite3"
+    store = SQLiteSecurityStore(path)
+    target = tmp_path / "original-security.sqlite3"
+    path.rename(target)
+    try:
+        path.symlink_to(target)
+    except OSError:
+        target.rename(path)
+        pytest.skip("symlink creation is not permitted in this environment")
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        store._connect()
+
+
+
+@pytest.mark.parametrize("store_type", [SQLiteSecurityStore, SQLiteProjectStore])
+def test_sqlite_stores_reject_parent_directory_symlink_replacement_after_init(
+    tmp_path, store_type
+):
+    original_parent = tmp_path / "private"
+    original_parent.mkdir(mode=0o700)
+    database_path = original_parent / "store.sqlite3"
+    store = store_type(database_path)
+
+    moved_parent = tmp_path / "moved-private"
+    original_parent.rename(moved_parent)
+    try:
+        original_parent.symlink_to(moved_parent, target_is_directory=True)
+    except OSError:
+        moved_parent.rename(original_parent)
+        pytest.skip("directory symlink creation is not permitted in this environment")
+
+    # The database file itself is still a regular file, but its lexical parent
+    # has been replaced. Revalidation must reject this path before SQLite opens.
+    with pytest.raises(ValueError, match="parent path.*symlinks"):
+        store._connect()
+
+
+def test_sqlite_recovers_uncommitted_audit_event_after_process_crash_in_wal_mode(tmp_path):
+    path = tmp_path / "audit-wal-crash-recovery.sqlite3"
+    store = SQLiteSecurityStore(path)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+    committed_hash = store.append_audit_event(
+        DurableAuditEvent("committed.before.wal.crash", "ok", "ok", "fp", "wal-req-1")
+    )
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_crash_with_uncommitted_audit_event,
+        args=(str(path), send_connection),
+    )
+    process.start()
+    try:
+        assert receive_connection.poll(30)
+        assert receive_connection.recv() is True
+        process.join(timeout=30)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        receive_connection.close()
+        send_connection.close()
+
+    recovered = SQLiteSecurityStore(path)
+    assert recovered.verify_audit_chain()
+    assert recovered.last_audit_hash() == committed_hash
+    recovered.append_audit_event(
+        DurableAuditEvent("committed.after.wal.recovery", "ok", "ok", "fp", "wal-req-2")
+    )
+    assert recovered.verify_audit_chain()
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("committed.before.wal.crash",),
+        ("committed.after.wal.recovery",),
+    ]
+
+
+def test_sqlite_audit_backup_restore_preserves_verified_chain_and_allows_append(tmp_path):
+    source_path = tmp_path / "source.sqlite3"
+    backup_path = tmp_path / "backup.sqlite3"
+    restored_path = tmp_path / "restored.sqlite3"
+    source = SQLiteSecurityStore(source_path)
+    source.append_audit_event(
+        DurableAuditEvent("before.backup", "ok", "ok", "fp", "backup-req-1")
+    )
+    source.append_audit_event(
+        DurableAuditEvent("before.backup.second", "denied", "policy", "fp", "backup-req-2")
+    )
+
+    with sqlite3.connect(source_path) as source_connection:
+        with sqlite3.connect(backup_path) as backup_connection:
+            source_connection.backup(backup_connection)
+            assert backup_connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    with sqlite3.connect(backup_path) as backup_connection:
+        with sqlite3.connect(restored_path) as restored_connection:
+            backup_connection.backup(restored_connection)
+            assert restored_connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    restored = SQLiteSecurityStore(restored_path)
+    assert restored.verify_audit_chain()
+    assert restored.last_audit_hash() == source.last_audit_hash()
+    restored.append_audit_event(
+        DurableAuditEvent("after.restore", "ok", "ok", "fp", "backup-req-3")
+    )
+    assert restored.verify_audit_chain()
+    with sqlite3.connect(restored_path) as connection:
+        actions = connection.execute(
+            "SELECT action FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert actions == [
+        ("before.backup",),
+        ("before.backup.second",),
+        ("after.restore",),
+    ]
+
+
+def test_sqlite_audit_tamper_blocks_append_without_extending_chain(tmp_path):
+    path = tmp_path / "tampered-append-atomic.sqlite3"
+    store = SQLiteSecurityStore(path)
+    store.append_audit_event(DurableAuditEvent("original", "ok", "ok", "fp", "req-1"))
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE durable_audit_events SET reason_code = 'forged'")
+        before_count = connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0]
+
+    with pytest.raises(ValueError, match="audit"):
+        store.append_audit_event(DurableAuditEvent("must.not.append", "ok", "ok", "fp", "req-2"))
+
+    with sqlite3.connect(path) as connection:
+        after_count = connection.execute(
+            "SELECT COUNT(*) FROM durable_audit_events"
+        ).fetchone()[0]
+    assert after_count == before_count
+    assert not store.verify_audit_chain()
+
+
+
+def test_inspector_challenge_is_durable_single_use_and_bound_to_runtime(tmp_path):
+    path = tmp_path / "inspector-challenges.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, expiry = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    assert len(challenge) == 64
+    assert expiry == 160
+    reopened = SQLiteSecurityStore(path)
+    assert not reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:other-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not reopened.consume_inspector_challenge(
+        TenantKey("https://issuer.example", "bob"), challenge,
+        runtime_id="runtime:test-001", worker_id="worker:test-001", now=110,
+    )
+    assert reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not reopened.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+
+
+def test_inspector_challenge_expiry_and_invalid_inputs_fail_closed(tmp_path):
+    store = SQLiteSecurityStore(tmp_path / "inspector-expiry.sqlite3")
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, expiry = store.issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=10, now=100,
+    )
+    assert expiry == 110
+    assert not store.consume_inspector_challenge(
+        tenant, challenge, runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=110,
+    )
+    assert not store.consume_inspector_challenge(
+        tenant, "not-a-challenge", runtime_id="runtime:test-001",
+        worker_id="worker:test-001", now=105,
+    )
+    with pytest.raises(ValueError):
+        store.issue_inspector_challenge(
+            tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+            ttl_seconds=301, now=100,
+        )
+
+
+def test_concurrent_inspector_challenge_consumption_has_one_winner(tmp_path):
+    path = tmp_path / "inspector-race.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, _ = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    def attempt(_):
+        return SQLiteSecurityStore(path).consume_inspector_challenge(
+            tenant, challenge, runtime_id="runtime:test-001",
+            worker_id="worker:test-001", now=110,
+        )
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(attempt, range(16)))
+    assert sum(results) == 1
+
+
+def test_inspector_challenge_database_stores_only_hash_not_raw_challenge(tmp_path):
+    import sqlite3
+    import hashlib
+
+    path = tmp_path / "inspector-hash.sqlite3"
+    tenant = TenantKey("https://issuer.example", "alice")
+    challenge, _ = SQLiteSecurityStore(path).issue_inspector_challenge(
+        tenant, runtime_id="runtime:test-001", worker_id="worker:test-001",
+        ttl_seconds=60, now=100,
+    )
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT challenge_hash FROM inspector_challenges"
+        ).fetchone()
+    assert row[0] == hashlib.sha256(bytes.fromhex(challenge)).hexdigest()
+    assert challenge not in row[0]

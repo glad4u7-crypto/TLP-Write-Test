@@ -1,2 +1,4 @@
-streamlit>=1.40,<2.0
+streamlit[auth]>=1.45,<2.0
 pytest>=8.0,<10.0
+cryptography>=50,<51
+tomli>=2.0; python_version < '3.11'

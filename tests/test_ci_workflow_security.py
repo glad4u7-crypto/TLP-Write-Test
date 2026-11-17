@@ -1,0 +1,138 @@
+"""Regression checks for least-privilege and pinned GitHub Actions workflows.
+
+These checks intentionally use only the Python standard library so CI policy
+validation does not add a new runtime or test dependency.
+"""
+from pathlib import Path
+import re
+
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOWS = (
+    ROOT / ".github" / "workflows" / "agent-ci.yml",
+    ROOT / ".github" / "workflows" / "blank.yml",
+)
+
+ALL_SECURITY_WORKFLOWS = tuple(sorted((ROOT / ".github" / "workflows").glob("*.yml")))
+
+
+def test_all_external_workflow_actions_are_pinned_to_full_commit_shas():
+    for workflow in WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        # GitHub Actions steps may put `uses` on the list item itself or as a
+        # property after `- name`; accept both valid YAML layouts.
+        references = re.findall(
+            r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", source, re.MULTILINE
+        )
+        assert references, f"No actions found in {workflow.name}"
+        for reference in references:
+            action, separator, revision = reference.rpartition("@")
+            assert separator and action and re.fullmatch(r"[0-9a-f]{40}", revision), (
+                f"{workflow.name} uses an unpinned action: {reference}"
+            )
+
+
+def test_workflows_have_read_only_permissions_and_no_pull_request_target():
+    for workflow in WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        assert re.search(
+            r"^permissions:\s*\n\s+contents:\s+read\s*$",
+            source,
+            re.MULTILINE,
+        ), f"{workflow.name} must declare contents: read only"
+        assert "pull_request_target:" not in source
+        assert "write-all" not in source
+
+
+def test_workflows_bound_runtime_without_cancelling_active_runs():
+    for workflow in WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        assert re.search(r"^concurrency:\s*$", source, re.MULTILINE)
+        assert "cancel-in-progress: false" in source
+        # Every commit/event pair has an independent group; a newer commit
+        # cannot cancel an older in-flight verification.
+        assert "github.sha" in source
+        assert "github.event_name" in source
+        # Feature work is validated by pull_request, not duplicate push runs.
+        push_section = re.search(
+            r"^  push:\s*\n(?P<body>(?:^    .*\n|^\s*\n)*)",
+            source,
+            re.MULTILINE,
+        )
+        assert push_section and 'branches: ["main"]' in push_section.group("body")
+        assert "github.event.pull_request.head.ref || github.ref_name" not in source
+        assert re.search(r"^\s+timeout-minutes:\s+(15|20)\s*$", source, re.MULTILINE)
+
+
+def test_dependabot_checks_pip_and_github_actions_weekly_without_auto_merge():
+    source = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert 'package-ecosystem: "pip"' in source
+    assert 'package-ecosystem: "github-actions"' in source
+    assert source.count('interval: "weekly"') == 2
+    assert "auto-merge" not in source.lower()
+
+
+
+def test_every_repository_workflow_uses_sha_pins_and_read_only_permissions():
+    assert len(ALL_SECURITY_WORKFLOWS) >= 7
+    for workflow in ALL_SECURITY_WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        references = re.findall(
+            r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", source, re.MULTILINE
+        )
+        assert references, f"No external actions found in {workflow.name}"
+        for reference in references:
+            action, separator, revision = reference.rpartition("@")
+            assert separator and action and re.fullmatch(r"[0-9a-f]{40}", revision), (
+                f"{workflow.name} uses an unpinned action: {reference}"
+            )
+        assert re.search(
+            r"^permissions:\s*\n\s+contents:\s+read\s*$",
+            source,
+            re.MULTILINE,
+        ), f"{workflow.name} must declare contents: read only"
+        assert "pull_request_target:" not in source
+        assert "write-all" not in source.lower()
+
+
+def test_every_repository_workflow_has_non_cancelling_concurrency_and_job_timeouts():
+    for workflow in ALL_SECURITY_WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        assert re.search(r"^concurrency:\s*$", source, re.MULTILINE), workflow.name
+        assert re.search(
+            r"^\s+group:\s+.+\$\{\{\s*github\.sha\s*\}\}",
+            source,
+            re.MULTILINE,
+        ), f"{workflow.name} concurrency group must be commit-scoped"
+        assert "cancel-in-progress: false" in source, workflow.name
+
+        lines = source.splitlines()
+        in_jobs = False
+        job_blocks = []
+        current_job = None
+        current_lines = []
+        for line in lines:
+            if line == "jobs:":
+                in_jobs = True
+                continue
+            if not in_jobs:
+                continue
+            if re.match(r"^\S", line):
+                break
+            job_match = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+            if job_match:
+                if current_job is not None:
+                    job_blocks.append((current_job, current_lines))
+                current_job = job_match.group(1)
+                current_lines = []
+            elif current_job is not None:
+                current_lines.append(line)
+        if current_job is not None:
+            job_blocks.append((current_job, current_lines))
+
+        assert job_blocks, f"{workflow.name} must define at least one job"
+        for job_name, job_lines in job_blocks:
+            assert any(
+                re.match(r"^    timeout-minutes:\s+\d+\s*$", line)
+                for line in job_lines
+            ), f"{workflow.name}:{job_name} must have its own bounded timeout"
