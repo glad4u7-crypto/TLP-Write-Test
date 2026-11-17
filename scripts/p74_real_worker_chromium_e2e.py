@@ -317,7 +317,7 @@ def main() -> int:
             seccomp_profile=seccomp_profile,
             worker_id=worker_id,
             limits=WorkerLimits(),
-            cgroup_parent=str(cgroup_path),
+            cgroup_parent="/" + str(cgroup_path.relative_to("/sys/fs/cgroup")).strip("/"),
         )
         container_id = runtime.create(spec)
         evidence["container_id"] = container_id
@@ -358,7 +358,7 @@ def main() -> int:
             raise RuntimeError("OCI inspect did not confirm CPU, memory and PID limits")
         if config.get("User") != "65532:65532":
             raise RuntimeError("OCI inspect did not confirm the unprivileged worker UID/GID")
-        if host.get("CgroupParent") != str(cgroup_path):
+        if host.get("CgroupParent") != spec.cgroup_parent:
             raise RuntimeError("OCI inspect did not confirm the dedicated cgroup parent")
         if host.get("NetworkMode") != f"ns:{namespace_path}":
             raise RuntimeError("OCI inspect did not confirm the exact isolated network namespace")
