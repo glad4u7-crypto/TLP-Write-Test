@@ -44,8 +44,11 @@ def redact_sensitive_text(value: str, *, limit: int = 256) -> str:
     """Return bounded audit text with credentials, URL paths and identifiers masked."""
     if type(value) is not str:
         raise TypeError("audit text must be a string")
-    value = _SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
+    # Mask bearer/basic payloads before assignment parsing; otherwise the
+    # Authorization matcher can consume only the word "Bearer" and leak the
+    # credential that follows it.
     value = _BEARER.sub(lambda m: f"{m.group(1)} [REDACTED]", value)
+    value = _SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
 
     def hide_url(match):
         from urllib.parse import urlsplit

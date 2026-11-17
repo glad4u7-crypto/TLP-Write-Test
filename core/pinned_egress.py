@@ -116,7 +116,7 @@ def connect_pinned(
         peer = sock.getpeername()
         if (ipaddress.ip_address(peer[0]) != parsed or type(peer[1]) is not int
                 or peer[1] != destination.port):
-            raise PinnedEgressError("connected peer differs from the pinned destination and port")
+            raise PinnedEgressError("connected peer address and port differ from the pinned destination")
         return sock
     except Exception:
         sock.close()

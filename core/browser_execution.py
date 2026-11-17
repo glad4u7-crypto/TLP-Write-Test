@@ -405,7 +405,7 @@ class BrowserExecutionCoordinator:
         if termination_error is not None:
             raise BrowserExecutionError("Worker termination failed; job remains cancelled.") from termination_error
         if audit_error is not None:
-            raise BrowserExecutionError("Cancellation recovery or audit record failed after worker termination.") from audit_error
+            raise BrowserExecutionError("Cancellation audit write failed or recovery state could not be persisted after worker termination.") from audit_error
         return changed
 
     def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:

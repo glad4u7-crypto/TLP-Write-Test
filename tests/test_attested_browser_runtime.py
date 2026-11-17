@@ -5,7 +5,7 @@ from core.attested_browser_runtime import AttestedBrowserRuntime, BrowserRuntime
 from core.browser_execution import BrowserExecutionCoordinator, BrowserExecutionError
 from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
-from core.browser_nftables import collect_signed_inspector_evidence
+from core.browser_nftables import collect_signed_inspector_evidence, _expected_dual_stack_rules
 
 
 NOW = 1000
@@ -65,17 +65,19 @@ class FakeHost:
             "runtime_id": "runtime:test-001", "worker_id": "worker:test-001",
             "inode": 4026533001, "interface": "eth0",
         }
+        expected = _expected_dual_stack_rules((PROXY_IP,), 3128)
         self.rules = {"nftables": [
             {"metainfo": {"version": "1.0.9", "release_name": "test"}},
-            {"table": {"family": "inet", "name": "filter"}},
-            {"chain": {"family": "inet", "table": "filter", "name": "egress",
+            {"table": {"family": "inet", "name": "apaa"}},
+            {"chain": {"family": "inet", "table": "apaa", "name": "input",
+                       "type": "filter", "hook": "input", "prio": 0, "policy": "drop"}},
+            {"chain": {"family": "inet", "table": "apaa", "name": "output",
                        "type": "filter", "hook": "output", "prio": 0, "policy": "drop"}},
-            {"rule": {"family": "inet", "table": "filter", "chain": "egress", "expr": [
-                match({"meta": {"key": "l4proto"}}, "tcp"),
-                match({"payload": {"protocol": "ip", "field": "daddr"}}, PROXY_IP),
-                match({"payload": {"protocol": "tcp", "field": "dport"}}, 3128),
-                {"accept": None},
-            ]}},
+            *[
+                {"rule": {"family": "inet", "table": "apaa", "chain": chain, "expr": expr}}
+                for chain in ("input", "output")
+                for expr in expected[chain]
+            ],
         ]}
 
     def read_runtime_attestation(self):
