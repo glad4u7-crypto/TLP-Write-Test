@@ -162,6 +162,7 @@ def test_qualification_command_error_identifies_action_and_redacts_url(monkeypat
 
 def test_udp_probe_records_seccomp_socket_creation_denial_separately(monkeypatch):
     from subprocess import CompletedProcess
+    import pytest
 
     monkeypatch.setattr(
         qualification.subprocess, "run",
