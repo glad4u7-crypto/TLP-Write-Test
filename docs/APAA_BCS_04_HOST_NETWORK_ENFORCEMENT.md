@@ -304,3 +304,35 @@ qualification is required for both corrections.
 
 
 The image-identity and recursive-cleanup corrections are queued for the next gated disposable-host qualification.
+
+
+### Run #111 — independent OCI observation passed; Chromium command diagnostics needed
+
+The real-host evidence confirms the worker PID was found in the actual delegated
+cgroup subtree, kernel memory/CPU/PID limits matched, seccomp mode was active,
+network namespace inode matched, and the exact 13-rule dual-stack default-DROP
+policy was attested. Cleanup was confirmed. The run then stopped at a Podman
+command used after preflight; the old harness reported only the executable name,
+so it did not distinguish a Chromium launch failure from a Podman exec/setup
+failure. The harness now reports a sanitized command label, exit code and
+redacted bounded diagnostic. The direct-egress probes were also tightened:
+a nonzero command exit is no longer treated as proof of firewall blocking;
+only recognized socket-level network-unreachable/no-route/timeout outcomes
+count, and their hashes/status are retained. The earlier run's direct-probe
+flags are therefore not accepted as conclusive evidence. No Chromium HTTPS
+success, packet-capture proxy-only proof or proxy-outage fallback test has yet
+passed on the disposable host.
+
+### Signed host-inspector nftables parser alignment
+
+The offline signed-inspector parser now accepts only the complete APAA
+dual-stack policy: one inet apaa table, exactly input/output filter chains with
+default DROP, exact loopback rules, narrowly scoped IPv6 neighbour discovery,
+and exact proxy source/return plus destination/new TCP rules for every pinned
+proxy IP. It rejects additional chains, tables, unknown objects, altered input
+rules, extra ACCEPT paths, jumps and unreviewed expressions. Regression tests
+now model the complete 13-rule live nft 1.0.9 JSON observed on the disposable
+host. This parser change still requires exact-head CI and integration
+qualification before it can be considered production-ready.
+
+The latest parser, direct-egress probe and cleanup changes are queued for exact-head CI and disposable-host requalification.
