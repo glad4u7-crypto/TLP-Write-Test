@@ -153,3 +153,18 @@ conntrack state sets as a JSON array (for example
 `{"set":[...]}`. The strict verifier and fixture now require the observed
 array representation, alongside the scalar `in "new"` form. No Chromium
 requests or bypass tests ran in #61. Requalification is required.
+
+
+### Run #64 — nftables attestation passed; OCI inspect gate blocked
+
+The corrected nftables parser passed against the live nft 1.0.9 ruleset:
+13 exact ACCEPT rules and both default-DROP chains were attested. Namespace,
+dual-stack routes, firewall and both pinned proxy listeners were also
+provisioned. The run then stopped before browser start because Podman inspect
+did not satisfy the script's read-only-rootfs / CapDrop=ALL assertion. Cleanup
+was confirmed. No Chromium request or bypass test ran.
+
+The next evidence artifact now records only the relevant non-secret OCI
+inspect fields (read-only root, capability drop, security options, resource
+limits, user, cgroup parent, network mode and state) to identify whether the
+mismatch is a runtime representation issue or a real enforcement defect.
