@@ -531,6 +531,24 @@ with st.sidebar:
     st.success("No paid API requests")
     st.success("External execution disabled")
 
+    with st.expander("Action history"):
+        try:
+            recent_actions = audit_log.list_recent_events(limit=25)
+            if not recent_actions:
+                st.caption("No audited actions have been recorded yet.")
+            else:
+                st.caption("Recent owner actions · audit hash chain verified")
+                for event in recent_actions:
+                    st.caption(
+                        f"#{event['sequence']} · {event['timestamp']} · "
+                        f"{event['action']} · {event['result']} · {event['reason_code']}"
+                    )
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            st.error(
+                "Action history integrity could not be verified. "
+                "New mutations remain fail-closed."
+            )
+
 # Directory visibility is a separate, explicit consent. It never grants access.
 if principal is not None and trusted_identity_directory is not None:
     st.divider()
