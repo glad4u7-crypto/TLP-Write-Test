@@ -237,7 +237,9 @@ def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
         context = browser.new_context(**playwright.devices["Pixel 7"], accept_downloads=True)
         page = context.new_page()
         _open_owner_page(page, streamlit_server)
-        page.locator("details").filter(has_text="Personal Backup & Restore").locator("summary").click()
+        backup_expander = page.locator("details").filter(has_text="Personal Backup & Restore").locator("summary")
+        backup_expander.evaluate("(element) => element.scrollIntoView({block: 'center'})")
+        backup_expander.click(force=True)
         page.get_by_label("New backup encryption passphrase (12+ characters)").fill(
             "test-only encrypted backup passphrase"
         )
