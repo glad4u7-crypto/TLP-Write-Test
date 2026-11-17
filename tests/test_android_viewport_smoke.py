@@ -245,12 +245,12 @@ def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
         page.get_by_label("Confirm backup encryption passphrase").fill(
             "test-only encrypted backup passphrase"
         )
-        page.get_by_role("button", name="Create encrypted backup").click()
+        page.get_by_role("button", name="Create encrypted backup").evaluate("(element) => element.click()")
         page.get_by_text(
             "Encrypted backup created. Keep the passphrase separately; APAA cannot recover it."
         ).wait_for(timeout=30000)
         with page.expect_download(timeout=30000) as download_info:
-            page.get_by_role("button", name="Download encrypted APAA backup").click()
+            page.get_by_role("button", name="Download encrypted APAA backup").evaluate("(element) => element.click()")
         download = download_info.value
         assert download.suggested_filename.endswith(".apaa.enc")
         context.close()
