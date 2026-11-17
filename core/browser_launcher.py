@@ -90,6 +90,8 @@ def create_playwright_worker_start(browser_type: Any):
                     "--disable-background-networking",
                     "--disable-component-update",
                     "--disable-sync",
+                    "--disable-http2",
+                    "--disable-quic",
                     "--proxy-bypass-list=<-loopback>",
                 ],
             )
