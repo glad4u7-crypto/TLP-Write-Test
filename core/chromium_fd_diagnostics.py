@@ -100,7 +100,7 @@ def _executable_mappings(base: Path, executable: str | None) -> list[dict]:
         if len(fields) < 5:
             continue
         path = fields[5].removesuffix(" (deleted)") if len(fields) == 6 else ""
-        if not path.startswith("/") or (executable and Path(path).name != executable):
+        if not path.startswith("/") or "x" not in fields[1]:
             continue
         start_end = fields[0].split("-", 1)
         try:
@@ -119,7 +119,7 @@ def _executable_mappings(base: Path, executable: str | None) -> list[dict]:
             "inode": inode,
             "module": Path(path).name,
         })
-        if len(mappings) >= 32:
+        if len(mappings) >= 64:
             break
     return mappings
 
