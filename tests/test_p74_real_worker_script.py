@@ -486,7 +486,7 @@ def test_chromium_dynamic_close_symbol_is_parsed_and_stack_pc_annotated(monkeypa
     from subprocess import CompletedProcess
 
     def fake_run(command, **kwargs):
-        return CompletedProcess(command, 0, "0000000009c63400 T close\\n", "")
+        return CompletedProcess(command, 0, "0000000009c63400 T close\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     symbols = qualification._chromium_dynamic_symbols("worker-container")
