@@ -135,7 +135,9 @@ class PodmanWorkerObserver:
             raise WorkerObservationError("an explicit delegated cgroup parent is required")
         expected_parent = "/" + str(Path(parent).relative_to("/sys/fs/cgroup")).strip("/")
         if cgroup_path != expected_parent and not cgroup_path.startswith(expected_parent.rstrip("/") + "/"):
-            raise WorkerObservationError("worker process is outside its dedicated APAA cgroup subtree")
+            raise WorkerObservationError(
+                f"worker process cgroup {cgroup_path!r} is outside dedicated subtree {expected_parent!r}"
+            )
         relative = cgroup_path.lstrip("/")
         cgroup_dir = self.cgroup_root / relative
         try:
