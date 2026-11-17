@@ -678,3 +678,6 @@ The failed attempt skipped all destructive provisioning steps.
 The next real OCI run passed the user-namespace and `chroot` probe, retained all default-DROP and direct-egress negative checks, and no longer crashed in the zygote. Chromium itself exited successfully but did not return the expected `Example Domain` marker over the IPv4 proxy. The sanitized evidence confirmed both user-namespace checks true; container cleanup was confirmed with no cleanup errors.
 
 Added bounded, redacted Chromium stdout/stderr diagnostics to the qualification evidence so the next run distinguishes proxy CONNECT failure, TLS failure, browser error page, and controlled-page content mismatch without recording credentials, email addresses or URL paths/query values. A regression test checks this redaction. A fresh disposable-host run is requested for this diagnostic revision.
+
+
+The next diagnostic revision also records per-family proxy accept/reject counts and pinned dialed IPs before failing, plus bounded redacted Chromium stderr head/tail and known browser/proxy error markers. This distinguishes failure to reach the proxy from a rejected CONNECT or a browser-side TLS/navigation problem.
