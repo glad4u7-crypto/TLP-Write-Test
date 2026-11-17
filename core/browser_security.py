@@ -230,8 +230,6 @@ def validate_live_destination(
     DNS names. The network adapter must connect only to the returned addresses
     and must not resolve the hostname a second time.
     """
-    if not callable(resolver):
-        raise BrowserPolicyError("A trusted DNS resolver is mandatory for live navigation.")
     target = canonicalize_https_url(value)
     # Reuse exact-origin validation without invoking an implicit system resolver.
     validate_destination(target.url, allowed_origins)
@@ -242,6 +240,8 @@ def validate_live_destination(
     if literal is not None:
         addresses = validate_dns_answers(target.hostname, [target.hostname])
     else:
+        if not callable(resolver):
+            raise BrowserPolicyError("A trusted DNS resolver is mandatory for live navigation.")
         try:
             answers = resolver(target.hostname)
         except Exception as exc:
