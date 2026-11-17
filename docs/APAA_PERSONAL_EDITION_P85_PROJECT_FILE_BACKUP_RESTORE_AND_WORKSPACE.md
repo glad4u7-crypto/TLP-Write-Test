@@ -24,8 +24,9 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Project file inspection remains local and read-only.
 - Added tenant/project-scoped, newest-first checkpoint history with a bounded listing API.
 - The Task Workspace can prefill the planner from an Owner-selected active/blocked checkpoint's next action. This is a draft-only resume: it does not execute a task or grant approval.
-- Added durable per-step progress records keyed by tenant, project, plan and step. Explicit form submission saves pending/completed state; progress totals render as a progress bar and remain separate from execution status.
-- Added tests for progress persistence, consent, tenant isolation and step-ID validation, plus an AppTest proving the read-only Web search provider is not called until the Owner submits the search form.
+- Added durable per-step progress records keyed by tenant, project, plan and step. Progress totals render as a progress bar and remain separate from execution status. Every step-status write now requires a separate Owner consent checkbox plus submit, and is routed through the existing payload-bound approval and audit path.
+- Added tests for progress persistence after database reopen, consent, tenant isolation and step-ID validation, plus AppTests proving Web/Page/YouTube providers are not called until the Owner submits and that provider errors are handled safely.
+- Corrected the Project Files UI notice: project files are included in Personal Backup v3; users are told to keep archives private and perform a restore drill.
 - Existing saved task plans remain available for review and reloading. Checkpoint status is shown as active, blocked, completed or cancelled.
 - Android-first responsive CSS already enforces 44px minimum touch targets and 16px form text; this P85 pass preserves the browser-based product direction rather than creating a mandatory APK/Home Screen app.
 
