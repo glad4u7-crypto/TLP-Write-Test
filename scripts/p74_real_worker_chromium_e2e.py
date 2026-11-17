@@ -150,7 +150,8 @@ def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict
         "podman", "exec", "--user", "65532:65532", container_id, chromium_bin,
         "--headless=new", "--disable-gpu", "--disable-quic",
         "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
-        "--disable-crashpad-for-testing", "--disable-dev-shm-usage",
+        "--disable-crashpad-for-testing", "--disable-features=PassHistogramSharedMemoryOnLaunch",
+        "--disable-dev-shm-usage",
         "--user-data-dir=/tmp/apaa-chromium-smoke", "--disable-background-networking",
         "--no-first-run", "--dump-dom", data_url,
     ], timeout=45)
@@ -726,10 +727,12 @@ def main() -> int:
                 "--disable-quic",
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
+                "--disable-features=PassHistogramSharedMemoryOnLaunch",
                 "--disable-crash-reporter",
                 # Disable Crashpad initialization only; Chromium's renderer and
                 # namespace sandbox remain enabled for this disposable test.
                 "--disable-crashpad-for-testing",
+                "--disable-features=PassHistogramSharedMemoryOnLaunch",
                 "--disable-dev-shm-usage",
                 "--user-data-dir=/tmp/apaa-chromium-" + family,
                 "--enable-logging=stderr",
