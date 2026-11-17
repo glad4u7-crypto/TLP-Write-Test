@@ -160,3 +160,31 @@ def test_production_snapshot_rejects_cgroup_outside_mount(tmp_path, monkeypatch)
     monkeypatch.setattr("core.chromium_fd_diagnostics.Path.resolve", lambda self: Path("/sys/fs/cgroup") if str(self) == "/sys/fs/cgroup" else Path("/tmp/outside"))
     with pytest.raises(ValueError, match="beneath /sys/fs/cgroup"):
         snapshot_cgroup(cgroup, proc_root="/proc")
+
+
+
+def test_parent_child_shared_kernel_fd_is_reported_as_candidate_not_fact(tmp_path, monkeypatch):
+    proc, cgroup = _proc_fixture(tmp_path)
+    child = proc / "5252"
+    (child / "fd").mkdir(parents=True)
+    (child / "fdinfo").mkdir()
+    (child / "stat").write_text(_stat("renderer", ppid=4242), encoding="ascii")
+    (child / "status").write_text("Uid:\\t65532\\nGid:\\t65532\\n", encoding="ascii")
+    (child / "fd" / "5").symlink_to("pipe:[12345]")
+    (child / "fdinfo" / "5").write_text("pos:\\t0\\nflags:\\t01\\n", encoding="ascii")
+    (cgroup / "cgroup.procs").write_text("4242\\n5252\\n", encoding="ascii")
+    real_stat = os.stat
+
+    def fake_stat(path, *args, **kwargs):
+        if str(path).endswith(("/fd/1", "/fd/5")):
+            return real_stat("/dev/null")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr("core.chromium_fd_diagnostics.os.stat", fake_stat)
+    result = snapshot_cgroup(cgroup, proc_root=proc)
+    candidates = result["parent_child_fd_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["parent_fd"] == 1
+    assert candidates[0]["child_fd"] == 5
+    assert candidates[0]["same_fd_number"] is False
+    assert candidates[0]["interpretation"] == "shared_kernel_object_candidate_not_proof_of_inheritance"
