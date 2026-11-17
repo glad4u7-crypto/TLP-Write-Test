@@ -7,13 +7,13 @@ import subprocess
 
 import pytest
 
-from core.cgroup_seccomp_provisioner import IsolationEnforcementError, validate_seccomp_profile
+from core.cgroup_seccomp_provisioner import CgroupLimits, IsolationEnforcementError, validate_seccomp_profile
 from core.linux_network_namespace import (
     LinuxNetworkNamespaceProvisioner,
     NamespacePlan,
     NamespaceProvisionError,
 )
-from core.nftables_firewall_provisioner import NftablesFirewallProvisioner
+from core.nftables_firewall_provisioner import FirewallProvisionError, NftablesFirewallProvisioner
 from core.pinned_egress import PinnedEgressError, connect_pinned, resolve_and_pin
 
 
@@ -61,6 +61,14 @@ def test_namespace_provisioner_rolls_back_after_failure():
     assert runner.calls[-1][0] == ["ip", "netns", "del", "apaa-test"]
 
 
+def test_namespace_remove_deletes_host_veth_and_namespace():
+    runner = Runner()
+    provisioner = LinuxNetworkNamespaceProvisioner(runner=runner, require_root=False)
+    provisioner.remove(plan())
+    assert runner.calls[0][0] == ["ip", "link", "del", "apahost0"]
+    assert runner.calls[1][0] == ["ip", "netns", "del", "apaa-test"]
+
+
 def test_namespace_plan_rejects_cross_subnet_or_wrong_family():
     with pytest.raises(ValueError):
         NamespacePlan("apaa-test", "apahost0", "apawork0", "10.0.0.1/30", "10.0.0.6/30",
@@ -77,7 +85,7 @@ def test_nftables_policy_is_default_drop_and_proxy_only():
     assert "dport 443" not in rules
 
 
-@pytest.mark.parametrize("ip", ["127.0.0.1", "169.254.1.1", "224.0.0.1", "::1", "fe80::1"])
+@pytest.mark.parametrize("ip", ["127.0.0.1", "169.254.1.1", "224.0.0.1", "::1", "fe80::1", "255.255.255.255"])
 def test_nftables_rejects_special_proxy_addresses(ip):
     with pytest.raises(ValueError):
         NftablesFirewallProvisioner.render_ruleset([ip], 3128)
@@ -91,6 +99,40 @@ def test_nftables_install_uses_namespace_and_stdin_ruleset():
     assert command == ["ip", "netns", "exec", "apaa-test", "nft", "-f", "-"]
     assert "policy drop" in kwargs["input"]
     assert kwargs["shell"] is False
+
+
+def test_nftables_strict_verification_rejects_extra_proxy_allow():
+    rules = """table inet apaa {
+ chain input { type filter hook input priority filter; policy drop; }
+ chain output { type filter hook output priority filter; policy drop; }
+ iifname "lo" accept
+ oifname "lo" accept
+ ct state established,related accept
+ ct state established,related accept
+ ip6 saddr fe80::/10 icmpv6 type nd-neighbor-solicit accept
+ ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept
+ ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
+}"""
+    runner = Runner(stdout=rules)
+    provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
+    assert provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128) == rules
+
+
+def test_nftables_strict_verification_rejects_unapproved_destination():
+    rules = """table inet apaa {
+ chain input { type filter hook input priority filter; policy drop; }
+ chain output { type filter hook output priority filter; policy drop; }
+ iifname "lo" accept
+ oifname "lo" accept
+ ct state established,related accept
+ ct state established,related accept
+ ip daddr 198.18.0.1 tcp dport 3128 ct state new accept
+ ip daddr 1.1.1.1 tcp dport 443 accept
+}"""
+    runner = Runner(stdout=rules)
+    provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
+    with pytest.raises(FirewallProvisionError):
+        provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128)
 
 
 def _dns_record(ip):
@@ -164,3 +206,13 @@ def test_seccomp_profile_rejects_allow_by_default(tmp_path):
     }))
     with pytest.raises(IsolationEnforcementError):
         validate_seccomp_profile(profile)
+
+
+def test_cgroup_limits_are_bounded():
+    CgroupLimits()
+    with pytest.raises(ValueError):
+        CgroupLimits(memory_max=1)
+    with pytest.raises(ValueError):
+        CgroupLimits(cpu_quota=1)
+    with pytest.raises(ValueError):
+        CgroupLimits(pids_max=1)
