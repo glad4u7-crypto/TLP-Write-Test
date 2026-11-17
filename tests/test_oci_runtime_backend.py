@@ -31,7 +31,7 @@ class FakeRunner:
             return subprocess.CompletedProcess(command, 0, "", "")
         rc, stdout = self.outputs.pop(0)
         if "--cidfile" in command:
-            Path(command[command.index("--cidfile") + 1]).write_text(stdout.strip(), encoding="ascii")
+            Path(command[command.index("--cidfile") + 1]).write_text(stdout.strip().split(chr(92), 1)[0], encoding="ascii")
         return subprocess.CompletedProcess(command, rc, stdout, "")
 
 
