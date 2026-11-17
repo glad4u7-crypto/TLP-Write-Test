@@ -44,7 +44,9 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 ## Verification status
 
 - Implementation is committed to `apaa-personal-edition-foundation`.
-- Exact-head CI for the current P85 commits has not yet been observed. This document does not claim the new backup integration is verified.
+- P73 Verification run #337 tested earlier P85 code head `16f43924bed2d027829137150e6a63a4bd83e9cb`: compilation PASS, dependency audit PASS, responsive browser smoke PASS, Python suite **1,519 passed / 9 skipped / 1 failed**. The failure identified a restore-created parent directory with overly broad permissions.
+- Corrected restore directory creation to explicitly create and chmod both `project-files` and project directories to 0700. This correction is in later branch commits; **no exact-head CI result has yet been observed for the correction or subsequent P85 UI/launcher additions**.
+- Therefore P85 remains implementation-pending-verification; do not infer a full PASS from the earlier partial run.
 - Physical Android acceptance, owner-operated restore drill and independent security review remain separate external gates.
 - PR #13 remains Draft / Open / Unmerged. No merge or deployment is authorized by this checkpoint.
 - Browser/Worker dispatch remains disabled; Auto-Run OFF. No paid provider/API key/charge, payment, purchase, trading or money movement is enabled.
