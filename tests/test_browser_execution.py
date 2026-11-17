@@ -12,6 +12,7 @@ from core.browser_execution import (
     CancellationToken,
     PinnedDestination,
     PinnedHTTPSConnection,
+    authorize_redirect_and_pin,
 )
 
 
@@ -426,3 +427,47 @@ def test_tls_transport_rejects_legacy_tls_minimum_version():
     legacy.minimum_version = ssl.TLSVersion.TLSv1_1
     with pytest.raises(ValueError, match="TLS 1.2"):
         PinnedHTTPSConnection(destination, context=legacy)
+
+
+
+def test_redirect_authorization_resolves_fresh_pins_for_target_host():
+    calls = []
+
+    def resolver(host):
+        calls.append(host)
+        return ["93.184.216.35"]
+
+    target, pinned = authorize_redirect_and_pin(
+        "https://example.com/start", "/next", ["https://example.com"],
+        resolver=resolver,
+    )
+    assert target.url == "https://example.com/next"
+    assert calls == ["example.com"]
+    assert pinned.hostname == "example.com"
+    assert pinned.addresses == ("93.184.216.35",)
+
+
+def test_redirect_authorization_rejects_private_dns_answers():
+    with pytest.raises(BrowserExecutionError, match="DNS/IP pin"):
+        authorize_redirect_and_pin(
+            "https://example.com/start", "/next", ["https://example.com"],
+            resolver=lambda host: ["169.254.169.254"],
+        )
+
+
+def test_redirect_authorization_rejects_unapproved_origin_before_dns():
+    calls = []
+    with pytest.raises(BrowserExecutionError, match="URL/origin policy"):
+        authorize_redirect_and_pin(
+            "https://example.com/start", "https://evil.example/steal",
+            ["https://example.com"], resolver=lambda host: calls.append(host) or ["93.184.216.34"],
+        )
+    assert calls == []
+
+
+def test_redirect_authorization_requires_live_resolver():
+    with pytest.raises(BrowserExecutionError, match="live DNS resolver"):
+        authorize_redirect_and_pin(
+            "https://example.com/start", "/next", ["https://example.com"],
+            resolver=None,
+        )
