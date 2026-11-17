@@ -19,6 +19,7 @@ def build_project_gateway(
     audit_log: JsonlAuditLog | None = None,
     principal: Principal | None = None,
     session_scope: str = "",
+    idempotency_store=None,
 ) -> ExecutionGateway:
     if not isinstance(approval_authority, ApprovalAuthority):
         raise TypeError("A trusted ApprovalAuthority instance is required.")
@@ -53,4 +54,5 @@ def build_project_gateway(
         approval_authority=approval_authority,
         audit_log=audit_log,
         session_scope=session_scope,
+        idempotency_store=idempotency_store,
     )
