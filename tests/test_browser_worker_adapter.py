@@ -376,7 +376,7 @@ def test_adapter_factory_uses_active_keyring_and_requires_durable_replay_ledger(
         make_spec(),
         backend=backend,
         keyring=keyring,
-        expected_proxy_addresses=[PROXY_IP],
+        expected_proxy_addresses=PROXY_IPS,
         challenge_ledger=ledger,
         cleanup_wait_seconds=2,
     )
