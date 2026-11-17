@@ -369,3 +369,21 @@ def test_fd_ownership_log_pid_maps_to_host_pid_snapshot():
     assert mapped["fd_count_observed"] == 148
     assert mapped["stack_frames_with_module_offsets"][0]["module"] == "chromium"
     assert mapped["stack_frames_with_module_offsets"][0]["module_offset"] == "0x250"
+
+
+
+def test_chromium_build_id_probe_embedded_python_is_valid(monkeypatch):
+    from subprocess import CompletedProcess
+
+    def fake_run(command, **kwargs):
+        compile(command[-1], "<chromium-build-id-probe>", "exec")
+        return CompletedProcess(command, 0, "0123456789abcdef0123456789abcdef01234567\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    assert qualification._chromium_binary_build_id("worker-container") == "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_symbolication_fails_closed_when_debug_tools_are_missing(monkeypatch):
+    monkeypatch.setattr(qualification.shutil, "which", lambda _name: None)
+    result = qualification._symbolize_failure_frames({"process_mapping": {}}, "0123456789abcdef")
+    assert result == {"status": "debug-tools-unavailable", "frames": []}
