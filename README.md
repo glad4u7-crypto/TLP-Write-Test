@@ -11,7 +11,7 @@ Keep owner protection, secret hygiene, fail-closed authorization, action-specifi
 
 The current app remains a Streamlit web prototype with deterministic offline planning. It is **not** yet a native Android APK, installable PWA, general browser automation agent, or YouTube/file automation product. Local unauthenticated mode is for loopback/private development only and must not be exposed publicly or to an untrusted LAN. Remote Android access requires a separately reviewed HTTPS and authentication boundary. No paid provider, API key, paid hosting, Auto-Run, payment, purchase, checkout, trading or money movement is enabled.
 
-See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_EDITION_P72_SCOPE_RESET_AND_DEPENDENCY_AUDIT.md) and [P73 runtime and persistence progress](docs/APAA_PERSONAL_EDITION_P73_PROGRESS_AND_ACCEPTANCE.md). P73 currently has local-owner runtime primitives and an owner-scoped SQLite project-store adapter with tests added; the adapter is not yet wired into the running local Project Manager, and approval/audit durability, browser security and Android acceptance remain pending.
+See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_EDITION_P72_SCOPE_RESET_AND_DEPENDENCY_AUDIT.md) and [P73 runtime and persistence progress](docs/APAA_PERSONAL_EDITION_P73_PROGRESS_AND_ACCEPTANCE.md). P73 now wires the local Personal Edition startup to owner-private SQLite project storage, stable local approval signing, durable one-time approval nonces and SQLite execution audit. Integration tests have been added but not yet run; task/checkpoint migration, backup/restore, browser security and physical Android acceptance remain pending.
 
 ## Current application
 
