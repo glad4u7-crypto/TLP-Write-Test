@@ -9,17 +9,14 @@ on:
       test_url:
         description: Exact HTTPS URL on an owner-approved test origin
         required: true
-        default: https://example.com/
         type: string
       allowed_origin:
         description: Exact HTTPS origin matching test_url (scheme + host + optional port)
         required: true
-        default: https://example.com
         type: string
       expected_marker:
         description: Unique text that must appear in the controlled test page HTML
         required: true
-        default: Example Domain
         type: string
 
 permissions:
@@ -34,6 +31,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate Owner-supplied qualification target
+        env:
+          APAA_P74_TEST_URL: ${{ inputs.test_url }}
+          APAA_P74_ALLOWED_ORIGIN: ${{ inputs.allowed_origin }}
+          APAA_P74_EXPECTED_MARKER: ${{ inputs.expected_marker }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          target = urlsplit(os.environ["APAA_P74_TEST_URL"])
+          allowed = urlsplit(os.environ["APAA_P74_ALLOWED_ORIGIN"])
+          marker = os.environ["APAA_P74_EXPECTED_MARKER"]
+          def origin(value):
+              port = value.port or 443
+              return (value.scheme.lower(), (value.hostname or "").lower(), port)
+          if target.scheme != "https" or allowed.scheme != "https":
+              raise SystemExit("qualification target and allow-origin must use HTTPS")
+          if not target.hostname or not allowed.hostname or target.username or target.password or allowed.username or allowed.password:
+              raise SystemExit("qualification target and allow-origin must have valid host-only authorities")
+          if origin(target) != origin(allowed):
+              raise SystemExit("test_url origin must exactly match allowed_origin")
+          if allowed.path not in ("", "/") or allowed.query or allowed.fragment:
+              raise SystemExit("allowed_origin must contain only scheme, host, and optional port")
+          if target.fragment or len(os.environ["APAA_P74_TEST_URL"]) > 2048:
+              raise SystemExit("test_url fragment or excessive URL length is not permitted")
+          if not marker or len(marker) > 256:
+              raise SystemExit("expected_marker must be non-empty and at most 256 characters")
+          print("Owner-supplied HTTPS origin validated; no default target is configured.")
+          PY
 
       - name: Install disposable-host dependencies
         run: |
