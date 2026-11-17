@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import secrets
 import subprocess
 import tempfile
 from typing import Callable, Sequence
@@ -15,8 +16,9 @@ class OCIRuntimeError(RuntimeError):
 
 
 _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
-_IMAGE_DIGEST = re.compile(r"^(?:sha256:[0-9a-f]{64}|.+@sha256:[0-9a-f]{64})$")
+_IMAGE_DIGEST = re.compile(r"^(?:sha256:[0-9a-f]{64}|[a-z0-9][a-z0-9._/:+-]*@sha256:[0-9a-f]{64})$")
 _WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_NAMESPACE_PATH = re.compile(r"^/run/netns/[a-z][a-z0-9_-]{0,9}$")
 _CGROUP_PARENT = re.compile(r"^/sys/fs/cgroup/apaa/[a-z][a-z0-9_-]{0,31}$")
 
 
@@ -47,9 +49,9 @@ class OCIWorkerSpec:
     def __post_init__(self) -> None:
         if not _IMAGE_DIGEST.fullmatch(self.image):
             raise ValueError("worker image must be pinned by sha256 digest or immutable local image ID")
-        if not self.network_namespace.startswith("/run/netns/") or ".." in self.network_namespace.split("/"):
-            raise ValueError("network namespace must be an absolute path under /run/netns")
-        if not self.seccomp_profile.startswith("/") or ".." in self.seccomp_profile.split("/"):
+        if not _NAMESPACE_PATH.fullmatch(self.network_namespace):
+            raise ValueError("network namespace must be one normalized path under /run/netns")
+        if not self.seccomp_profile.startswith("/") or ".." in self.seccomp_profile.split("/") or "\x00" in self.seccomp_profile:
             raise ValueError("seccomp profile must be an absolute normalized path")
         if not _WORKER_ID.fullmatch(self.worker_id):
             raise ValueError("worker_id is invalid")
@@ -94,17 +96,39 @@ class PodmanOCIRuntime:
             raise OCIRuntimeError("OCI runtime command failed")
         return result.stdout.strip()
 
+    def _cleanup_partial_create(self, launch_token: str, known_ids: set[str]) -> bool:
+        try:
+            result = self._invoke([
+                "ps", "--all", "--quiet", "--filter", f"label=org.apaa.launch={launch_token}"
+            ])
+        except OCIRuntimeError:
+            return False
+        if result.returncode != 0:
+            return False
+        ids = set(known_ids)
+        ids.update(
+            line.strip() for line in result.stdout.splitlines()
+            if _CONTAINER_ID.fullmatch(line.strip())
+        )
+        success = True
+        for container_id in ids:
+            try:
+                self.remove(container_id)
+            except Exception:
+                success = False
+        return success
+
     def create(self, spec: OCIWorkerSpec) -> str:
-        # A private cidfile lets us clean up a container even if Podman reports
-        # an unexpected stdout shape after successfully creating it.
+        launch_token = secrets.token_hex(16)
         with tempfile.TemporaryDirectory(prefix="apaa-oci-") as directory:
             cidfile = Path(directory) / "container.cid"
             args = [
                 "--cgroup-manager=cgroupfs", "create",
                 "--cidfile", str(cidfile),
                 "--pull=never",
-                "--name", f"apaa-{spec.worker_id}",
+                "--name", f"apaa-{launch_token}",
                 "--label", f"org.apaa.worker={spec.worker_id}",
+                "--label", f"org.apaa.launch={launch_token}",
                 "--network", f"ns:{spec.network_namespace}",
                 "--read-only",
                 "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
@@ -120,27 +144,27 @@ class PodmanOCIRuntime:
             if spec.cgroup_parent:
                 args.extend(["--cgroup-parent", spec.cgroup_parent])
             args.extend(["--entrypoint", "sleep", spec.image, "infinity"])
-            result = self._invoke(args)
+            try:
+                result = self._invoke(args)
+            except OCIRuntimeError as exc:
+                if not self._cleanup_partial_create(launch_token, set()):
+                    raise OCIRuntimeError("OCI create timed out and partial-container cleanup was not confirmed") from exc
+                raise
+
             output_lines = result.stdout.strip().splitlines()
             output_id = output_lines[-1].strip() if output_lines else ""
             try:
                 cidfile_id = cidfile.read_text(encoding="ascii").strip()
             except OSError:
                 cidfile_id = ""
-
             valid_ids = {
                 value for value in (cidfile_id, output_id)
                 if _CONTAINER_ID.fullmatch(value)
             }
             if result.returncode != 0 or not _CONTAINER_ID.fullmatch(cidfile_id) or (output_id and output_id != cidfile_id):
-                cleanup_failed = False
-                for container_id in valid_ids:
-                    try:
-                        self.remove(container_id)
-                    except Exception:
-                        cleanup_failed = True
-                suffix = "; cleanup of a partially created container failed" if cleanup_failed else ""
-                raise OCIRuntimeError("OCI create did not produce a verified immutable container ID" + suffix)
+                if not self._cleanup_partial_create(launch_token, valid_ids):
+                    raise OCIRuntimeError("OCI create failed and partial-container cleanup was not confirmed")
+                raise OCIRuntimeError("OCI create did not produce a verified immutable container ID")
             return cidfile_id
 
     def inspect(self, container_id: str) -> dict:
