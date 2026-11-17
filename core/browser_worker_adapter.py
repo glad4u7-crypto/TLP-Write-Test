@@ -152,6 +152,13 @@ class AttestedBrowserWorkerAdapter:
         self._challenge_factory = challenge_factory
         self._challenge_ledger = challenge_ledger
         self._cleanup_wait = float(cleanup_wait_seconds)
+        self._states: dict[str, _WorkerState] = {}
+        # Challenges are single-use for this adapter process. The default 256-bit
+        # CSPRNG makes cross-process collisions negligible; deployments requiring
+        # restart-surviving replay protection must add a durable owner-controlled ledger.
+        self._used_challenges: set[str] = set()
+        self._lock = threading.RLock()
+
     @classmethod
     def from_keyring(
         cls,
@@ -188,13 +195,6 @@ class AttestedBrowserWorkerAdapter:
             challenge_ledger=challenge_ledger,
             cleanup_wait_seconds=cleanup_wait_seconds,
         )
-
-        self._states: dict[str, _WorkerState] = {}
-        # Challenges are single-use for this adapter process. The default 256-bit
-        # CSPRNG makes cross-process collisions negligible; deployments requiring
-        # restart-surviving replay protection must add a durable owner-controlled ledger.
-        self._used_challenges: set[str] = set()
-        self._lock = threading.RLock()
 
     def run(
         self,
