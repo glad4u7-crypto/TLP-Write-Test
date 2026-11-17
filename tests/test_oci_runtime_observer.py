@@ -93,10 +93,14 @@ def test_observer_rejects_mismatched_runtime_inspect(tmp_path,change,match):
     with pytest.raises(WorkerObservationError,match=match):
         observer.observe(CID,spec())
 
-def test_observer_rejects_cgroup_escape(tmp_path):
+def test_observer_rejects_process_accounted_outside_dedicated_cgroup(tmp_path):
     proc,cg,ns=make_fs(tmp_path,cgroup="/other/container")
+    (cg/"apaa"/"worker1"/"container"/"cgroup.procs").write_text("")
+    outside=cg/"other"/"container"
+    outside.mkdir(parents=True)
+    (outside/"cgroup.procs").write_text("4321\\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
-    with pytest.raises(WorkerObservationError,match="cgroup subtree"):
+    with pytest.raises(WorkerObservationError,match="not uniquely present"):
         observer.observe(CID,spec())
 
 def test_observer_rejects_missing_seccomp_or_wrong_effective_limits(tmp_path):
