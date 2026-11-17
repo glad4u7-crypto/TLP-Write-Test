@@ -42,19 +42,51 @@ def _required(name: str) -> str:
     return value
 
 
+def _safe_command_label(command: list[str]) -> str:
+    if command and command[0] == "podman":
+        action = command[1] if len(command) > 1 else "unknown"
+        if action == "exec" and len(command) > 5:
+            executable = Path(command[5]).name
+            return f"podman exec {executable}"
+        return f"podman {action}"
+    return Path(command[0]).name if command else "unknown"
+
+
 def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(command, check=False, capture_output=True, text=True,
                             timeout=timeout, shell=False)
     if result.returncode:
-        raise RuntimeError(f"qualification command failed: {command[0]}")
+        diagnostic = " ".join((result.stderr or "").split())
+        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)
+        diagnostic = diagnostic[:320]
+        raise RuntimeError(
+            f"qualification command failed: {_safe_command_label(command)} "
+            f"(exit={result.returncode}; {diagnostic or 'no diagnostic output'})"
+        )
     return result
 
 
-def _probe_blocked(command: list[str], description: str) -> None:
+def _probe_blocked(command: list[str], description: str) -> dict[str, object]:
     result = subprocess.run(command, check=False, capture_output=True, text=True,
                              timeout=8, shell=False)
+    output = (result.stdout or "") + (result.stderr or "")
     if result.returncode == 0:
         raise RuntimeError(f"network bypass unexpectedly succeeded: {description}")
+    lowered = output.lower()
+    denial = next((label for label, markers in (
+        ("network_unreachable", ("network is unreachable", "network unreachable")),
+        ("no_route", ("no route to host", "network is down")),
+        ("timeout", ("timed out", "connection timed out")),
+    ) if any(marker in lowered for marker in markers)), None)
+    if denial is None:
+        # A failed podman exec, missing executable, seccomp denial or malformed
+        # probe is not evidence that the network firewall blocked the packet.
+        raise RuntimeError(f"direct network probe did not reach a recognized socket-level denial: {description}")
+    return {
+        "exit_code": result.returncode,
+        "denial": denial,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
 
 
 def _probe_proxy_outage(command: list[str], expected_marker: str, description: str) -> dict:
@@ -463,26 +495,28 @@ def main() -> int:
         evidence["tests"]["kernel_seccomp_active"] = True
 
         # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
-        _probe_blocked([
-            "podman", "exec", container_id, "python3", "-c",
-            "import socket; q=bytes.fromhex('123401000001000000000000076578616d706c6503636f6d0000010001'); s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(q,('1.1.1.1',53)); s.recvfrom(4096)",
-        ], "direct UDP DNS query")
-        _probe_blocked([
-            "podman", "exec", container_id, "python3", "-c",
-            "import socket; socket.create_connection(('1.1.1.1',53),2)",
-        ], "direct TCP DNS query")
-        _probe_blocked([
-            "podman", "exec", container_id, "python3", "-c",
-            "import socket; socket.create_connection(('1.1.1.1',443),2)",
-        ], "direct IPv4 TCP")
-        _probe_blocked([
-            "podman", "exec", container_id, "python3", "-c",
-            "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('2606:4700:4700::1111',443))",
-        ], "direct IPv6 TCP")
-        _probe_blocked([
-            "podman", "exec", container_id, "python3", "-c",
-            "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
-        ], "direct UDP/443 QUIC-style egress")
+        evidence["direct_network_probes"] = {
+            "udp_dns": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; q=bytes.fromhex('123401000001000000000000076578616d706c6503636f6d0000010001'); s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(q,('1.1.1.1',53)); s.recvfrom(4096)",
+            ], "direct UDP DNS query"),
+            "tcp_dns": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('1.1.1.1',53),2)",
+            ], "direct TCP DNS query"),
+            "ipv4_tcp": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('1.1.1.1',443),2)",
+            ], "direct IPv4 TCP"),
+            "ipv6_tcp": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('2606:4700:4700::1111',443))",
+            ], "direct IPv6 TCP"),
+            "udp_443": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
+            ], "direct UDP/443 QUIC-style egress"),
+        }
         evidence["tests"]["direct_dns_blocked"] = True
         evidence["tests"]["direct_tcp_dns_blocked"] = True
         evidence["tests"]["direct_ipv4_blocked"] = True
