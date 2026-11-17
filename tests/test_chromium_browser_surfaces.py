@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 import pytest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 
 _PIXEL_PNG = b'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'
@@ -28,6 +28,12 @@ class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
         if path == "/redirect":
             self.send_response(302)
             self.send_header("Location", "/landing")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path == "/cross-redirect":
+            self.send_response(302)
+            self.send_header("Location", "https://outside.invalid/cross-target")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
@@ -183,6 +189,11 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             }""")
             page.wait_for_function("document.body.dataset.websocket === 'ws-ok'", timeout=10000)
 
+            redirect_page = context.new_page()
+            with pytest.raises(PlaywrightError):
+                redirect_page.goto(loopback_site + "/cross-redirect", wait_until="domcontentloaded")
+            redirect_page.close()
+
             with page.expect_popup():
                 page.locator("#blocked-popup-link").click()
             page.evaluate("""() => {
@@ -193,6 +204,7 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
 
             paths = {urlsplit(url).path for url in observed_requests}
             assert {"/redirect", "/landing", "/pixel.png", "/frame", "/popup"}.issubset(paths)
+            assert any("outside.invalid/cross-target" in url for url in blocked_requests)
             assert any("outside.invalid/pixel.png" in url for url in blocked_requests)
             assert any("outside.invalid/frame" in url for url in blocked_requests)
             assert any("outside.invalid/popup" in url for url in blocked_requests)
