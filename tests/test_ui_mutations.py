@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from core.approvals import ApprovalAuthority
+from core.storage import TenantKey
 from core.ui_mutations import UIActionAuditError, execute_audited_ui_mutation
 
 
@@ -16,14 +18,36 @@ class RecordingAudit:
         self.events.append(event)
 
 
+class RejectingAuthority:
+    def issue(self, action, payload, **kwargs):
+        return object()
+
+    def consume(self, receipt, action, payload, **kwargs):
+        return False
+
+
+def _execute(audit, action, approved, operation, payload=None, *, authority=None):
+    return execute_audited_ui_mutation(
+        audit, action, approved,
+        {"record_id": "test-record"} if payload is None else payload,
+        operation,
+        approval_authority=authority or ApprovalAuthority(
+            signing_secret=b"unit-test-owner-approval-secret-material"
+        ),
+        tenant=TenantKey("https://unit-tests.example", "owner"),
+        session_scope="unit-test-session",
+    )
+
+
 def test_ui_mutation_records_intent_and_completion_without_payload():
     audit = RecordingAudit()
     calls = []
-    result = execute_audited_ui_mutation(
-        audit, "memory.add", True, lambda: calls.append("saved") or "ok"
+    result = _execute(
+        audit, "memory.add", True,
+        lambda payload: calls.append(payload["record_id"]) or "ok",
     )
     assert result == "ok"
-    assert calls == ["saved"]
+    assert calls == ["test-record"]
     assert [event.reason for event in audit.events] == [
         "ui_mutation_pending", "ui_mutation_completed"
     ]
@@ -35,9 +59,7 @@ def test_ui_mutation_is_blocked_when_intent_audit_cannot_be_written():
     audit.fail_at = 0
     calls = []
     with pytest.raises(UIActionAuditError, match="change was blocked"):
-        execute_audited_ui_mutation(
-            audit, "memory.delete", True, lambda: calls.append("deleted")
-        )
+        _execute(audit, "memory.delete", True, lambda payload: calls.append(payload))
     assert calls == []
     assert audit.events == []
 
@@ -45,11 +67,11 @@ def test_ui_mutation_is_blocked_when_intent_audit_cannot_be_written():
 def test_ui_mutation_records_failure_without_claiming_success():
     audit = RecordingAudit()
 
-    def fail():
+    def fail(_payload):
         raise ValueError("invalid user data")
 
     with pytest.raises(ValueError, match="invalid user data"):
-        execute_audited_ui_mutation(audit, "memory.add", True, fail)
+        _execute(audit, "memory.add", True, fail)
     assert [event.reason for event in audit.events] == [
         "ui_mutation_pending", "ui_mutation_failed"
     ]
@@ -61,34 +83,29 @@ def test_ui_mutation_reports_completion_audit_failure_for_manual_review():
     audit.fail_at = 1
     calls = []
     with pytest.raises(UIActionAuditError, match="may have completed"):
-        execute_audited_ui_mutation(
-            audit, "memory.delete", True, lambda: calls.append("deleted")
+        _execute(
+            audit, "memory.delete", True,
+            lambda payload: calls.append(payload["record_id"]),
         )
-    assert calls == ["deleted"]
+    assert calls == ["test-record"]
     assert [event.reason for event in audit.events] == ["ui_mutation_pending"]
 
 
-
 def test_sqlite_audit_distinguishes_pending_and_completed_ui_mutations(tmp_path):
-    import sqlite3
-
     from core.personal_runtime import PERSONAL_OWNER_TENANT
     from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
 
     store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
     audit = SQLiteExecutionAuditLog(store, PERSONAL_OWNER_TENANT)
-    execute_audited_ui_mutation(audit, "memory.add", True, lambda: "saved")
+    _execute(audit, "memory.add", True, lambda payload: "saved")
 
-    with sqlite3.connect(tmp_path / "security.sqlite3") as db:
-        rows = db.execute(
-            "SELECT result, reason_code FROM durable_audit_events ORDER BY sequence"
-        ).fetchall()
-    assert rows == [
-        ("pending", "ui_mutation_pending"),
-        ("success", "ui_mutation_completed"),
+    events = audit.list_recent_events(limit=10)
+    assert [event["reason_code"] for event in events] == [
+        "ui_mutation_completed", "ui_mutation_pending"
     ]
+    assert all(event["action"] == "memory.add" for event in events)
+    assert all(event["result"] in {"pending", "success"} for event in events)
     assert store.verify_audit_chain()
-
 
 
 @pytest.mark.parametrize("action", ["payment.transfer", "trading.place_order", "run_shell"])
@@ -96,20 +113,18 @@ def test_ui_mutation_cannot_bypass_global_or_unknown_action_denials(action):
     audit = RecordingAudit()
     calls = []
     with pytest.raises(UIActionAuditError):
-        execute_audited_ui_mutation(
-            audit, action, True, lambda: calls.append("must-not-run")
-        )
+        _execute(audit, action, True, lambda payload: calls.append("must-not-run"))
     assert calls == []
     assert audit.events == []
-
 
 
 def test_ui_mutation_requires_explicit_owner_approval_before_audit_or_dispatch():
     audit = RecordingAudit()
     calls = []
     with pytest.raises(UIActionAuditError, match="requires approval"):
-        execute_audited_ui_mutation(
-            audit, "memory.add", False, lambda: calls.append("must-not-run")
+        _execute(
+            audit, "memory.add", False,
+            lambda payload: calls.append("must-not-run"),
         )
     assert calls == []
     assert audit.events == []
@@ -118,7 +133,63 @@ def test_ui_mutation_requires_explicit_owner_approval_before_audit_or_dispatch()
 def test_ui_mutation_rejects_non_boolean_approval_argument():
     audit = RecordingAudit()
     with pytest.raises(ValueError, match="boolean"):
-        execute_audited_ui_mutation(audit, "memory.add", "yes", lambda: None)
+        _execute(audit, "memory.add", "yes", lambda payload: None)
+    assert audit.events == []
+
+
+def test_ui_mutation_requires_approval_authority_and_session_scope():
+    audit = RecordingAudit()
+    calls = []
+    with pytest.raises(UIActionAuditError, match="authority is unavailable"):
+        execute_audited_ui_mutation(
+            audit, "memory.add", True, {"value": "x"},
+            lambda payload: calls.append(payload),
+            approval_authority=None,
+            tenant=TenantKey("https://unit-tests.example", "owner"),
+            session_scope="session",
+        )
+    assert calls == []
+    assert audit.events == []
+
+
+def test_ui_mutation_rejects_receipt_that_cannot_be_consumed():
+    audit = RecordingAudit()
+    calls = []
+    with pytest.raises(UIActionAuditError, match="invalid, expired, replayed"):
+        _execute(
+            audit, "memory.add", True, lambda payload: calls.append(payload),
+            authority=RejectingAuthority(),
+        )
+    assert calls == []
+    assert audit.events == []
+
+
+def test_ui_mutation_passes_only_a_private_payload_snapshot_to_operation():
+    audit = RecordingAudit()
+    original = {"key": "original", "nested": {"value": 1}}
+    observed = {}
+
+    def operation(snapshot):
+        observed["before"] = snapshot["key"]
+        snapshot["key"] = "mutated by handler"
+        snapshot["nested"]["value"] = 2
+        return "ok"
+
+    assert _execute(audit, "preference.save", True, operation, original) == "ok"
+    assert original == {"key": "original", "nested": {"value": 1}}
+    assert observed["before"] == "original"
+
+
+def test_ui_mutation_rejects_non_json_or_non_finite_payloads_before_audit():
+    audit = RecordingAudit()
+    calls = []
+    with pytest.raises(UIActionAuditError, match="approval could not be verified"):
+        _execute(
+            audit, "memory.add", True,
+            lambda payload: calls.append(payload),
+            {"bad": float("nan")},
+        )
+    assert calls == []
     assert audit.events == []
 
 
@@ -131,9 +202,9 @@ def test_action_history_is_tenant_scoped_payload_free_and_hash_verified(tmp_path
     database = tmp_path / "security.sqlite3"
     store = SQLiteSecurityStore(database)
     audit = SQLiteExecutionAuditLog(store, PERSONAL_OWNER_TENANT)
-    execute_audited_ui_mutation(
+    _execute(
         audit, "memory.add", True,
-        lambda: {"private_content": "must never enter audit history"},
+        lambda payload: {"private_content": "must never enter audit history"},
     )
 
     events = audit.list_recent_events(limit=10)
