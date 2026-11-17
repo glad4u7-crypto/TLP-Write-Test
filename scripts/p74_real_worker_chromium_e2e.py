@@ -400,12 +400,21 @@ def main() -> int:
                 parent_entries = sorted(item.name for item in parent_cgroup.iterdir())[:64]
             except OSError:
                 parent_entries = []
+            def _read_small(path: Path) -> str | None:
+                try:
+                    return path.read_text(encoding="ascii")[:2048].strip()
+                except OSError:
+                    return None
             evidence["worker_cgroup_probe"] = {
                 "candidate": str(candidate_cgroup),
                 "candidate_is_dir": candidate_cgroup.is_dir(),
                 "parent": str(parent_cgroup),
                 "parent_is_dir": parent_cgroup.is_dir(),
                 "parent_entries": parent_entries,
+                "parent_procs": _read_small(parent_cgroup / "cgroup.procs"),
+                "parent_type": _read_small(parent_cgroup / "cgroup.type"),
+                "parent_subtree_control": _read_small(parent_cgroup / "cgroup.subtree_control"),
+                "parent_events": _read_small(parent_cgroup / "cgroup.events"),
             }
         observation = PodmanWorkerObserver(runtime).observe(container_id, spec)
         evidence["runtime_observation"] = {
