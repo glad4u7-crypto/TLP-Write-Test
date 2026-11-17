@@ -57,6 +57,7 @@ def test_namespace_provisioner_rolls_back_after_failure():
     provisioner = LinuxNetworkNamespaceProvisioner(runner=runner, require_root=False)
     with pytest.raises(NamespaceProvisionError):
         provisioner.provision(plan())
+    assert runner.calls[-2][0] == ["ip", "link", "del", "apahost0"]
     assert runner.calls[-1][0] == ["ip", "netns", "del", "apaa-test"]
 
 
