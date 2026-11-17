@@ -7,7 +7,8 @@ signed attestation gate in core.attested_browser_runtime.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -19,6 +20,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
 from core.attested_browser_runtime import AttestedBrowserRuntime
+from core.browser_recovery import BrowserDispatchBlocked, RecoveryLedgerError, SQLiteBrowserRecoveryLedger
 from core.browser_security import (
     BrowserJob,
     BrowserPolicyError,
@@ -280,6 +282,7 @@ class BrowserExecutionCoordinator:
         *,
         audit: AuditWriter,
         clock: Callable[[], float] = time.monotonic,
+        recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
     ) -> None:
         if worker is not None and not callable(getattr(worker, "run", None)):
             raise TypeError("worker must implement run().")
@@ -287,7 +290,11 @@ class BrowserExecutionCoordinator:
             raise TypeError("audit must be callable.")
         self._worker = worker
         self._audit = audit
+        if recovery_ledger is not None and not callable(getattr(recovery_ledger, "claim", None)):
+            raise TypeError("recovery_ledger must provide durable atomic job claims.")
         self._clock = clock
+        self._recovery_ledger = recovery_ledger
+        self._audit_failed = False
         self._active: dict[str, tuple[CancellationToken, str, threading.Event, threading.Event]] = {}
         self._lock = threading.RLock()
 
@@ -301,14 +308,30 @@ class BrowserExecutionCoordinator:
         now: int,
         audit: AuditWriter,
         clock: Callable[[], float] = time.monotonic,
+        recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
     ) -> "BrowserExecutionCoordinator":
         """Create a coordinator only after the signed runtime/firewall gate passes."""
         if type(runtime_gate) is not AttestedBrowserRuntime:
             raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
+        if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
+            raise TypeError("Production browser dispatch requires a durable SQLite recovery ledger.")
+        # This factory is a process-start boundary. Interrupted jobs are made
+        # terminal and retained for owner review; they are never auto-replayed.
+        recovery_ledger.recover_interrupted()
         worker = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
         if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
             raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
-        return cls(worker, audit=audit, clock=clock)
+        return cls(worker, audit=audit, clock=clock, recovery_ledger=recovery_ledger)
+
+    def recover_interrupted_jobs(self) -> list[str]:
+        """Explicit process-start recovery; returned jobs require owner review."""
+        if self._recovery_ledger is None:
+            raise BrowserExecutionError("Durable crash recovery is not configured.")
+        try:
+            return self._recovery_ledger.recover_interrupted()
+        except RecoveryLedgerError as exc:
+            self._audit_failed = True
+            raise BrowserExecutionError("Crash recovery failed; dispatch is blocked.") from exc
 
     def _record(self, event: str, *, job_id: str, session_id: str, detail: str) -> None:
         # Never place cookies, page contents, credentials, or URL query values
@@ -321,7 +344,16 @@ class BrowserExecutionCoordinator:
             "detail": detail,
             "timestamp_unix": time.time(),
         }
-        self._audit(record)
+        try:
+            self._audit(record)
+        except Exception as exc:
+            self._audit_failed = True
+            if self._recovery_ledger is not None:
+                try:
+                    self._recovery_ledger.latch_dispatch_block("audit_write_failure")
+                except Exception:
+                    pass
+            raise BrowserExecutionError("Audit write failed; browser dispatch is blocked.") from exc
 
     def cancel(self, job_id: str) -> bool:
         with self._lock:
@@ -363,6 +395,15 @@ class BrowserExecutionCoordinator:
         return changed
 
     def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
+        if self._audit_failed:
+            raise BrowserExecutionError("Audit integrity previously failed; browser dispatch remains blocked.")
+        if self._recovery_ledger is not None:
+            try:
+                if self._recovery_ledger.dispatch_blocked():
+                    raise BrowserDispatchBlocked("durable dispatch block is active")
+            except RecoveryLedgerError as exc:
+                self._audit_failed = True
+                raise BrowserExecutionError("Recovery/audit state unavailable; dispatch refused.") from exc
         if self._worker is None:
             raise BrowserExecutionError("No attested isolated worker adapter is configured; execution is disabled.")
         # Live execution always resolves now, validates every answer, and passes
@@ -374,6 +415,18 @@ class BrowserExecutionCoordinator:
             raise BrowserExecutionError("Browser job failed live DNS/IP pin validation.") from exc
 
         session_id = uuid.uuid4().hex
+        ledger_state: str | None = None
+        if self._recovery_ledger is not None:
+            try:
+                request_bytes = json.dumps(
+                    asdict(job), sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":"), allow_nan=False,
+                ).encode("utf-8")
+                request_digest = hashlib.sha256(request_bytes).hexdigest()
+                self._recovery_ledger.claim(job.job_id, request_digest, session_id=session_id)
+                ledger_state = "accepted"
+            except (RecoveryLedgerError, TypeError, ValueError) as exc:
+                raise BrowserExecutionError("Browser job was already consumed or could not be durably claimed.") from exc
         token = CancellationToken()
         termination_confirmed = threading.Event()
         completed = threading.Event()
@@ -382,6 +435,9 @@ class BrowserExecutionCoordinator:
         cleanup_mode: str | None = None
         try:
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
+            if self._recovery_ledger is not None:
+                self._recovery_ledger.transition(job.job_id, "running")
+                ledger_state = "running"
             token.raise_if_cancelled()
             def invoke_worker() -> None:
                 try:
@@ -429,6 +485,9 @@ class BrowserExecutionCoordinator:
                 except Exception as exc:
                     self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
                     raise BrowserExecutionError("Timed-out browser worker could not be terminated.") from exc
+                if self._recovery_ledger is not None:
+                    self._recovery_ledger.transition(job.job_id, "timed_out", outcome_code="hard_deadline")
+                    ledger_state = "timed_out"
                 self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             token.raise_if_cancelled()
@@ -452,14 +511,30 @@ class BrowserExecutionCoordinator:
                 raise BrowserExecutionError("Worker result is not a valid JSON envelope.") from exc
             if len(encoded_result) > job.max_response_bytes:
                 raise BrowserExecutionError("Worker result exceeded the approved response byte limit.")
+            if self._recovery_ledger is not None:
+                self._recovery_ledger.transition(job.job_id, "completed", outcome_code="success")
+                ledger_state = "completed"
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return result_dict
         except BrowserCancelled:
+            if self._recovery_ledger is not None and ledger_state in {"accepted", "running", "cancel_requested"}:
+                self._recovery_ledger.transition(job.job_id, "cancelled", outcome_code="owner_cancel")
+                ledger_state = "cancelled"
             self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
             raise
         except BrowserTimeout:
             raise
         except Exception:
+            if self._recovery_ledger is not None and ledger_state in {"accepted", "running", "cancel_requested"}:
+                try:
+                    self._recovery_ledger.transition(job.job_id, "failed", outcome_code="execution_error")
+                    ledger_state = "failed"
+                except RecoveryLedgerError:
+                    self._audit_failed = True
+                    try:
+                        self._recovery_ledger.latch_dispatch_block("recovery_state_failure")
+                    except Exception:
+                        pass
             self._record("job_failed", job_id=job.job_id, session_id=session_id, detail="execution_error")
             raise
         finally:
