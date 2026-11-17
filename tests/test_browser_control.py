@@ -89,9 +89,11 @@ def test_browser_receipt_is_consumed_once_and_handler_remains_disabled(tmp_path)
     first = boundary.dispatch(job, approval_receipt=receipt, now=1001)
     second = boundary.dispatch(job, approval_receipt=receipt, now=1002)
 
+    assert boundary.browser_handler_registered is True
     assert boundary.browser_handler_enabled is False
     assert first.executed is False
-    assert "handler is registered" in first.reason.lower()
+    assert "registered but disabled" in first.reason.lower()
+    assert "host adapter" in first.reason.lower()
     assert second.executed is False
     assert "approval" in second.reason.lower()
     assert security.verify_audit_chain() is True
@@ -144,3 +146,24 @@ def test_browser_read_can_never_use_auto_run_even_if_listed():
     )
     assert decision.allowed is False
     assert "fresh explicit Owner approval" in decision.reason
+
+
+
+def test_registered_browser_handler_is_disabled_and_audited_before_side_effect(tmp_path):
+    boundary, security, audit = _boundary(tmp_path)
+    job = _job()
+    receipt = boundary.request_approval(job, owner_confirmed=True, now=1000)
+
+    result = boundary.dispatch(job, approval_receipt=receipt, now=1001)
+
+    assert boundary.browser_handler_registered is True
+    assert boundary.browser_handler_enabled is False
+    assert result.executed is False
+    assert "disabled" in result.reason.lower()
+    assert security.verify_audit_chain() is True
+    events = audit.list_recent_events(limit=10)
+    assert any(
+        event["action"] == BROWSER_APPROVAL_ACTION
+        and event["reason"] == "registered_handler_disabled"
+        for event in events
+    )
