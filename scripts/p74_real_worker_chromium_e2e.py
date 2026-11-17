@@ -265,22 +265,34 @@ def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
     """Best-effort Debian debuginfod symbolication; never changes worker execution."""
     if not build_id:
         return {"status": "missing-build-id", "frames": []}
-    finder = shutil.which("debuginfod-find")
     addr2line = shutil.which("eu-addr2line")
-    if not finder or not addr2line:
-        return {"status": "debug-tools-unavailable", "frames": []}
-    env = dict(os.environ)
-    env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
-    try:
-        found = subprocess.run(
-            [finder, "debuginfo", build_id], check=False, capture_output=True,
-            text=True, timeout=20, shell=False, env=env,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return {"status": "debuginfod-unavailable-or-timeout", "build_id": build_id, "frames": []}
-    if found.returncode != 0 or not found.stdout.strip():
-        return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
-    debug_file = found.stdout.strip().splitlines()[-1]
+    if not addr2line:
+        return {"status": "addr2line-unavailable", "build_id": build_id, "frames": []}
+    debug_file = None
+    debug_source = None
+    debug_root = os.environ.get("APAA_CHROMIUM_DEBUG_ROOT")
+    if debug_root:
+        candidate = Path(debug_root) / ".build-id" / build_id[:2] / (build_id[2:] + ".debug")
+        if candidate.is_file():
+            debug_file = str(candidate)
+            debug_source = "exact-debian-dbgsym"
+    if debug_file is None:
+        finder = shutil.which("debuginfod-find")
+        if not finder:
+            return {"status": "debug-info-unavailable", "build_id": build_id, "frames": []}
+        env = dict(os.environ)
+        env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
+        try:
+            found = subprocess.run(
+                [finder, "debuginfo", build_id], check=False, capture_output=True,
+                text=True, timeout=20, shell=False, env=env,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return {"status": "debuginfod-unavailable-or-timeout", "build_id": build_id, "frames": []}
+        if found.returncode != 0 or not found.stdout.strip():
+            return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
+        debug_file = found.stdout.strip().splitlines()[-1]
+        debug_source = "debuginfod"
     source_frames = failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", [])
     valid_frames = [
         frame for frame in source_frames
@@ -311,6 +323,7 @@ def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
             })
     return {
         "status": "symbolized" if symbolized else "symbols-loaded-no-matching-frames",
+        "symbol_source": debug_source,
         "build_id": build_id,
         "frames": symbolized[:64],
     }
