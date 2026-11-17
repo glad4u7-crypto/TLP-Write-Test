@@ -121,13 +121,13 @@ def _http_proxy_uri(proxy_ip: str, port: int) -> str:
 
 
 _CHROMIUM_EXEC_WRAPPER = (
-    "import os,sys\\n"
-    "for n in os.listdir('/proc/self/fd'):\\n"
-    " try:\\n"
-    "  fd=int(n)\\n"
-    "  if fd>2: os.close(fd)\\n"
-    " except (ValueError,OSError): pass\\n"
-    "os.execvp(sys.argv[1], sys.argv[1:])\\n"
+    "import os,sys\n"
+    "for n in os.listdir('/proc/self/fd'):\n"
+    " try:\n"
+    "  fd=int(n)\n"
+    "  if fd>2: os.close(fd)\n"
+    " except (ValueError,OSError): pass\n"
+    "os.execvp(sys.argv[1], sys.argv[1:])\n"
 )
 
 
