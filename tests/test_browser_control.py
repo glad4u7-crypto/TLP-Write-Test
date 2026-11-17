@@ -167,3 +167,18 @@ def test_registered_browser_handler_is_disabled_and_audited_before_side_effect(t
         and event["reason"] == "registered_handler_disabled"
         for event in events
     )
+
+
+
+def test_approval_request_and_denial_are_recorded_without_job_payload(tmp_path):
+    boundary, security, audit = _boundary(tmp_path)
+    with pytest.raises(BrowserControlSecurityError):
+        boundary.request_approval(_job(), owner_confirmed=False, now=1000)
+    receipt = boundary.request_approval(_job(), owner_confirmed=True, now=1000)
+    assert receipt.action == BROWSER_APPROVAL_ACTION
+    events = audit.list_recent_events(limit=10)
+    reasons = {event["reason"] for event in events if event["action"] == BROWSER_APPROVAL_ACTION}
+    assert "browser_approval_missing_owner_confirmation" in reasons
+    assert "browser_approval_requested" in reasons
+    assert "browser_approval_issued" in reasons
+    assert security.verify_audit_chain() is True
