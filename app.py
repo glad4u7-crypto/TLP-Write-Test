@@ -37,6 +37,7 @@ from core.personal_runtime import (
     personal_runtime_paths,
 )
 from core.personal_auth import LocalOwnerAuthStore
+from core.browser_control import BrowserControlBoundary
 from core.read_only_adapters import ReadOnlyAdapterRegistry, ReadOnlyAdapterError, ProjectFileReadAdapter
 from core.capabilities import ReadCapability, ReadRequest
 from core.safe_network_providers import (
@@ -493,6 +494,35 @@ if (
         idempotency_store=active_security_store,
     )
     st.session_state["execution_gateway_owner"] = gateway_owner
+
+# Browser Security is connected to the authenticated Owner, durable approval
+# authority and Action Audit, but its handler is deliberately not registered.
+_active_browser_session_scope = st.session_state["approval_session_scope"]
+def _browser_owner_session_is_active():
+    if st.session_state.get("approval_session_scope") != _active_browser_session_scope:
+        return False
+    if principal is not None:
+        return principal.authenticated is True
+    auth_at = st.session_state.get("apaa_local_authenticated_at")
+    activity_at = st.session_state.get("apaa_local_last_activity")
+    current = time.time()
+    return (
+        isinstance(auth_at, (int, float)) and not isinstance(auth_at, bool)
+        and isinstance(activity_at, (int, float)) and not isinstance(activity_at, bool)
+        and current - float(auth_at) < 12 * 60 * 60
+        and current - float(activity_at) < 15 * 60
+        and current >= float(auth_at) and current >= float(activity_at)
+    )
+
+_browser_control_boundary = BrowserControlBoundary(
+    owner_principal=checkpoint_principal,
+    owner_tenant=tenant,
+    owner_verified=True,  # app-level Owner gate above has already succeeded
+    session_scope=_active_browser_session_scope,
+    approval_authority=st.session_state["approval_authority"],
+    audit_log=audit_log,
+    owner_session_check=_browser_owner_session_is_active,
+)
 
 def visible_projects():
     if principal is not None:
