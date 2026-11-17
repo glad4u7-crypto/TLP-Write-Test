@@ -95,3 +95,28 @@ def test_packet_capture_accepts_only_link_local_ndp(monkeypatch, tmp_path):
             proxy_ips={"198.18.0.1", "2001:db8:1::1"},
             proxy_port=3128,
         )
+
+
+def test_proxy_outage_probe_rejects_successful_direct_fallback(monkeypatch):
+    from subprocess import CompletedProcess
+    import pytest
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda *args, **kwargs: CompletedProcess(args[0], 0, "<html>Allowed Marker</html>", ""),
+    )
+    with pytest.raises(RuntimeError, match="direct fallback"):
+        qualification._probe_proxy_outage(["chromium"], "Allowed Marker", "ipv4")
+
+
+def test_proxy_outage_probe_records_failure_without_leaking_response(monkeypatch):
+    from subprocess import CompletedProcess
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda *args, **kwargs: CompletedProcess(args[0], 1, "ERR_PROXY_CONNECTION_FAILED", ""),
+    )
+    evidence = qualification._probe_proxy_outage(["chromium"], "Allowed Marker", "ipv4")
+    assert evidence["allowed_marker_absent"] is True
+    assert evidence["exit_code"] == 1
+    assert len(evidence["output_sha256"]) == 64
