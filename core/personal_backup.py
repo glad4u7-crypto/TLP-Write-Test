@@ -19,6 +19,7 @@ import tempfile
 from typing import Any
 import zipfile
 
+from core.personal_auth import LocalOwnerAuthStore
 from core.personal_runtime import (
     ensure_private_data_dir,
     load_or_create_approval_signing_key,
@@ -28,7 +29,8 @@ from core.sqlite_security_store import SQLiteSecurityStore
 
 
 _FORMAT = "APAA_PERSONAL_BACKUP"
-_VERSION = 1
+_VERSION = 2
+_DATABASES_V1 = ("projects.sqlite3", "security.sqlite3", "memory.sqlite3")
 _DATABASES = ("projects.sqlite3", "security.sqlite3", "owner-auth.sqlite3", "memory.sqlite3")
 _MANIFEST = "manifest.json"
 _MAX_DATABASE_BYTES = 256 * 1024 * 1024
@@ -217,9 +219,8 @@ def restore_personal_backup(
         with zipfile.ZipFile(backup, mode="r") as archive:
             infos = archive.infolist()
             names = [item.filename for item in infos]
-            expected_names = set(_DATABASES) | {_MANIFEST}
-            if len(names) != len(set(names)) or set(names) != expected_names:
-                raise PersonalBackupError("Backup archive inventory is invalid.")
+            if len(names) != len(set(names)):
+                raise PersonalBackupError("Backup archive contains duplicate entries.")
             total_uncompressed = 0
             for info in infos:
                 mode = info.external_attr >> 16
@@ -237,17 +238,25 @@ def restore_personal_backup(
             manifest = json.loads(
                 manifest_bytes.decode("utf-8"), object_pairs_hook=_unique_object
             )
+            if not isinstance(manifest, dict) or manifest.get("format") != _FORMAT:
+                raise PersonalBackupError("Backup manifest format is unsupported.")
+            version = manifest.get("version")
+            if version == 1:
+                restore_databases = _DATABASES_V1
+            elif version == _VERSION:
+                restore_databases = _DATABASES
+            else:
+                raise PersonalBackupError("Backup manifest version is unsupported.")
+            expected_names = set(restore_databases) | {_MANIFEST}
             if (
-                not isinstance(manifest, dict)
-                or manifest.get("format") != _FORMAT
-                or manifest.get("version") != _VERSION
+                set(names) != expected_names
                 or manifest.get("approval_signing_key_included") is not False
                 or not isinstance(manifest.get("files"), dict)
-                or set(manifest["files"]) != set(_DATABASES)
+                or set(manifest["files"]) != set(restore_databases)
             ):
-                raise PersonalBackupError("Backup manifest format or inventory is unsupported.")
+                raise PersonalBackupError("Backup archive or manifest inventory is invalid.")
 
-            for filename in _DATABASES:
+            for filename in restore_databases:
                 metadata = manifest["files"][filename]
                 if (
                     not isinstance(metadata, dict)
@@ -290,6 +299,10 @@ def restore_personal_backup(
         security_store = SQLiteSecurityStore(stage / "security.sqlite3")
         if not security_store.verify_audit_chain():
             raise PersonalBackupError("Restored durable audit chain failed verification.")
+        if version == 1:
+            # Legacy backups predate the local Owner passphrase database. Create
+            # an unconfigured store so the Owner must perform first-run setup.
+            LocalOwnerAuthStore(stage / "owner-auth.sqlite3")
         # Deliberately rotate approval signing material: no pre-restore receipt
         # can be replayed after the recovery boundary.
         load_or_create_approval_signing_key(stage)
