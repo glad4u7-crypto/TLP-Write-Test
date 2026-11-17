@@ -40,10 +40,11 @@ def test_rotation_keeps_retired_public_key_trusted_but_not_signable(tmp_path):
 
 
 def test_revocation_removes_public_key_from_trust_set(tmp_path):
-    ring, _ = make_keyring(tmp_path)
+    ring, directory = make_keyring(tmp_path)
     old_public = ring.create_initial("host-key-001")
     new_public = ring.rotate("host-key-002")
     ring.revoke("host-key-001")
+    assert not (directory / "host-key-001.ed25519").exists()
     assert ring.trusted_public_keys() == {"host-key-002": new_public}
     assert ring.status()["keys"]["host-key-001"] == "revoked"
 
