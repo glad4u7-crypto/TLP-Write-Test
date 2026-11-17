@@ -20,6 +20,8 @@ _IDENTITY_BOUND_KEYS = (
     "structured_task_input",
     "apaa_saved_task_plan_selector",
     "apaa_restore_backup_upload",
+    "apaa_project_file_upload",
+    "apaa_project_file_selector",
     "approval_session_scope",
     "approval_authority_config_id",
     "trusted_directory_enrolled_session",
