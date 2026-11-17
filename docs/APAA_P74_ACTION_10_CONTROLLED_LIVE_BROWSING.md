@@ -28,6 +28,10 @@ Provide the first application-level live-browsing execution boundary without ena
 9. Browser context/session is closed after success or failure.
 10. Chromium TLS certificate and hostname verification remain enabled.
 
+## CI debugging note
+
+The first Chromium CI attempt exposed a test-environment issue: the TLS fixture changes `HOME` to isolate the NSS trust database, while Playwright had installed its browser binary under the runner's original home directory. Chromium therefore could not find its executable. The workflow now sets `PLAYWRIGHT_BROWSERS_PATH` at job scope to a stable runner-temp directory, so isolated `HOME` values do not relocate the browser lookup. This is a test harness correction, not a TLS bypass.
+
 ## Test boundaries
 
 The real-Chromium test uses a generated test CA, an isolated temporary NSS trust store, a local HTTPS fixture and a CONNECT proxy that permits only the exact test hostname and fixture port. The test injects the local fixture session at the launch boundary so it can validate the actual Chromium navigation/controller path without pretending that a production host/container adapter exists.
@@ -52,6 +56,7 @@ The test is not permission to browse arbitrary public websites and does not prov
 - [x] Unit tests authored for policy and lifecycle.
 - [x] Real Chromium local-fixture integration test authored.
 - [x] CI includes separate live-browsing test steps.
+- [x] Playwright browser binary lookup is pinned to a stable CI path despite isolated test HOME.
 - [ ] Latest exact-head CI passes all TLS, controller, real-Chromium and remaining security tests.
 - [ ] Production host/container adapter is implemented and independently reviewed.
 - [ ] Actual worker firewall/proxy-only egress and pinned-IP behavior are proven.
