@@ -410,3 +410,20 @@ network-unreachable/no-route/timeout result. IPv4 and IPv6 UDP/443 probes are
 both recorded. No seccomp rule was weakened.
 
 These protocol-confinement changes are queued for exact-head CI and disposable-host requalification.
+
+
+### Additional hardening and regression coverage
+
+Cgroup teardown now checks both every descendant cgroup's `cgroup.procs`
+and `cgroup.threads` before removing empty nested directories, so a live
+thread cannot be missed by process-leader-only inspection. The signed browser
+launcher disables HTTP/2 and QUIC and blocks local hostname resolution; this
+closes HTTP/2 origin-coalescing and local DNS paths around the CONNECT proxy.
+The CONNECT proxy now has socket-pair integration tests proving a mismatched
+TLS SNI is never forwarded upstream, while a matching SNI is forwarded only
+after validation. The pinned egress connector verifies both peer IP and peer
+port. The dual-stack nftables fixture now mirrors live nft 1.0.9 metadata and
+handle fields. These are code/test changes only until the exact-head CI and
+disposable-host run complete.
+
+The complete latest security set is queued for a fresh exact-head CI and real OCI Chromium run.
