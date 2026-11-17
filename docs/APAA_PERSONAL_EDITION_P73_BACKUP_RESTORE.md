@@ -8,10 +8,11 @@
 The backup archive contains consistent SQLite snapshots of:
 - `projects.sqlite3` — owner projects;
 - `security.sqlite3` — consumed approval nonces and durable action-audit hash chain;
+- `owner-auth.sqlite3` — salted Owner passphrase verifier and persistent login-throttling state;
 - `memory.sqlite3` — consented memories, knowledge, conversation turns, preferences and task checkpoints;
 - `manifest.json` — format version, file sizes and SHA-256 digests.
 
-The local approval signing key is deliberately **not** exported. Restore generates a new owner-only key, so all outstanding approval receipts become invalid. Previously consumed nonce records and the durable audit chain are preserved.
+The local approval signing key is deliberately **not** exported. Restore generates a new owner-only key, so all outstanding approval receipts become invalid. The Owner authentication database is preserved so the configured Owner passphrase remains valid after restore. Previously consumed nonce records and the durable audit chain are preserved.
 
 ## Safety properties
 
@@ -22,7 +23,7 @@ The local approval signing key is deliberately **not** exported. Restore generat
 - Restore writes into a staging directory and atomically renames it to a **new, non-existing** destination. It never overwrites a live data directory.
 - Restore rejects malformed manifests, path traversal entries, symlinks and corrupted databases.
 
-**Important:** The archive is not encrypted. It is created with owner-only filesystem permissions, but anyone who obtains a copy can read its project and memory data. Store it only in a private, owner-controlled location. For a cross-database consistent snapshot, stop APAA before creating the backup; SQLite guarantees consistency per database, not a single transaction across all three databases.
+**Important:** The archive is not encrypted. It is created with owner-only filesystem permissions, but anyone who obtains a copy can read its project and memory data. Store it only in a private, owner-controlled location. For a cross-database consistent snapshot, stop APAA before creating the backup; SQLite guarantees consistency per database, not a single transaction across all four databases.
 
 ## Create a backup
 
