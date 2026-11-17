@@ -3,6 +3,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+from pathlib import Path
 import streamlit as st
 from core.mobile_ui import apply_mobile_ui
 from streamlit.errors import StreamlitSecretNotFoundError
@@ -94,10 +95,16 @@ if auth_required:
 else:
     principal = None
     st.warning(
-        "Local prototype mode: authentication is not enforced. "
-        "Do not expose this instance publicly. Set [apaa].require_auth = true "
-        "after configuring OIDC."
+        "Personal local mode: this instance is for one owner on this device. "
+        "Remote/LAN access is blocked; keep the app bound to loopback."
     )
+    try:
+        server_address = str(st.get_option("server.address") or "").strip().lower()
+    except Exception:
+        server_address = ""
+    if server_address not in {"", "localhost", "127.0.0.1", "::1"}:
+        st.error("Personal local mode requires a loopback-only Streamlit server address.")
+        st.stop()
 
 
 # Clear identity-bound drafts, approval authority and gateway if a different
