@@ -64,10 +64,6 @@ def build_chromium_seccomp_profile(source: dict[str, Any]) -> dict[str, Any]:
         "names": ["chroot"],
         "action": "SCMP_ACT_ALLOW",
         "args": [],
-        "comment": (
-            "APAA: allow chroot syscall for Chromium's nested user-namespace sandbox; "
-            "kernel capability checks remain mandatory and host-userns CAP_SYS_CHROOT is not granted"
-        ),
     }]
     if result.get("defaultAction") != "SCMP_ACT_ERRNO":
         raise SeccompProfilePreparationError("derived seccomp profile is not default-deny")
