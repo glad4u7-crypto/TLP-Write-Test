@@ -80,13 +80,24 @@ class FakePage:
         pass
 
 
+class FakeWebSocket:
+    def __init__(self):
+        self.closed = None
+
+    def close(self, **kwargs):
+        self.closed = kwargs
+
+
 class FakeContext:
-    def __init__(self, *, requests=()):
+    def __init__(self, *, requests=(), websocket_support=True):
         self.requests = requests
         self.route_handler = None
         self.page_callback = None
         self.page = FakePage(self, requests=requests)
         self.closed = 0
+        self.web_socket_handler = None
+        if not websocket_support:
+            self.route_web_socket = None
 
     def new_page(self):
         return self.page
@@ -97,6 +108,10 @@ class FakeContext:
 
     def on(self, event, callback):
         self.page_callback = callback
+
+    def route_web_socket(self, pattern, handler):
+        self.websocket_pattern = pattern
+        self.web_socket_handler = handler
 
     def close(self):
         self.closed += 1
@@ -112,8 +127,8 @@ class FakeSession:
         self.context.close()
 
 
-def setup_controller(monkeypatch, *, requests=(), audit=None):
-    context = FakeContext(requests=requests)
+def setup_controller(monkeypatch, *, requests=(), audit=None, websocket_support=True):
+    context = FakeContext(requests=requests, websocket_support=websocket_support)
     session = FakeSession(context)
     launches = []
 
@@ -138,6 +153,10 @@ def test_live_browsing_reads_visible_text_in_fresh_attested_session(monkeypatch)
     assert len(launches) == 1
     assert session.closed == 1
     assert context.route_pattern == "**/*"
+    assert context.websocket_pattern == "**/*"
+    web_socket = FakeWebSocket()
+    context.web_socket_handler(web_socket)
+    assert web_socket.closed["code"] == 1008
     assert [event["event"] for event in events] == ["job_accepted", "job_completed"]
     assert all("url" not in event and "text" not in event for event in events)
 
@@ -231,3 +250,16 @@ def test_read_title_and_transient_screenshot_actions(monkeypatch):
         now=1000, resolver=lambda host: (PUBLIC,),
     )
     assert shot.screenshot_png == b"PNG"
+
+
+
+def test_missing_websocket_blocking_support_fails_closed(monkeypatch):
+    controller, context, session, launches, events = setup_controller(
+        monkeypatch, websocket_support=False
+    )
+    with pytest.raises(LiveBrowsingError, match="WebSocket deny policy"):
+        controller.execute(
+            valid_job(), signed_evidence={}, challenge="c" * 64,
+            now=1000, resolver=lambda host: (PUBLIC,),
+        )
+    assert session.closed == 1
