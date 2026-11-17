@@ -301,3 +301,6 @@ tests cover both safe empty-tree cleanup and refusal when a descendant still
 contains a process. Run #100 was **BLOCKED**, with cleanup not fully confirmed;
 no Chromium request or network-bypass result ran. A fresh disposable-host
 qualification is required for both corrections.
+
+
+The image-identity and recursive-cleanup corrections are queued for the next gated disposable-host qualification.
