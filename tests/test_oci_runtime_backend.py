@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import json
+import subprocess
+
+import pytest
+
+from core.oci_runtime_backend import (
+    OCIWorkerSpec,
+    OCIRuntimeError,
+    PodmanOCIRuntime,
+    WorkerLimits,
+)
+
+
+IMAGE = "registry.invalid/apaa/chromium@sha256:" + "a" * 64
+NS = "/run/netns/apaa-test"
+SECCOMP = "/etc/apaa/seccomp-chromium.json"
+
+
+class FakeRunner:
+    def __init__(self, outputs):
+        self.outputs = list(outputs)
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        rc, stdout = self.outputs.pop(0)
+        return subprocess.CompletedProcess(command, rc, stdout, "")
+
+
+def spec(**changes):
+    values = dict(
+        image=IMAGE,
+        network_namespace=NS,
+        seccomp_profile=SECCOMP,
+        worker_id="worker-0001",
+        limits=WorkerLimits(memory_bytes=512 * 1024 * 1024, cpu_count=1, pids_limit=64),
+    )
+    values.update(changes)
+    return OCIWorkerSpec(**values)
+
+
+def test_create_uses_digest_pinned_image_and_hardening_flags():
+    runner = FakeRunner([(0, "b" * 64 + "\n")])
+    runtime = PodmanOCIRuntime(runner=runner)
+    container_id = runtime.create(spec())
+    command, kwargs = runner.calls[0]
+    assert container_id == "b" * 64
+    assert command[1] == "create"
+    assert "--pull=never" in command
+    assert "--read-only" in command
+    assert "--cap-drop=ALL" in command
+    assert "--security-opt=no-new-privileges" in command
+    assert f"ns:{NS}" in command
+    assert IMAGE in command
+    assert kwargs["shell"] is False
+    assert kwargs["timeout"] == 20
+
+
+def test_create_rejects_noncanonical_runtime_id():
+    runtime = PodmanOCIRuntime(runner=FakeRunner([(0, "not-a-container-id")]))
+    with pytest.raises(OCIRuntimeError):
+        runtime.create(spec())
+
+
+@pytest.mark.parametrize("image", [
+    "registry.invalid/apaa/chromium:latest",
+    "registry.invalid/apaa/chromium@sha256:abcd",
+    "registry.invalid/apaa/chromium@sha256:" + "g" * 64,
+])
+def test_spec_rejects_mutable_or_invalid_image_reference(image):
+    with pytest.raises(ValueError):
+        spec(image=image)
+
+
+@pytest.mark.parametrize("namespace", [
+    "/tmp/netns",
+    "/run/netns/../host",
+    "run/netns/worker",
+])
+def test_spec_rejects_untrusted_namespace_path(namespace):
+    with pytest.raises(ValueError):
+        spec(network_namespace=namespace)
+
+
+def test_lifecycle_only_accepts_full_immutable_container_id():
+    runner = FakeRunner([
+        (0, json.dumps([{"Id": "b" * 64, "State": {"Status": "created"}}])),
+        (0, ""),
+        (0, ""),
+        (0, ""),
+    ])
+    runtime = PodmanOCIRuntime(runner=runner)
+    runtime.inspect("b" * 64)
+    runtime.start("b" * 64)
+    runtime.stop("b" * 64)
+    runtime.remove("b" * 64)
+    assert [call[0][1] for call in runner.calls] == ["inspect", "start", "stop", "rm"]
+
+
+@pytest.mark.parametrize("method", ["inspect", "start", "stop", "remove"])
+def test_lifecycle_rejects_name_or_short_id(method):
+    runtime = PodmanOCIRuntime(runner=FakeRunner([]))
+    with pytest.raises(ValueError):
+        getattr(runtime, method)("apaa-worker")
+
+
+def test_inspect_rejects_invalid_json():
+    runtime = PodmanOCIRuntime(runner=FakeRunner([(0, "not-json")]))
+    with pytest.raises(OCIRuntimeError):
+        runtime.inspect("b" * 64)
+
+
+def test_runtime_failure_is_sanitized():
+    runtime = PodmanOCIRuntime(runner=FakeRunner([(125, "")]))
+    with pytest.raises(OCIRuntimeError, match="command failed"):
+        runtime.start("b" * 64)
+
+
+def test_limits_are_bounded():
+    with pytest.raises(ValueError):
+        WorkerLimits(memory_bytes=1)
+    with pytest.raises(ValueError):
+        WorkerLimits(cpu_count=0)
+    with pytest.raises(ValueError):
+        WorkerLimits(pids_limit=1)
