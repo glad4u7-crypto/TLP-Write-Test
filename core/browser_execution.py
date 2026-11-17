@@ -361,6 +361,8 @@ class BrowserExecutionCoordinator:
             if active is None:
                 return False
             token, session_id, termination_confirmed, completed = active
+            if completed.is_set():
+                return False
             changed = token.cancel()
         if not changed:
             return False
@@ -368,6 +370,16 @@ class BrowserExecutionCoordinator:
         # worker's completion thread can race ahead and write job_cancelled
         # before cancel_requested. Audit failure must not prevent termination.
         audit_error = None
+        if self._recovery_ledger is not None:
+            try:
+                self._recovery_ledger.transition(job_id, "cancel_requested", outcome_code="owner_cancel")
+            except RecoveryLedgerError as exc:
+                audit_error = exc
+                self._audit_failed = True
+                try:
+                    self._recovery_ledger.latch_dispatch_block("recovery_state_failure")
+                except Exception:
+                    pass
         try:
             self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
         except Exception as exc:
