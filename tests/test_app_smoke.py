@@ -702,4 +702,4 @@ def test_local_owner_sidebar_exposes_read_only_runtime_health_and_backup_tools()
     _click_button_by_label(app, "Run local health checks")
     assert not app.exception
     assert any("data_dir:" in item.value for item in app.success)
-    assert any("PASS" in item.value for item in app.metric)
+    assert any("PASS" in item.value for item in app.success)
