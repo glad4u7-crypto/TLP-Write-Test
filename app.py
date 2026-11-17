@@ -30,6 +30,7 @@ from core.personal_runtime import (
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
+from core.ui_mutations import execute_audited_ui_mutation
 from core.trusted_identity_directory import SQLiteTrustedIdentityDirectory
 from core.global_owner import GlobalOwnerConfigurationError, is_global_owner
 from core.global_owner_config import (
@@ -711,20 +712,26 @@ else:
         if memory_submit:
             try:
                 tags = [tag.strip() for tag in memory_tags.split(",") if tag.strip()]
-                memory_store.add_memory(
-                    tenant, category=memory_category, content=memory_content, tags=tags,
-                    pinned=memory_pinned, consent=memory_consent,
+                execute_audited_ui_mutation(
+                    audit_log, "memory.add",
+                    lambda: memory_store.add_memory(
+                        tenant, category=memory_category, content=memory_content, tags=tags,
+                        pinned=memory_pinned, consent=memory_consent,
+                    ),
                 )
                 st.success("Memory saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         for item in memory_store.list_memories(tenant):
             with st.container(border=True):
                 st.write(f"**{item.category.title()}** · {item.content}")
                 st.caption(f"Tags: {', '.join(item.tags) or 'none'} · Saved: {item.created_at}")
                 if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
-                    memory_store.delete_memory(tenant, item.memory_id)
+                    execute_audited_ui_mutation(
+                        audit_log, "memory.delete",
+                        lambda: memory_store.delete_memory(tenant, item.memory_id),
+                    )
                     st.rerun()
 
     with memory_tabs[1]:
@@ -738,13 +745,16 @@ else:
         if knowledge_submit:
             try:
                 tags = [tag.strip() for tag in knowledge_tags.split(",") if tag.strip()]
-                memory_store.add_knowledge(
-                    tenant, title=knowledge_title, content=knowledge_content,
-                    tags=tags, consent=knowledge_consent,
+                execute_audited_ui_mutation(
+                    audit_log, "knowledge.add",
+                    lambda: memory_store.add_knowledge(
+                        tenant, title=knowledge_title, content=knowledge_content,
+                        tags=tags, consent=knowledge_consent,
+                    ),
                 )
                 st.success("Knowledge document saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         knowledge_query = st.text_input("Search saved memories and knowledge")
         if knowledge_query.strip():
@@ -759,7 +769,10 @@ else:
                 st.caption(f"Tags: {', '.join(document.tags) or 'none'} · Source: {document.source}")
                 st.write(document.content[:1200] + ("…" if len(document.content) > 1200 else ""))
                 if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
-                    memory_store.delete_knowledge(tenant, document.document_id)
+                    execute_audited_ui_mutation(
+                        audit_log, "knowledge.delete",
+                        lambda: memory_store.delete_knowledge(tenant, document.document_id),
+                    )
                     st.rerun()
 
     with memory_tabs[2]:
@@ -772,20 +785,26 @@ else:
             conversation_submit = st.form_submit_button("Save turn")
         if conversation_submit:
             try:
-                memory_store.append_turn(
-                    tenant, conversation_id=conversation_id, role=conversation_role,
-                    content=conversation_content, consent=conversation_consent,
+                execute_audited_ui_mutation(
+                    audit_log, "conversation.append_turn",
+                    lambda: memory_store.append_turn(
+                        tenant, conversation_id=conversation_id, role=conversation_role,
+                        content=conversation_content, consent=conversation_consent,
+                    ),
                 )
                 st.success("Conversation turn saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         context_id = st.text_input("Load conversation ID", key="load_conversation_id")
         if context_id.strip():
             for turn in memory_store.conversation_context(tenant, context_id):
                 st.write(f"**{turn.role.title()}** · {turn.content}")
             if st.button("Delete this conversation history", key="delete_conversation_history"):
-                memory_store.delete_conversation(tenant, context_id)
+                execute_audited_ui_mutation(
+                    audit_log, "conversation.delete",
+                    lambda: memory_store.delete_conversation(tenant, context_id),
+                )
                 st.rerun()
 
     with memory_tabs[3]:
@@ -797,18 +816,24 @@ else:
             preference_submit = st.form_submit_button("Save preference")
         if preference_submit:
             try:
-                memory_store.save_preference(
-                    tenant, key=preference_key, value=preference_value,
-                    consent=preference_consent,
+                execute_audited_ui_mutation(
+                    audit_log, "preference.save",
+                    lambda: memory_store.save_preference(
+                        tenant, key=preference_key, value=preference_value,
+                        consent=preference_consent,
+                    ),
                 )
                 st.success("Preference saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         for key, value in memory_store.get_preferences(tenant).items():
             st.write(f"**{key}:** {value}")
             if st.button("Delete preference", key=f"delete_preference_{key}"):
-                memory_store.delete_preference(tenant, key)
+                execute_audited_ui_mutation(
+                    audit_log, "preference.delete",
+                    lambda: memory_store.delete_preference(tenant, key),
+                )
                 st.rerun()
 
     with memory_tabs[4]:
@@ -829,14 +854,17 @@ else:
                 checkpoint_submit = st.form_submit_button("Save checkpoint")
             if checkpoint_submit:
                 try:
-                    checkpoint_access.save_checkpoint(
-                        project_id=checkpoint_project, label=checkpoint_label,
-                        summary=checkpoint_summary, next_action=checkpoint_next,
-                        status=checkpoint_status, consent=checkpoint_consent,
+                    execute_audited_ui_mutation(
+                        audit_log, "checkpoint.save",
+                        lambda: checkpoint_access.save_checkpoint(
+                            project_id=checkpoint_project, label=checkpoint_label,
+                            summary=checkpoint_summary, next_action=checkpoint_next,
+                            status=checkpoint_status, consent=checkpoint_consent,
+                        ),
                     )
                     st.success("Checkpoint saved.")
                     st.rerun()
-                except (ValueError, PermissionError) as exc:
+                except Exception as exc:
                     st.error(str(exc))
             selected_checkpoint_project = st.selectbox(
                 "Recover latest checkpoint for project",
