@@ -59,6 +59,7 @@ jobs:
               "tests/test_chromium_browser_surfaces.py",
               "scripts/p74_real_worker_chromium_e2e.py",
               "scripts/android_owner_ui.py",
+              "scripts/android_device_acceptance.py",
           ):
               ast.parse(Path(name).read_text(encoding="utf-8"), filename=name)
               print(f"syntax OK: {name}")
