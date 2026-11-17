@@ -138,7 +138,7 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 
 **Action audit follow-up:** a code review found the common UI mutation wrapper self-supplied its approval value. The wrapper now requires an explicit boolean approval argument; all nine app mutation call sites pass the relevant Owner consent checkbox or the named delete-button event. Tests verify missing/non-boolean approval fails before audit intent or dispatch.
 
-**Current latest source head:** to be recorded after the full exact-head CI for these changes. Previous exact-head CI results do not apply to the new approval-hardening commits.
+**Verification rule:** use the current PR #13 head SHA and require both workflow jobs to finish successfully on that exact SHA. Previous exact-head CI results do not apply to later code or test-fixture changes.
 
 
 ## 9. Source-level action audit and browser-smoke fixture correction
