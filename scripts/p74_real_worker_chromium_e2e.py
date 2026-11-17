@@ -386,6 +386,27 @@ def main() -> int:
             evidence["worker_proc_cgroup"] = Path(f"/proc/{post_start_pid}/cgroup").read_text(
                 encoding="ascii"
             )[:2048]
+            raw_membership = evidence["worker_proc_cgroup"].split("::", 1)[-1].strip()
+            cgroup_mount = Path("/sys/fs/cgroup")
+            mount_text = str(cgroup_mount.resolve())
+            normalized_membership = (
+                raw_membership[len(mount_text):]
+                if raw_membership.startswith(mount_text + "/")
+                else raw_membership
+            )
+            candidate_cgroup = cgroup_mount / normalized_membership.lstrip("/")
+            parent_cgroup = candidate_cgroup.parent
+            try:
+                parent_entries = sorted(item.name for item in parent_cgroup.iterdir())[:64]
+            except OSError:
+                parent_entries = []
+            evidence["worker_cgroup_probe"] = {
+                "candidate": str(candidate_cgroup),
+                "candidate_is_dir": candidate_cgroup.is_dir(),
+                "parent": str(parent_cgroup),
+                "parent_is_dir": parent_cgroup.is_dir(),
+                "parent_entries": parent_entries,
+            }
         observation = PodmanWorkerObserver(runtime).observe(container_id, spec)
         evidence["runtime_observation"] = {
             "host_pid": observation.host_pid,
