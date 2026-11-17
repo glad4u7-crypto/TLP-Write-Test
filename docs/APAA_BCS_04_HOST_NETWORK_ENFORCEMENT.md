@@ -336,3 +336,18 @@ host. This parser change still requires exact-head CI and integration
 qualification before it can be considered production-ready.
 
 The latest parser, direct-egress probe and cleanup changes are queued for exact-head CI and disposable-host requalification.
+
+
+### HTTPS CONNECT hostname binding to TLS SNI
+
+The pinned CONNECT proxy now parses the bounded TLS ClientHello before forwarding
+any TLS bytes upstream and requires exactly one canonical host_name SNI matching
+the approved CONNECT authority. Missing, malformed, duplicate, non-ASCII or
+mismatched SNI is rejected; TLS remains end-to-end and certificate verification
+stays in Chromium. ClientHello records may be fragmented, but the pre-forward
+read is size- and time-bounded. Proxy shutdown now closes active sockets and
+waits for non-daemon handler threads before reporting completion. Pinned socket
+verification also checks the connected peer port, not only its IP address.
+Focused tests cover SNI parsing, fragmentation, malformed/no/duplicate SNI,
+shutdown behavior boundaries and exact upstream peer identity. These changes
+require exact-head CI and a new real Chromium qualification.
