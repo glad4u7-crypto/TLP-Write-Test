@@ -274,6 +274,12 @@ def main() -> int:
         live_json_ruleset = _run([
             "ip", "netns", "exec", namespace_name, "nft", "-j", "list", "table", "inet", "apaa"
         ]).stdout
+        # Retain the exact, bounded firewall JSON in the private qualification
+        # artifact so a failed semantic attestation can be debugged without
+        # guessing from the human-readable nft output.
+        if len(live_json_ruleset) > 1_000_000:
+            raise RuntimeError("nftables JSON evidence exceeds the bounded artifact size")
+        evidence["nftables_json_snapshot"] = json.loads(live_json_ruleset)
         nft_attestation = attest_nftables_json(
             live_json_ruleset, NftablesPolicy(tuple(proxy_ips), proxy_port)
         )
