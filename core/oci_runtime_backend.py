@@ -91,7 +91,6 @@ class PodmanOCIRuntime:
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise OCIRuntimeError("OCI runtime command could not be completed") from exc
         if check and result.returncode != 0:
-            # Do not surface command output: it may contain host paths or secrets.
             raise OCIRuntimeError("OCI runtime command failed")
         return result.stdout.strip()
 
@@ -103,6 +102,8 @@ class PodmanOCIRuntime:
             "--label", f"org.apaa.worker={spec.worker_id}",
             "--network", f"ns:{spec.network_namespace}",
             "--read-only",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
+            "--shm-size", "128m",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--security-opt", f"seccomp={spec.seccomp_profile}",
@@ -110,7 +111,9 @@ class PodmanOCIRuntime:
             "--cpus", str(spec.limits.cpu_count),
             "--pids-limit", str(spec.limits.pids_limit),
             "--user", "65532:65532",
+            "--entrypoint", "sleep",
             spec.image,
+            "infinity",
         ]
         output = self._run(args)
         container_id = output.splitlines()[-1] if output else ""
