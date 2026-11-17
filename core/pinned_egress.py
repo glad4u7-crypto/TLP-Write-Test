@@ -28,13 +28,15 @@ class PinnedDestination:
             raise ValueError("pinned destination hostname is invalid") from exc
         if canonical != self.hostname:
             raise ValueError("pinned destination hostname must be canonical lowercase IDNA")
-        if not self.addresses or len(self.addresses) > 16:
-            raise ValueError("pinned destination must contain bounded IP answers")
+        if type(self.addresses) is not tuple or not self.addresses or len(self.addresses) > 16:
+            raise ValueError("pinned destination must contain a bounded tuple of IP answers")
         canonical_addresses = []
         for value in self.addresses:
+            if type(value) is not str:
+                raise ValueError("pinned destination address must be text")
             address = ipaddress.ip_address(value)
-            if not _public_unicast(address):
-                raise ValueError("pinned destination contains a non-public address")
+            if not _public_unicast(address) or address.compressed != value:
+                raise ValueError("pinned destination contains a non-public or non-canonical address")
             canonical_addresses.append(address.compressed)
         if len(set(canonical_addresses)) != len(canonical_addresses):
             raise ValueError("duplicate pinned addresses are not accepted")
@@ -100,7 +102,7 @@ def connect_pinned(
     The caller must preserve destination.hostname as TLS SNI/verification name.
     No alternate IP, proxy bypass, or hostname-based fallback is attempted.
     """
-    if address not in destination.addresses:
+    if type(address) is not str or address not in destination.addresses:
         raise PinnedEgressError("dial target is not part of the pinned DNS answer set")
     if type(timeout) not in (int, float) or not 0 < timeout <= 30:
         raise ValueError("dial timeout is outside supported bounds")
