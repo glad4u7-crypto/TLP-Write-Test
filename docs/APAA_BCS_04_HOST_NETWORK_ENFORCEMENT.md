@@ -427,3 +427,19 @@ handle fields. These are code/test changes only until the exact-head CI and
 disposable-host run complete.
 
 The complete latest security set is queued for a fresh exact-head CI and real OCI Chromium run.
+
+
+### DNS rebinding and proxy-outage evidence gates
+
+The proxy now counts DNS/IP-pin rejection explicitly. A live socket-pair
+regression test exercises two successive CONNECT attempts for the same hostname:
+a public DNS answer is pinned and succeeds, then a changed answer to loopback
+is rejected before any second upstream socket is opened. Mixed public/private
+answer sets are also rejected. The outage harness no longer treats any failed
+Podman/Chromium command as a successful proxy outage: it requires Chromium's
+explicit `ERR_PROXY_CONNECTION_FAILED` or `ERR_TUNNEL_CONNECTION_FAILED`
+result and still verifies that the allowed-page marker is absent. Canonical
+CONNECT port spelling is enforced (exactly `:443`, without alternate numeric
+forms). These checks still require exact-head CI and disposable-host execution.
+
+The latest DNS-rebinding and outage-gate changes are queued for exact-head verification.
