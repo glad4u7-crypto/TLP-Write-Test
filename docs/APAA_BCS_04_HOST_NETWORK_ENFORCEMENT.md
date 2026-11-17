@@ -600,3 +600,21 @@ A fresh disposable-host run is being requested for this exact code revision.
 No success is claimed until both IPv4 and IPv6 Chromium HTTPS tests, direct
 egress negative tests, proxy-outage test, packet capture and cleanup evidence
 all pass.
+
+
+### Chromium user-namespace sandbox: narrowly scoped seccomp correction
+
+Run #210 established that unprivileged user-namespace creation works, but the
+Podman default seccomp profile conditionally denies `chroot` whenever the
+container has no host-user-namespace `CAP_SYS_CHROOT`. That conditional rule
+also blocks Chromium's nested user-namespace sandbox after it has legitimately
+created and mapped its own user namespace. A new preparation script derives a
+profile from the exact host default, preserves `SCMP_ACT_ERRNO` as the global
+default, removes only the two capability-conditional `chroot` rules, and adds
+one syscall allow rule. It does **not** add `CAP_SYS_CHROOT`; the kernel still
+enforces that capability in the caller's current user namespace. The worker's
+host-user-namespace `CapEff=0`, `NoNewPrivs=1`, and seccomp mode 2 checks remain
+mandatory. The generated profile is owner-only, atomically written, hashed,
+and post-validated. Exact-host Chromium qualification is still required.
+
+The minimal chroot-syscall profile is queued for unit tests, exact-head CI and disposable-host Chromium requalification.
