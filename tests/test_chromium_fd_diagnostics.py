@@ -153,6 +153,6 @@ def test_chromium_role_classification_does_not_retain_argv(cmdline, expected):
 
 def test_production_snapshot_rejects_cgroup_outside_mount(tmp_path, monkeypatch):
     proc, cgroup = _proc_fixture(tmp_path)
-    monkeypatch.setattr("core.chromium_fd_diagnostics.Path.resolve", lambda self: Path("/tmp/outside"))
+    monkeypatch.setattr("core.chromium_fd_diagnostics.Path.resolve", lambda self: Path("/sys/fs/cgroup") if str(self) == "/sys/fs/cgroup" else Path("/tmp/outside"))
     with pytest.raises(ValueError, match="beneath /sys/fs/cgroup"):
         snapshot_cgroup(cgroup, proc_root="/proc")
