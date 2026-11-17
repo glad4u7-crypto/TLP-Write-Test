@@ -113,9 +113,10 @@ def connect_pinned(
         sock.settimeout(float(timeout))
         target = (parsed.compressed, destination.port) if parsed.version == 4 else (parsed.compressed, destination.port, 0, 0)
         sock.connect(target)
-        peer = sock.getpeername()[0]
-        if ipaddress.ip_address(peer) != parsed:
-            raise PinnedEgressError("connected peer differs from the pinned destination")
+        peer = sock.getpeername()
+        if (ipaddress.ip_address(peer[0]) != parsed or type(peer[1]) is not int
+                or peer[1] != destination.port):
+            raise PinnedEgressError("connected peer differs from the pinned destination and port")
         return sock
     except Exception:
         sock.close()
