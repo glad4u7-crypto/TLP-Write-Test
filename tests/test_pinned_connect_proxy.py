@@ -61,7 +61,7 @@ def test_tls_client_hello_sni_is_parsed_and_canonicalized():
 def test_tls_client_hello_without_sni_is_rejected():
     from core.pinned_connect_proxy import _extract_client_hello_sni
 
-    with pytest.raises(ProxyPolicyError, match="missing its SNI"):
+    with pytest.raises(ProxyPolicyError, match="exactly one host SNI"):
         _extract_client_hello_sni(_client_hello(None))
 
 
@@ -71,7 +71,7 @@ def test_tls_client_hello_duplicate_sni_is_rejected():
     hello = _client_hello("example.com")
     # A duplicate SNI extension is not a valid single-host authority.
     body = hello[4:]
-    extension_length_offset = 4 + 2 + 32 + 1 + 2 + 2 + 1
+    extension_length_offset = 2 + 32 + 1 + 2 + 2 + 1 + 1
     extensions_length = int.from_bytes(body[extension_length_offset:extension_length_offset + 2], "big")
     extension = body[extension_length_offset + 2:extension_length_offset + 2 + extensions_length]
     duplicate_extensions = extension + extension
