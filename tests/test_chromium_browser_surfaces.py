@@ -174,10 +174,18 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             page.on("websocket", lambda ws: websocket_urls.append(ws.url))
 
             def guard_websocket(route):
-                blocked_websockets.append(route.url)
-                route.close()
+                parsed = urlsplit(route.url)
+                if parsed.hostname not in ("127.0.0.1", "localhost"):
+                    blocked_websockets.append(route.url)
+                    route.close()
+                    return
+                # Keep the loopback fixture WebSocket working while routing
+                # every WebSocket through this deterministic test guard.
+                server_socket = route.connect_to_server()
+                route.on_message(lambda message: server_socket.send(message))
+                server_socket.on_message(lambda message: route.send(message))
 
-            context.route_web_socket("ws://outside.invalid/**", guard_websocket)
+            context.route_web_socket("**/*", guard_websocket)
             response = page.goto(loopback_site + "/redirect", wait_until="domcontentloaded")
             assert response is not None and response.status == 200
             assert page.url == loopback_site + "/landing"
