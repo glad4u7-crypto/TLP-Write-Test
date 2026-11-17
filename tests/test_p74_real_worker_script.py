@@ -308,3 +308,18 @@ def test_chromium_worker_disables_histogram_shared_memory_fd_handoff():
     source = inspect.getsource(qualification)
     assert source.count("--disable-features=PassHistogramSharedMemoryOnLaunch") >= 3
     assert '"--no-sandbox"' not in source
+
+
+def test_chromium_exec_wrapper_closes_inherited_fds_and_preserves_stdio():
+    command = qualification._podman_chromium_command(
+        "worker-container", "chromium", ["--headless=new", "--dump-dom", "data:text/html,ok"]
+    )
+    assert command[:7] == [
+        "podman", "exec", "--user", "65532:65532",
+        "worker-container", "python3", "-c",
+    ]
+    wrapper = command[7]
+    assert "os.listdir('/proc/self/fd')" in wrapper
+    assert "if fd>2: os.close(fd)" in wrapper
+    assert "os.execvp(sys.argv[1], sys.argv[1:])" in wrapper
+    assert command[8:] == ["chromium", "--headless=new", "--dump-dom", "data:text/html,ok"]
