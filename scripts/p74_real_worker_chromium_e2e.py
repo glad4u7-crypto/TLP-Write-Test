@@ -261,6 +261,53 @@ def _chromium_binary_build_id(container_id: str) -> str | None:
     return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{16,128}", value) else None
 
 
+def _chromium_dynamic_symbols(container_id: str) -> dict:
+    """Read only exported symbol addresses needed to classify the fatal wrapper."""
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id,
+         "nm", "-D", "-n", "--defined-only", "/usr/lib/chromium/chromium"],
+        check=False, capture_output=True, text=True, timeout=12, shell=False,
+    )
+    close_address = None
+    for line in (result.stdout or "").splitlines():
+        match = re.match(r"^\\s*([0-9a-fA-F]+)\\s+[A-Za-z]\\s+close(?:@.*)?$", line)
+        if match:
+            close_address = "0x" + match.group(1).lower()
+            break
+    return {
+        "exit_code": result.returncode,
+        "close_symbol_offset": close_address,
+        "nm_available": result.returncode == 0,
+    }
+
+
+def _annotate_known_dynamic_symbols(failure: dict, symbols: dict) -> list[dict]:
+    close_address = symbols.get("close_symbol_offset")
+    if not isinstance(close_address, str):
+        return []
+    close_start = int(close_address, 16)
+    matches = []
+    mapping = failure.get("process_mapping") or {}
+    for frame in mapping.get("stack_frames_with_module_offsets", []):
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            offset = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        # The exported close wrapper is small; a nearby PC is a candidate only,
+        # never a symbolic proof without the exact function size/debug data.
+        if close_start <= offset < close_start + 512:
+            matches.append({
+                "frame": frame.get("frame"),
+                "module_offset": frame["module_offset"],
+                "candidate_symbol": "close",
+                "symbol_offset": close_address,
+                "interpretation": "near_exported_close_symbol_candidate",
+            })
+    return matches
+
+
 def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
     """Best-effort Debian debuginfod symbolication; never changes worker execution."""
     if not build_id:
@@ -929,12 +976,17 @@ def main() -> int:
         )[0].stdout.strip()[:160]
         chromium_build_id = _chromium_binary_build_id(container_id)
         evidence["chromium_binary_build_id"] = chromium_build_id
+        chromium_dynamic_symbols = _chromium_dynamic_symbols(container_id)
+        evidence["chromium_dynamic_symbols"] = chromium_dynamic_symbols
         local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
         evidence["chromium_local_dump_dom"] = local_smoke
         evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
         if not local_smoke["marker_present"]:
             local_smoke["failure"]["process_mapping"] = _map_failure_to_fd_snapshot(
                 local_smoke["failure"], local_fd_diagnostics,
+            )
+            local_smoke["failure"]["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                local_smoke["failure"], chromium_dynamic_symbols,
             )
             local_smoke["failure"]["symbolication"] = _symbolize_failure_frames(
                 local_smoke["failure"], chromium_build_id,
@@ -1110,6 +1162,9 @@ target.url,
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
                 failure = _chromium_failure_details(page, family, expected_marker)
                 failure["process_mapping"] = _map_failure_to_fd_snapshot(failure, fd_diagnostics)
+                failure["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                    failure, chromium_dynamic_symbols,
+                )
                 failure["symbolication"] = _symbolize_failure_frames(failure, chromium_build_id)
                 evidence["chromium_failure"] = failure
                 raise RuntimeError(
