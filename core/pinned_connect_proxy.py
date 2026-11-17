@@ -198,10 +198,16 @@ class PinnedConnectProxy:
     def close(self) -> None:
         server, thread = self._server, self._thread
         self._server = self._thread = None
+        shutdown_thread = None
         if server is not None:
-            server.shutdown()
-            server.server_close()
+            # Calling shutdown directly can race with serve_forever startup.
+            shutdown_thread = threading.Thread(target=server.shutdown, daemon=True)
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=3)
         if thread is not None:
             thread.join(timeout=3)
-            if thread.is_alive():
-                raise RuntimeError("proxy listener thread did not stop")
+        if server is not None:
+            server.server_close()
+        if ((shutdown_thread is not None and shutdown_thread.is_alive())
+                or (thread is not None and thread.is_alive())):
+            raise RuntimeError("proxy listener or shutdown thread did not stop")
