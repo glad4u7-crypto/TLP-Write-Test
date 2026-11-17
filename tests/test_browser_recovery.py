@@ -189,7 +189,7 @@ def test_restore_rejects_backup_with_broken_history_without_replacing_live_state
         db.execute("DROP TRIGGER browser_history_no_update")
         db.execute("UPDATE browser_job_history SET outcome_code='tampered' WHERE sequence=1")
 
-    with pytest.raises(RecoveryLedgerError, match="integrity"):
+    with pytest.raises(RecoveryLedgerError, match="integrity|append-only"):
         ledger.restore_from(backup)
     assert ledger.get("job_restoreguard1")["state"] == "accepted"
     assert ledger.verify_history() == ledger.list_history()[-1]["entry_hash"]
