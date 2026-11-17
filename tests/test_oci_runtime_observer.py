@@ -98,7 +98,7 @@ def test_observer_rejects_process_accounted_outside_dedicated_cgroup(tmp_path):
     (cg/"apaa"/"worker1"/"container"/"cgroup.procs").write_text("")
     outside=cg/"other"/"container"
     outside.mkdir(parents=True)
-    (outside/"cgroup.procs").write_text("4321\\n")
+    (outside/"cgroup.procs").write_text("4321\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="not uniquely present"):
         observer.observe(CID,spec())
