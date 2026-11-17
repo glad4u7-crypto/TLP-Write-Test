@@ -65,16 +65,22 @@ def _field(value: Any) -> tuple[str, str]:
     if not isinstance(detail, dict):
         raise NftablesAttestationError("malformed nftables match operand")
     if kind == "payload":
+        if set(detail) != {"protocol", "field"}:
+            raise NftablesAttestationError("payload match contains unknown fields")
         protocol, name = detail.get("protocol"), detail.get("field")
         if protocol not in {"ip", "ip6", "tcp", "icmpv6"} or not isinstance(name, str):
             raise NftablesAttestationError("unsupported payload field")
         return protocol, name
     if kind == "meta":
+        if set(detail) != {"key"}:
+            raise NftablesAttestationError("meta match contains unknown fields")
         name = detail.get("key")
         if name not in {"iifname", "oifname"}:
             raise NftablesAttestationError("unsupported meta field")
         return "meta", name
     if kind == "ct":
+        if set(detail) != {"key"}:
+            raise NftablesAttestationError("conntrack match contains unknown fields")
         name = detail.get("key")
         if name != "state":
             raise NftablesAttestationError("unsupported conntrack field")
@@ -83,6 +89,8 @@ def _field(value: Any) -> tuple[str, str]:
 
 
 def _rule_signature(rule: dict[str, Any]) -> tuple[str, tuple[tuple[str, str, str], ...]]:
+    if not isinstance(rule, dict):
+        raise NftablesAttestationError("nftables rule is malformed")
     if rule.get("family") != "inet" or rule.get("table") != "apaa":
         raise NftablesAttestationError("rule belongs to an unexpected nftables table")
     chain = rule.get("chain")
@@ -96,8 +104,9 @@ def _rule_signature(rule: dict[str, Any]) -> tuple[str, tuple[tuple[str, str, st
         if not isinstance(expression, dict) or set(expression) != {"match"}:
             raise NftablesAttestationError("unknown nftables expression in ACCEPT rule")
         match = expression["match"]
-        if not isinstance(match, dict) or match.get("op") not in {"==", "in"}:
-            raise NftablesAttestationError("unsupported nftables match operator")
+        if (not isinstance(match, dict) or set(match) != {"op", "left", "right"}
+                or match.get("op") not in {"==", "in"}):
+            raise NftablesAttestationError("unsupported nftables match operator or fields")
         left = _field(match.get("left"))
         right = match.get("right")
         if isinstance(right, dict) and set(right) == {"prefix"}:
