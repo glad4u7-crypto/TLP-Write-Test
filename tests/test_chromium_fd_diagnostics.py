@@ -72,7 +72,9 @@ def test_snapshot_captures_process_and_sanitized_fd_metadata(tmp_path, monkeypat
         if str(path).endswith("/fd/1"):
             return real_stat("/dev/null")
         return real_stat(path, *args, **kwargs)
-    monkeypatch.setattr("core.chromium_fd_diagnostics.os.stat", fake_stat)\n    result = snapshot_cgroup(cgroup, proc_root=proc)\n    assert result["process_count_observed"] == 1
+    monkeypatch.setattr("core.chromium_fd_diagnostics.os.stat", fake_stat)
+    result = snapshot_cgroup(cgroup, proc_root=proc)
+    assert result["process_count_observed"] == 1
     process = result["processes"][0]
     assert process["comm"] == "chrome (network)"
     assert process["ppid"] == 1
