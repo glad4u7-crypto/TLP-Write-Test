@@ -1061,9 +1061,9 @@ if not auth_required and selected_file_project is not None:
         "Store small UTF-8 text files inside the selected project's private directory. "
         "Uploads require explicit approval; inspection is read-only."
     )
-    st.warning(
-        "Project files are not yet included in APAA backup archives. "
-        "Do not store irreplaceable documents here until project-file backup is added."
+    st.info(
+        "Project files are included in Personal Backup format v3. "
+        "Keep backup archives in a private location and verify a restore before relying on them."
     )
     with st.form("apaa_project_file_upload_form", clear_on_submit=True):
         project_file_upload = st.file_uploader(
@@ -1310,20 +1310,33 @@ if plan is not None:
                                 value=is_completed,
                                 key=f"step_done_{plan.plan_id}_{step.step_id}",
                             )
+                            step_progress_consent = st.checkbox(
+                                "I approve saving this step status"
+                            )
                             save_step_progress = st.form_submit_button(
                                 "Save step progress",
                             )
                         if save_step_progress:
                             try:
-                                memory_store.set_task_plan_step_progress(
-                                    tenant, project_id=selected_plan_project.project_id,
-                                    plan_id=plan.plan_id, step_id=step.step_id,
-                                    title=step.title, completed=step_completed,
-                                    consent=True,
+                                execute_owner_ui_mutation(
+                                    "task_plan.step_progress", step_progress_consent,
+                                    {
+                                        "project_id": selected_plan_project.project_id,
+                                        "plan_id": plan.plan_id,
+                                        "step_id": step.step_id,
+                                        "title": step.title,
+                                        "completed": step_completed,
+                                    },
+                                    lambda payload: memory_store.set_task_plan_step_progress(
+                                        tenant, project_id=payload["project_id"],
+                                        plan_id=payload["plan_id"], step_id=payload["step_id"],
+                                        title=payload["title"], completed=payload["completed"],
+                                        consent=True,
+                                    ),
                                 )
-                                st.success("Step progress saved. No task was executed.")
+                                st.success("Step progress saved and audited. No task was executed.")
                                 st.rerun()
-                            except (TypeError, ValueError, PermissionError, OSError, sqlite3.Error) as exc:
+                            except Exception as exc:
                                 st.error(f"Step progress could not be saved: {exc}")
                 except (TypeError, ValueError, OSError, sqlite3.Error) as exc:
                     st.error(f"Step progress is unavailable: {exc}")
