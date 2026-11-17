@@ -46,8 +46,9 @@ class NamespacePlan:
                     or h.ip.is_unspecified or w.ip.is_unspecified
                     or h.ip.is_loopback or w.ip.is_loopback
                     or h.ip.is_multicast or w.ip.is_multicast
-                    or (version == 4 and (h.ip in (h.network.network_address, h.network.broadcast_address)
-                                          or w.ip in (w.network.network_address, w.network.broadcast_address)))):
+                    or h.ip == h.network.network_address or w.ip == w.network.network_address
+                    or (version == 4 and (h.ip == h.network.broadcast_address
+                                          or w.ip == w.network.broadcast_address))):
                 raise ValueError("invalid point-to-point addresses")
 
 
