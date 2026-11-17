@@ -342,8 +342,12 @@ def main() -> int:
             "state_status": state.get("Status"),
         }
         expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
-        if not host.get("ReadonlyRootfs") or "ALL" not in cap_drop:
-            raise RuntimeError("OCI inspect did not confirm read-only rootfs and all capabilities dropped")
+        if (not host.get("ReadonlyRootfs")
+                or not isinstance(cap_drop, list) or not cap_drop
+                or len(cap_drop) != len(set(cap_drop))
+                or any(type(item) is not str or not re.fullmatch(r"CAP_[A-Z0-9_]+", item) for item in cap_drop)
+                or (host.get("CapAdd") or [])):
+            raise RuntimeError("OCI inspect did not confirm read-only rootfs and expanded capability-drop policy")
         if not any(item.startswith("no-new-privileges") for item in security):
             raise RuntimeError("OCI inspect did not confirm no-new-privileges")
         if not any(item == f"seccomp={seccomp_profile}" for item in security):
