@@ -301,18 +301,10 @@ def test_gate_blocks_empty_trust_store_before_worker_adapter():
 
 
 
-def test_execution_coordinator_accepts_only_real_verified_attestation_gate(tmp_path):
+def test_execution_coordinator_keeps_dispatch_disabled_until_owner_approval_is_integrated(tmp_path):
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
-
-    class Worker:
-        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
-            return {}
-
-        def terminate(self, session_id):
-            return True
-
-    worker = Worker()
+    calls = []
     recovery_dir = tmp_path / "private-recovery"
     recovery_dir.mkdir(mode=0o700)
     recovery_dir.chmod(0o700)
@@ -321,19 +313,21 @@ def test_execution_coordinator_accepts_only_real_verified_attestation_gate(tmp_p
         spec,
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
         expected_proxy_addresses=[PROXY_IP],
-        worker_start=lambda passed_spec, evidence: worker,
+        worker_start=lambda passed_spec, evidence: calls.append(True),
     )
-    coordinator = BrowserExecutionCoordinator.from_attested_runtime(
-        gate,
-        signed_evidence(spec, key),
-        challenge=CHALLENGE,
-        now=NOW,
-        audit=lambda event: None,
-        recovery_ledger=recovery_ledger,
-    )
-    assert isinstance(coordinator, BrowserExecutionCoordinator)
-    assert coordinator._worker is worker
-
+    with pytest.raises(
+        BrowserExecutionError,
+        match="trusted Owner approval consumption",
+    ):
+        BrowserExecutionCoordinator.from_attested_runtime(
+            gate,
+            signed_evidence(spec, key),
+            challenge=CHALLENGE,
+            now=NOW,
+            audit=lambda event: None,
+            recovery_ledger=recovery_ledger,
+        )
+    assert calls == []
 
 
 def test_execution_coordinator_rejects_invalid_worker_from_verified_gate(tmp_path):
