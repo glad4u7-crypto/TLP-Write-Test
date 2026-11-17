@@ -117,7 +117,7 @@ def test_adapter_requires_trusted_egress_guard():
         SecureBrowserAdapter(policy=policy, egress_guard=None)
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("request_case", [
     Request(method="POST"),
     Request(method="PUT"),
     Request(post_data="payload"),
