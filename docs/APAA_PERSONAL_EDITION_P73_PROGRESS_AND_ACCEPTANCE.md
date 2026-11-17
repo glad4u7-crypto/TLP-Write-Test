@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-PERSONAL-P73  
 **Date:** 2026-11-17  
 **Branch:** `apaa-personal-edition-foundation`  
-**Status:** P73 repository implementation has prior exact-head automated PASS evidence; the latest Owner-security/action-approval changes are awaiting their own exact-head CI. Physical/external acceptance gates remain.  
+**Status:** P73 repository implementation and latest Owner/action-history changes have exact-head automated PASS evidence. Physical/external acceptance gates remain.  
 **PR:** #13 — Draft / Open / Unmerged.
 
 ## 1. Implemented repository work
@@ -134,11 +134,13 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 **Current code head:** `da83d1e0998948902524f3b1d8ae5590550e930f`.  
 **Earlier CI feedback:** workflow run `44006192350` on the prior PR validation snapshot found seven test failures (lockout-boundary expectation, identity cleanup coverage, reusable test auth setup, and planner UI fixtures). The underlying issues were corrected in follow-up commits. That failed run is not evidence for the current head. Exact-head CI for `da83d1e0998948902524f3b1d8ae5590550e930f` remains PENDING / NOT OBSERVED. Do not mark this workstream PASS until the full P73 workflow completes successfully on the exact head.
 
-**Owner passphrase-change UI and payload-free security-event history:** implemented on the current branch. The local auth event table is not independently tamper-proof.
+**Owner passphrase-change UI and payload-free security-event history:** implemented and AppTest-verified on the current branch. The local auth event table is not independently tamper-proof.
 
 **Action audit follow-up:** a code review found the common UI mutation wrapper self-supplied its approval value. The wrapper now requires an explicit boolean approval argument; all nine app mutation call sites pass the relevant Owner consent checkbox or the named delete-button event. Tests verify missing/non-boolean approval fails before audit intent or dispatch.
 
-**Verification rule:** use the current PR #13 head SHA and require both workflow jobs to finish successfully on that exact SHA. Previous exact-head CI results do not apply to later code or test-fixture changes.
+**Owner action history:** a tenant-scoped read API verifies the complete SQLite hash chain before returning the current Owner's latest records. The sidebar shows action, result, reason and timestamp only. Tamper detection, payload exclusion and AppTest UI visibility are covered by tests.
+
+**Latest Owner/action-history exact-head verification:** commit `b975d14f351bf42d72940fcea54103a2b4b384fe`, [run #112](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44008562833) — PASS. Python suite: 1,417 passed, 9 skipped; compile PASS; dependency audit found no known vulnerabilities; Android/desktop browser smoke: 9 passed. This exact result applies only to this code/test head; later code changes require a fresh exact-head run.
 
 
 ## 9. Source-level action audit and browser-smoke fixture correction
