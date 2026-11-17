@@ -184,7 +184,7 @@ def _read_process(
     except OSError:
         pass
     role = _process_role(cmdline)
-    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\\0") if part]
+    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\0") if part]
     allowed_process_types = {
         "browser", "zygote", "renderer", "gpu-process", "utility",
         "ppapi", "plugin", "broker",
