@@ -1,10 +1,9 @@
-"""Controlled, read-only live browsing through the attested Chromium worker.
+"""Disabled read-only browsing controller awaiting a real isolated Chromium worker.
 
-This is an integration layer, not a sandbox or firewall. It launches Chromium
-only through the signed runtime gate, restricts every browser request to the
-job's exact HTTPS origins, permits only GET/HEAD, and exposes read-only results.
-The host proxy/firewall must independently enforce DNS/IP pinning and proxy-only
-egress before this module is enabled for public websites.
+This controller is not enabled for public browsing. The current legacy Playwright
+launcher refuses host-local Chromium because signed OCI evidence does not place
+a host process inside the worker namespace. A production IsolatedWorkerBackend
+must provide a worker-side RPC before this controller can be activated.
 """
 from __future__ import annotations
 
