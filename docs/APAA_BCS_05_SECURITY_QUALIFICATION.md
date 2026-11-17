@@ -34,7 +34,7 @@ Initial implementation added on the BCS-05 branch:
 - Negative browser-harness coverage: cross-origin redirect, image, iframe, popup, and WebSocket attempts are intercepted and aborted/closed by Playwright routing.
 - The CI workflow now runs this test on the BCS-05 branch and pull requests targeting the P74 branch.
 
-**Qualification status: PARTIAL / EXACT-HEAD CI RETEST PENDING.** CI run #810 failed at the final request-observation assertion: Playwright's route hook did not report the redirect target request even though the browser reached and rendered the expected final URL. The assertion was corrected to verify the final navigation through `page.url` and page content, while keeping request-hook assertions for the remaining fixture resources. The correction is committed at the current BCS-05 branch head; its exact-head CI run must pass before Q1 can be accepted. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Production controller integration still requires dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
+**Qualification status: PARTIAL / EXACT-HEAD CI RETEST PENDING.** CI run #810 failed at the final request-observation assertion: Playwright's route hook did not report the redirect target request even though the browser reached and rendered the expected final URL. The assertion was corrected to verify the final navigation through `page.url` and page content, while keeping request-hook assertions for the remaining fixture resources. The correction is committed at the current BCS-05 branch head; its exact-head CI run must pass before Q1 can be accepted. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Production controller integration still requires dedicated cases. The real-host workflow now requires explicit Owner-supplied HTTPS URL/origin/marker inputs and rejects missing/default targets. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
 
 These tests establish Chromium behavior only. They do NOT establish OCI isolation or host network enforcement.
 
@@ -46,7 +46,7 @@ Existing code coverage inspected on the P74 base:
 - The disposable-host harness has direct UDP/TCP DNS, IPv4/IPv6 TCP, IPv4/IPv6 UDP/443 probes, dual-stack proxy preflight, packet capture, and proxy-outage/no-direct-fallback checks.
 - Unit tests cover mixed public/private DNS answers, DNS rebinding to a private answer, and connected-peer mismatch against the pinned address.
 - Added explicit disposable-host probes for IPv4 private (10.0.0.1), IPv4 link-local metadata (169.254.169.254), IPv6 unique-local (fd00::1), and IPv6 metadata (fd00:ec2::254) destinations. These are code-complete but remain UNEXECUTED until the gated disposable-host run.
-- The harness has NOT been run for this BCS-05 head. It requires an Owner-approved HTTPS test origin; the workflow's example.com default is not treated as authorization.
+- The real-host workflow was hardened to remove the example.com defaults and validate that the explicitly supplied test URL is HTTPS and exactly matches the supplied allowed origin. The harness has NOT been run for this BCS-05 head; an Owner-approved HTTPS test origin is still required.
 
 Required negative probes:
 - direct IPv4 TCP and UDP;
