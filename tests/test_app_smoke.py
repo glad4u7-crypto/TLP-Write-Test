@@ -4,6 +4,13 @@ from types import SimpleNamespace
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_personal_runtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
+
 
 def _click_button_by_label(app: AppTest, label: str) -> None:
     """Click a uniquely named button without relying on layout traversal order."""
@@ -44,7 +51,7 @@ def test_streamlit_app_renders_in_safe_local_prototype_mode():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
     assert any("Autonomous AI Agent" in item.value for item in app.title)
-    assert any("Local prototype mode" in item.value for item in app.warning)
+    assert any("Personal local mode" in item.value for item in app.warning)
     assert any("External API: Disabled" in item.value for item in app.markdown)
 
 
