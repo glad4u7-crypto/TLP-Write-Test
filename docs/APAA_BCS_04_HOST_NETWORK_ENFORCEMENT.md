@@ -620,3 +620,35 @@ and post-validated. Exact-host Chromium qualification is still required.
 The minimal chroot-syscall profile is queued for unit tests, exact-head CI and disposable-host Chromium requalification.
 
 The generated profile has been updated to use only OCI-standard syscall fields; no capability is added. The full workflow is queued for exact-head requalification.
+
+
+## Chromium user-namespace chroot compatibility correction
+
+The second disposable OCI run confirmed that Crashpad was no longer the blocker.
+The independent user-namespace probe successfully created/mapped a nested user
+namespace but reported `USERNS_CHROOT_ERR 1`. The Podman baseline seccomp
+profile conditionally allowed `chroot` only when `CAP_SYS_CHROOT` was
+already present in the container's capability set; the worker intentionally
+drops that capability. Chromium's own user-namespace sandbox requires the
+`chroot` syscall after entering its nested user namespace, where the kernel
+grants the process namespace-scoped capabilities.
+
+Added `scripts/prepare_chromium_seccomp_profile.py` to derive an owner-private
+profile from the exact Podman default. It changes only the capability-conditional
+`chroot` rule into a syscall allow rule, while preserving
+`SCMP_ACT_ERRNO` as the default action and all other syscall rules. The
+kernel still enforces `CAP_SYS_CHROOT` in the caller's current user namespace;
+the OCI worker has no such capability in the host user namespace. The helper
+validates the source rule shape, output file permissions, derived profile and
+SHA-256 digest. Tests cover the derivation and reject altered source rules.
+
+The real-worker workflow now locates the Podman baseline profile first, then
+derives the Chromium-compatible profile and passes that exact path to the OCI
+worker. The workflow order is deliberate: it must never overwrite the derived
+profile with the unmodified system profile.
+
+The previous disposable run confirmed the complete dual-stack namespace,
+nftables default-DROP policy, proxy-only direct-egress blocks, kernel cgroup
+limits, OCI security options and independent host observation; it also
+confirmed cleanup (`cleanup_confirmed=true`, no cleanup errors). Chromium
+execution remains BLOCKED pending the new seccomp profile qualification.
