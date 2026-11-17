@@ -466,3 +466,17 @@ cancellation and crash. A host-local Playwright callback is not an acceptable
 substitute. Android additionally needs a real VpnService/worker transport and
 physical-device bypass qualification; the repository currently has no Android
 application module.
+
+
+### Run #181 — network boundary passed; Chromium sandbox launch blocked
+
+The latest disposable-host run confirmed the exact dual-stack firewall and
+cgroup membership/limits, verified cleanup, and completed the direct-egress
+checks: TCP DNS/IPv4/IPv6 probes were blocked at the network boundary, while
+UDP DNS and UDP/443 socket creation was denied by seccomp (recorded separately).
+Chromium itself did not start: its default setuid/chroot sandbox path attempted
+`chroot` and failed under the intentionally dropped `CAP_SYS_CHROOT` and
+no-new-privileges policy. No sandbox capability was added and `--no-sandbox`
+was not used. The next qualification selects Chromium's user-namespace sandbox
+by disabling only its setuid helper; this must still prove a working namespace
+sandbox on the disposable host before Chromium is considered qualified.
