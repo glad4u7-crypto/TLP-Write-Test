@@ -107,10 +107,10 @@ def _http_proxy_uri(proxy_ip: str, port: int) -> str:
 
 def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[str, object]:
     code = (
-        "import socket,sys\\n"
-        + f"s=socket.create_connection(({proxy_ip!r},{proxy_port}),timeout=5)\\n"
-        + "print('APAA_PROXY_TCP_CONNECTED')\\n"
-        + "s.close()\\n"
+        "import socket,sys\n"
+        + f"s=socket.create_connection(({proxy_ip!r},{proxy_port}),timeout=5)\n"
+        + "print('APAA_PROXY_TCP_CONNECTED')\n"
+        + "s.close()\n"
     )
     result = subprocess.run(
         ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
