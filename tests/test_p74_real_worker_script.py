@@ -447,3 +447,35 @@ def test_unprefixed_fd_crash_stack_maps_to_child_process_not_log_prefix_pid():
     assert mapped["container_pid"] == "255"
     assert mapped["mapping_confidence"] == "all_stack_frames_match_candidate_process_image"
     assert mapped["log_process_mapping"]["host_pid"] == 8632
+
+
+
+def test_symbolizer_prefers_exact_local_debian_dbgsym(monkeypatch, tmp_path):
+    from subprocess import CompletedProcess
+
+    build_id = "4a74f6497529d42bb61262c76d7b1add49c4dea6"
+    debug_file = tmp_path / ".build-id" / build_id[:2] / (build_id[2:] + ".debug")
+    debug_file.parent.mkdir(parents=True)
+    debug_file.write_bytes(b"test-debug-symbol-placeholder")
+    monkeypatch.setenv("APAA_CHROMIUM_DEBUG_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        qualification.shutil, "which",
+        lambda name: "/usr/bin/eu-addr2line" if name == "eu-addr2line" else None,
+    )
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(command, 0, "base::ScopedFD::reset()\\nsrc/base/files/scoped_file.cc:123\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    result = qualification._symbolize_failure_frames(
+        {"process_mapping": {"stack_frames_with_module_offsets": [
+            {"frame": 0, "module_offset": "0x9c6343e"},
+        ]}},
+        build_id,
+    )
+    assert result["status"] == "symbolized"
+    assert result["symbol_source"] == "exact-debian-dbgsym"
+    assert result["frames"][0]["function"] == "base::ScopedFD::reset()"
+    assert captured["command"][-1] == "0x9c6343e"
