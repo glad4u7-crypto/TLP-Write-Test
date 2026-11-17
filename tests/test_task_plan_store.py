@@ -83,7 +83,7 @@ def test_task_plan_rejects_mismatched_snapshot_and_secret_like_content(tmp_path)
 def test_task_plan_snapshot_parser_rejects_tampered_step_approval_flag():
     plan = _ready_plan().to_dict()
     plan["steps"][2]["requires_human_approval"] = True
-    with pytest.raises(ValueError, match="approval flag"):
+    with pytest.raises(ValueError, match="human approval"):
         task_plan_from_dict(plan)
 
 
