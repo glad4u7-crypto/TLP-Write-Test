@@ -29,7 +29,7 @@ from core.sqlite_security_store import SQLiteSecurityStore
 
 _FORMAT = "APAA_PERSONAL_BACKUP"
 _VERSION = 1
-_DATABASES = ("projects.sqlite3", "security.sqlite3", "memory.sqlite3")
+_DATABASES = ("projects.sqlite3", "security.sqlite3", "owner-auth.sqlite3", "memory.sqlite3")
 _MANIFEST = "manifest.json"
 _MAX_DATABASE_BYTES = 256 * 1024 * 1024
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
@@ -146,7 +146,7 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
             "created_at": datetime.now(timezone.utc).isoformat(),
             "files": manifest_files,
             "approval_signing_key_included": False,
-            "restore_behavior": "A fresh local approval signing key is generated on restore.",
+            "restore_behavior": "Owner authentication is preserved; a fresh local approval signing key is generated on restore.",
         }
         manifest_path = temporary_dir / _MANIFEST
         manifest_path.write_text(
