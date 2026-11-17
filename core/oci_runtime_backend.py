@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from pathlib import Path
 import re
 import subprocess
+import tempfile
 from typing import Callable, Sequence
 
 
@@ -44,7 +46,7 @@ class OCIWorkerSpec:
 
     def __post_init__(self) -> None:
         if not _IMAGE_DIGEST.fullmatch(self.image):
-            raise ValueError("worker image must be pinned by sha256 digest")
+            raise ValueError("worker image must be pinned by sha256 digest or immutable local image ID")
         if not self.network_namespace.startswith("/run/netns/") or ".." in self.network_namespace.split("/"):
             raise ValueError("network namespace must be an absolute path under /run/netns")
         if not self.seccomp_profile.startswith("/") or ".." in self.seccomp_profile.split("/"):
@@ -76,44 +78,70 @@ class PodmanOCIRuntime:
         self._timeout = timeout_seconds
         self._runner = runner
 
-    def _run(self, args: Sequence[str], *, check: bool = True) -> str:
+    def _invoke(self, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
         try:
-            result = self._runner(
+            return self._runner(
                 [self._executable, *args],
                 check=False, capture_output=True, text=True,
                 timeout=self._timeout, shell=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise OCIRuntimeError("OCI runtime command could not be completed") from exc
+
+    def _run(self, args: Sequence[str], *, check: bool = True) -> str:
+        result = self._invoke(args)
         if check and result.returncode != 0:
             raise OCIRuntimeError("OCI runtime command failed")
         return result.stdout.strip()
 
     def create(self, spec: OCIWorkerSpec) -> str:
-        args = [
-            "--cgroup-manager=cgroupfs", "create", "--pull=never",
-            "--name", f"apaa-{spec.worker_id}",
-            "--label", f"org.apaa.worker={spec.worker_id}",
-            "--network", f"ns:{spec.network_namespace}",
-            "--read-only",
-            "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
-            "--shm-size", "128m",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "--security-opt", f"seccomp={spec.seccomp_profile}",
-            "--memory", str(spec.limits.memory_bytes),
-            "--cpus", str(spec.limits.cpu_count),
-            "--pids-limit", str(spec.limits.pids_limit),
-            "--user", "65532:65532",
-        ]
-        if spec.cgroup_parent:
-            args.extend(["--cgroup-parent", spec.cgroup_parent])
-        args.extend(["--entrypoint", "sleep", spec.image, "infinity"])
-        output = self._run(args)
-        container_id = output.splitlines()[-1] if output else ""
-        if not _CONTAINER_ID.fullmatch(container_id):
-            raise OCIRuntimeError("OCI create did not return a canonical immutable container ID")
-        return container_id
+        # A private cidfile lets us clean up a container even if Podman reports
+        # an unexpected stdout shape after successfully creating it.
+        with tempfile.TemporaryDirectory(prefix="apaa-oci-") as directory:
+            cidfile = Path(directory) / "container.cid"
+            args = [
+                "--cgroup-manager=cgroupfs", "create",
+                "--cidfile", str(cidfile),
+                "--pull=never",
+                "--name", f"apaa-{spec.worker_id}",
+                "--label", f"org.apaa.worker={spec.worker_id}",
+                "--network", f"ns:{spec.network_namespace}",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
+                "--shm-size", "128m",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--security-opt", f"seccomp={spec.seccomp_profile}",
+                "--memory", str(spec.limits.memory_bytes),
+                "--cpus", str(spec.limits.cpu_count),
+                "--pids-limit", str(spec.limits.pids_limit),
+                "--user", "65532:65532",
+            ]
+            if spec.cgroup_parent:
+                args.extend(["--cgroup-parent", spec.cgroup_parent])
+            args.extend(["--entrypoint", "sleep", spec.image, "infinity"])
+            result = self._invoke(args)
+            output_lines = result.stdout.strip().splitlines()
+            output_id = output_lines[-1].strip() if output_lines else ""
+            try:
+                cidfile_id = cidfile.read_text(encoding="ascii").strip()
+            except OSError:
+                cidfile_id = ""
+
+            valid_ids = {
+                value for value in (cidfile_id, output_id)
+                if _CONTAINER_ID.fullmatch(value)
+            }
+            if result.returncode != 0 or not _CONTAINER_ID.fullmatch(cidfile_id) or (output_id and output_id != cidfile_id):
+                cleanup_failed = False
+                for container_id in valid_ids:
+                    try:
+                        self.remove(container_id)
+                    except Exception:
+                        cleanup_failed = True
+                suffix = "; cleanup of a partially created container failed" if cleanup_failed else ""
+                raise OCIRuntimeError("OCI create did not produce a verified immutable container ID" + suffix)
+            return cidfile_id
 
     def inspect(self, container_id: str) -> dict:
         self._validate_id(container_id)
