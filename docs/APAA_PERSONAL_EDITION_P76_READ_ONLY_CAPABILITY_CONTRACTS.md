@@ -36,4 +36,4 @@ This checkpoint does **not** perform network requests, launch a browser, access 
 
 The exact-head GitHub Actions workflow is required before this checkpoint can be marked automated-PASS. A passing unit suite does not qualify a live network or filesystem adapter.
 
-**Next:** P77 — implement one bounded read-only adapter at a time, starting with a connector whose transport and source allowlist can be independently tested.
+**Next:** P78 — implement one bounded read-only adapter at a time, starting with a connector whose transport and source allowlist can be independently tested. P77 is already used by the Local Owner authentication event audit-hardening checkpoint recorded in the P73 progress log.
