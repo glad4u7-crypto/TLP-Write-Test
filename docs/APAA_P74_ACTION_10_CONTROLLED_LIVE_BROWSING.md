@@ -30,7 +30,7 @@ Provide the first application-level live-browsing execution boundary without ena
 
 ## CI debugging note
 
-The first Chromium CI attempt exposed a test-environment issue: the TLS fixture changes `HOME` to isolate the NSS trust database, while Playwright had installed its browser binary under the runner's original home directory. Chromium therefore could not find its executable. The workflow now sets `PLAYWRIGHT_BROWSERS_PATH` at job scope to a stable runner-temp directory, so isolated `HOME` values do not relocate the browser lookup. This is a test harness correction, not a TLS bypass.
+The first Chromium CI attempt exposed a test-environment issue: the TLS fixture changes `HOME` to isolate the NSS trust database, while Playwright had installed its browser binary under the runner's original home directory. Chromium therefore could not find its executable. The workflow now sets `PLAYWRIGHT_BROWSERS_PATH` at job scope to the runner's stable `/home/runner/.cache/ms-playwright` directory, so isolated `HOME` values do not relocate the browser lookup. This is a test harness correction, not a TLS bypass.
 
 ## Test boundaries
 
