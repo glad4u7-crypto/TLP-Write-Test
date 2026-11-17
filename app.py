@@ -160,8 +160,8 @@ else:
                 )
                 st.success("Owner protection created. Sign in to open APAA.")
                 st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Owner protection could not be saved safely: {exc}")
         st.stop()
 
     if (
