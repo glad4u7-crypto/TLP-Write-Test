@@ -204,7 +204,9 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             page.wait_for_function("document.body.dataset.blockedWebsocket === 'blocked'", timeout=5000)
 
             paths = {urlsplit(url).path for url in observed_requests}
-            assert {"/redirect", "/landing", "/pixel.png", "/frame", "/popup"}.issubset(paths)
+            # Playwright's route hook records the original navigation request;
+            # the redirect target is independently verified via page.url/body above.
+            assert {"/redirect", "/pixel.png", "/frame", "/popup"}.issubset(paths)
             assert any("outside.invalid/cross-target" in url for url in blocked_requests)
             assert any("outside.invalid/pixel.png" in url for url in blocked_requests)
             assert any("outside.invalid/frame" in url for url in blocked_requests)
