@@ -168,6 +168,10 @@ class JsonlAuditLog:
         if not isinstance(event, ExecutionAuditEvent):
             raise TypeError("Only ExecutionAuditEvent records may be persisted.")
         event_data = asdict(event)
+        # Defense in depth: direct dataclass construction must not bypass the
+        # redaction applied by create_audit_event().
+        event_data["action"] = redact_sensitive_text(event_data["action"], limit=96)
+        event_data["reason"] = redact_sensitive_text(event_data["reason"], limit=256)
         with self._lock:
             previous_hash = self.verify()
             entry_hash = self._entry_hash(previous_hash, event_data)
