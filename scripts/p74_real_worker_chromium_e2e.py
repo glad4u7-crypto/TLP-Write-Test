@@ -270,7 +270,7 @@ def _chromium_dynamic_symbols(container_id: str) -> dict:
     )
     close_address = None
     for line in (result.stdout or "").splitlines():
-        match = re.match(r"^\\s*([0-9a-fA-F]+)\\s+[A-Za-z]\\s+close(?:@.*)?$", line)
+        match = re.match(r"^\s*([0-9a-fA-F]+)\s+[A-Za-z]\s+close(?:@.*)?$", line)
         if match:
             close_address = "0x" + match.group(1).lower()
             break
