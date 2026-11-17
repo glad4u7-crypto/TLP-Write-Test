@@ -130,3 +130,15 @@ This checkpoint does not modify production configuration, delete existing securi
 - Bounded read-only adapter registry and secure project-file inspection are implemented.
 - Injected web/HTTPS/YouTube provider adapters are contracts/wrappers only; no network provider is enabled.
 - Exact-head CI is pending. Do not mark P78 automated-PASS until the exact latest branch head completes successfully.
+
+## Code-first implementation reconciliation — 2026-11-17
+
+This section supersedes older P72 historical status notes above.
+
+- P78 read-only adapters and Owner Recovery UI are implemented.
+- P81 read-only local runtime diagnostics are implemented and surfaced in the local Owner sidebar. P81 core exact-head CI run #250 passed: **1,499 Python tests passed, 9 skipped; compile, dependency audit and responsive browser smoke passed**.
+- P82 Owner Backup & Restore UI is implemented in the local Owner sidebar. It creates a backup download and restores a validated archive only into a new directory; it does not overwrite or switch the live runtime.
+- P83 persistent task-plan storage is implemented in the SQLite memory database. Saved plans are Owner/project scoped, require explicit consent and payload-bound approval in the UI, and are revalidated before loading.
+- The Owner Health, Backup/Restore and Persistent Task Plan UI/storage additions are under exact-head CI verification. Latest code/documentation branch head at this update is `c250edd303bc5ece924a2b5bbe611c0b64a474db`; do not mark these newer additions verified until the exact-head run succeeds.
+- Personal Edition implementation continues code-first. Physical Android acceptance, Owner-operated restore drill and live isolated Browser/Worker egress qualification are intentionally deferred until the Owner starts using the app.
+- Browser/Worker DISABLED; Auto-Run OFF; no paid API/provider, payment, purchase, trading or money movement. PR #13 remains Draft/Open/Unmerged; C01 remains OPEN; C02 NOT STARTED.
