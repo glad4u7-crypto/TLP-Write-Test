@@ -285,3 +285,16 @@ def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch):
 
     assert result["marker_present"] is True
     assert "data:text/html," in captured["command"][-1]
+
+
+def test_command_timeout_diagnostics_are_redacted(monkeypatch):
+    import subprocess
+    def timeout(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=b"", stderr=b"Authorization: Bearer timeout-secret")
+    monkeypatch.setattr(qualification.subprocess, "run", timeout)
+
+    with pytest.raises(RuntimeError, match="timed out") as error:
+        qualification._run(["podman", "exec", "container", "chromium"], timeout=4)
+
+    assert "timeout-secret" not in str(error.value)
+    assert "[REDACTED]" in str(error.value)
