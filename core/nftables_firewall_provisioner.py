@@ -126,8 +126,14 @@ class NftablesFirewallProvisioner:
             actual_accepts = _accept_rules(output)
             if actual_accepts != expected_accepts:
                 raise FirewallProvisionError("firewall ACCEPT rules differ from the exact approved policy")
-            # A second base chain, indirect jump, or unexpected hook must never hide in the table.
-            chain_headers = [line.strip() for line in output.splitlines() if line.lstrip().startswith("chain ")]
-            if any(not re.search(r"type filter hook (input|output) priority [^;]+; policy drop;", line) for line in chain_headers):
-                raise FirewallProvisionError("firewall chain hook or policy is unexpected")
+            # Parse full multiline chain declarations; rules can themselves contain braces.
+            blocks = _chain_blocks(output)
+            if set(blocks) != {"input", "output"}:
+                raise FirewallProvisionError("firewall chain inventory is unexpected")
+            for name, hook in (("input", "input"), ("output", "output")):
+                if not re.search(
+                    rf"type filter hook {hook} priority [^;]+;\\s*policy drop;",
+                    blocks[name],
+                ):
+                    raise FirewallProvisionError("firewall chain hook or policy is unexpected")
         return output
