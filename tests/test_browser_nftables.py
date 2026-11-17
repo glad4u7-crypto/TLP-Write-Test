@@ -15,6 +15,8 @@ from core.browser_inspector import verify_signed_inspector_evidence
 
 
 PROXY_IP = "172.20.0.2"
+PROXY_IPV6 = "fd00::2"
+PROXY_IPS = [PROXY_IP, PROXY_IPV6]
 PROXY_PORT = 3128
 NOW = 1_000
 
@@ -63,37 +65,98 @@ def runtime_attestation(spec):
     }
 
 
-def match(left, right):
-    return {"match": {"op": "==", "left": left, "right": right}}
+def match(left, right, op="=="):
+    return {"match": {"op": op, "left": left, "right": right}}
+
+
+def rule(chain, expr):
+    return {"rule": {
+        "family": "inet", "table": "apaa", "chain": chain, "expr": expr,
+    }}
+
+
+def proxy_expr(address, direction, state):
+    import ipaddress
+    parsed = ipaddress.ip_address(address)
+    family = "ip" if parsed.version == 4 else "ip6"
+    ip_field, port_field = (("saddr", "sport") if direction == "input" else ("daddr", "dport"))
+    return [
+        match({"payload": {"protocol": family, "field": ip_field}}, parsed.compressed),
+        match({"payload": {"protocol": "tcp", "field": port_field}}, PROXY_PORT),
+        match({"ct": {"key": "state"}}, state, op="in"),
+        {"accept": None},
+    ]
 
 
 def allow_rule(address=PROXY_IP, port=PROXY_PORT):
-    return {
-        "rule": {
-            "family": "inet", "table": "filter", "chain": "egress",
-            "expr": [
-                match({"meta": {"key": "l4proto"}}, "tcp"),
-                match({"payload": {"protocol": "ip", "field": "daddr"}}, address),
-                match({"payload": {"protocol": "tcp", "field": "dport"}}, port),
-                {"accept": None},
-            ],
-        }
-    }
+    expr = proxy_expr(address, "output", "new")
+    expr[1]["match"]["right"] = port
+    return rule("output", expr)
 
 
 def nftables():
-    return {
-        "nftables": [
-            {"metainfo": {"version": "1.0.9", "release_name": "test"}},
-            {"table": {"family": "inet", "name": "filter"}},
-            {"chain": {
-                "family": "inet", "table": "filter", "name": "egress",
-                "type": "filter", "hook": "output", "prio": 0, "policy": "drop",
-            }},
-            allow_rule(),
-        ]
-    }
+    link_local = {"prefix": {"addr": "fe80::", "len": 10}}
+    link_multicast = {"prefix": {"addr": "ff02::", "len": 16}}
+    items = [
+        {"metainfo": {"version": "1.0.9", "release_name": "test"}},
+        {"table": {"family": "inet", "name": "apaa"}},
+        {"chain": {
+            "family": "inet", "table": "apaa", "name": "input",
+            "type": "filter", "hook": "input", "prio": 0, "policy": "drop",
+        }},
+        {"chain": {
+            "family": "inet", "table": "apaa", "name": "output",
+            "type": "filter", "hook": "output", "prio": 0, "policy": "drop",
+        }},
+        rule("input", [
+            match({"meta": {"key": "iifname"}}, "lo"), {"accept": None},
+        ]),
+        rule("input", [
+            match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            match({"payload": {"protocol": "icmpv6", "field": "type"}}, "nd-neighbor-solicit"),
+            {"accept": None},
+        ]),
+        rule("input", [
+            match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            match({"payload": {"protocol": "icmpv6", "field": "type"}}, "nd-neighbor-advert"),
+            {"accept": None},
+        ]),
+        rule("output", [
+            match({"meta": {"key": "oifname"}}, "lo"), {"accept": None},
+        ]),
+        rule("output", [
+            match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            match({"payload": {"protocol": "ip6", "field": "daddr"}}, link_multicast),
+            match({"payload": {"protocol": "icmpv6", "field": "type"}}, "nd-neighbor-solicit"),
+            {"accept": None},
+        ]),
+        rule("output", [
+            match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            match({"payload": {"protocol": "ip6", "field": "daddr"}}, link_local),
+            match({"payload": {"protocol": "icmpv6", "field": "type"}}, "nd-neighbor-advert"),
+            {"accept": None},
+        ]),
+        rule("output", [
+            match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            match({"payload": {"protocol": "ip6", "field": "daddr"}}, link_multicast),
+            match({"payload": {"protocol": "icmpv6", "field": "type"}}, "nd-neighbor-advert"),
+            {"accept": None},
+        ]),
+    ]
+    for address in PROXY_IPS:
+        items.append(rule("input", proxy_expr(address, "input", ["established", "related"])))
+        items.append(rule("output", proxy_expr(address, "output", ["established", "related"])))
+        items.append(rule("output", proxy_expr(address, "output", "new")))
+    return {"nftables": items}
 
+
+def _first_proxy_output_rule(document):
+    return next(
+        item["rule"] for item in document["nftables"]
+        if "rule" in item and item["rule"]["chain"] == "output"
+        and item["rule"]["expr"][0].get("match", {}).get("left", {}).get("payload", {}).get("field") == "daddr"
+        and item["rule"]["expr"][2].get("match", {}).get("right") == "new"
+    )
 
 class FakeHostSource:
     def __init__(self, spec, rules=None):
@@ -122,11 +185,11 @@ class FakeHostSource:
 
 def test_parser_accepts_exact_proxy_only_output_policy_and_digest():
     parsed = parse_nftables_egress(
-        json.dumps(nftables()), expected_proxy_addresses=[PROXY_IP],
+        json.dumps(nftables()), expected_proxy_addresses=PROXY_IPS,
         expected_proxy_port=PROXY_PORT,
     )
     assert parsed.default_policy == "drop"
-    assert parsed.allowed_egress == ((PROXY_IP, "tcp", PROXY_PORT),)
+    assert parsed.allowed_egress == ((PROXY_IP, "tcp", PROXY_PORT), (PROXY_IPV6, "tcp", PROXY_PORT))
     assert len(parsed.ruleset_digest) == 64
 
 
@@ -137,29 +200,29 @@ def test_parser_accepts_exact_proxy_only_output_policy_and_digest():
         "type": "filter", "hook": "output", "prio": 1, "policy": "drop",
     }}),
     lambda doc: doc["nftables"].append(allow_rule("1.1.1.1", 443)),
-    lambda doc: doc["nftables"][3]["rule"]["expr"][0]["match"].update(right="udp"),
-    lambda doc: doc["nftables"][3]["rule"]["expr"].append({"counter": {"packets": 1, "bytes": 1}}),
-    lambda doc: doc["nftables"][3]["rule"]["expr"].__setitem__(3, {"jump": {"target": "allow_all"}}),
-    lambda doc: doc["nftables"][3]["rule"]["expr"][1]["match"].update(right="0.0.0.0/0"),
+    lambda doc: _first_proxy_output_rule(doc)["expr"][1]["match"].update(left={"payload": {"protocol": "udp", "field": "dport"}}),
+    lambda doc: _first_proxy_output_rule(doc)["expr"].append({"counter": {"packets": 1, "bytes": 1}}),
+    lambda doc: _first_proxy_output_rule(doc)["expr"].__setitem__(3, {"jump": {"target": "allow_all"}}),
+    lambda doc: _first_proxy_output_rule(doc)["expr"][0]["match"].update(right="0.0.0.0/0"),
 ])
 def test_parser_rejects_unsafe_or_unknown_output_rules(mutate):
     doc = nftables()
     mutate(doc)
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
-            doc, expected_proxy_addresses=[PROXY_IP], expected_proxy_port=PROXY_PORT,
+            doc, expected_proxy_addresses=PROXY_IPS, expected_proxy_port=PROXY_PORT,
         )
 
 
 def test_parser_rejects_wrong_proxy_ip_or_port():
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
-            nftables(), expected_proxy_addresses=["172.20.0.3"],
+            nftables(), expected_proxy_addresses=["172.20.0.3", PROXY_IPV6],
             expected_proxy_port=PROXY_PORT,
         )
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
-            nftables(), expected_proxy_addresses=[PROXY_IP],
+            nftables(), expected_proxy_addresses=PROXY_IPS,
             expected_proxy_port=3129,
         )
 
