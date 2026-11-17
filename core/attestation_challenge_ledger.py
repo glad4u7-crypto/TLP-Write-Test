@@ -6,6 +6,7 @@ and back it up as part of the host security state.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,12 +35,31 @@ class SQLiteChallengeLedger:
         self._lock = threading.RLock()
         if not self.path.parent.is_dir() or self.path.parent.is_symlink():
             raise ValueError("challenge ledger parent must be an existing non-symlink directory")
-        if self.path.is_symlink():
-            raise ValueError("challenge ledger must not be a symlink")
-        if self.path.exists():
-            mode = stat.S_IMODE(self.path.stat().st_mode)
-            if not stat.S_ISREG(self.path.stat().st_mode) or mode & 0o077:
-                raise ValueError("existing challenge ledger must be a private regular file")
+        parent_info = self.path.parent.stat()
+        if (not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != os.geteuid()
+                or stat.S_IMODE(parent_info.st_mode) & 0o077):
+            raise ValueError("challenge ledger parent must be owner-owned and private (0700)")
+        # Create the database with private permissions from its first inode;
+        # chmod-after-SQLite-create would leave a brief world-readable window.
+        try:
+            fd = os.open(
+                self.path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+        except FileExistsError:
+            fd = None
+        except OSError as exc:
+            raise ChallengeLedgerError("challenge ledger file could not be securely created") from exc
+        if fd is not None:
+            os.close(fd)
+        try:
+            info = os.lstat(self.path)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) & 0o077):
+                raise ValueError("challenge ledger must be an owner-owned private regular file")
+        except OSError as exc:
+            raise ChallengeLedgerError("challenge ledger file could not be safely inspected") from exc
         try:
             with self._database() as db:
                 db.execute(
@@ -79,7 +99,7 @@ class SQLiteChallengeLedger:
                 cursor = db.execute(
                     "INSERT INTO consumed_challenges(challenge, consumed_at) "
                     "VALUES (?, ?) ON CONFLICT(challenge) DO NOTHING",
-                    (challenge, timestamp),
+                    (hashlib.sha256(challenge.encode("ascii")).hexdigest(), timestamp),
                 )
                 return cursor.rowcount == 1
         except sqlite3.Error as exc:
