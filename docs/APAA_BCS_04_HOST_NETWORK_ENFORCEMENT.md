@@ -688,3 +688,10 @@ The next diagnostic revision also records per-family proxy accept/reject counts 
 The third real OCI attempt confirmed Chromium's user-namespace sandbox was healthy but the proxy recorded zero accepted connections, zero rejected CONNECT requests and zero upstream dials. The target resolver rule `MAP * ~NOTFOUND` did not explicitly exempt the numeric proxy endpoint. The qualification now uses `MAP * ~NOTFOUND, EXCLUDE <proxy-IP>` for both IPv4 and IPv6, keeping target DNS fail-closed while permitting resolution/connection to the numeric mandatory proxy. The same explicit proxy exemption is used in the proxy-outage test so that it actually reaches the stopped proxy instead of passing because proxy name resolution was blocked. Added regression tests for both address families.
 
 This is a targeted hypothesis from the observed zero-connection telemetry; a new real-host run must confirm the result before any PASS is claimed.
+
+
+## Chromium proxy configuration correction
+
+Explicitly exempting the numeric proxy IP from host-resolver rules did not change the observed result: Chromium still made zero connections to the proxy. The qualification therefore removes the unnecessary host-resolver override and now passes a single explicit `http://<numeric-proxy-IP>:<port>` proxy URI for each address family. Chromium's HTTP proxy mode defers target hostname resolution to the proxy and uses CONNECT for HTTPS; the independent nftables default-DROP boundary continues to block direct DNS and direct TCP/UDP. The proxy outage test uses the same HTTP proxy URI with the listener stopped, so it tests actual proxy failure rather than a local resolver failure. IPv4/IPv6 URI formatting is covered by tests.
+
+A fresh disposable-host qualification is required to verify this configuration; no real Chromium pass is claimed yet.
