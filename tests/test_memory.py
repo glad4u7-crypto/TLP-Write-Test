@@ -137,3 +137,40 @@ def test_checkpoint_history_is_newest_first_and_bounded(store, alice, bob):
     assert history[0].status == "blocked"
     assert store.list_checkpoints(alice, "APAA", limit=1) == (history[0],)
     assert store.list_checkpoints(bob, "APAA") == ()
+
+
+
+def test_task_plan_step_progress_is_durable_consent_gated_and_tenant_scoped(store, alice, bob):
+    with pytest.raises(PermissionError):
+        store.set_task_plan_step_progress(
+            alice, project_id="p1", plan_id="plan-0123456789abcdef",
+            step_id="step-1", title="Review files", completed=True,
+        )
+    saved = store.set_task_plan_step_progress(
+        alice, project_id="p1", plan_id="plan-0123456789abcdef",
+        step_id="step-1", title="Review files", completed=True, consent=True,
+    )
+    assert saved.status == "completed"
+    assert store.list_task_plan_step_progress(
+        alice, project_id="p1", plan_id="plan-0123456789abcdef"
+    ) == (saved,)
+    assert store.list_task_plan_step_progress(
+        bob, project_id="p1", plan_id="plan-0123456789abcdef"
+    ) == ()
+    reset = store.set_task_plan_step_progress(
+        alice, project_id="p1", plan_id="plan-0123456789abcdef",
+        step_id="step-1", title="Review files", completed=False, consent=True,
+    )
+    assert reset.status == "pending"
+    assert len(store.list_task_plan_step_progress(
+        alice, project_id="p1", plan_id="plan-0123456789abcdef"
+    )) == 1
+
+
+@pytest.mark.parametrize("step_id", ["../escape", "", "a" * 65])
+def test_task_plan_step_progress_rejects_unsafe_step_ids(store, alice, step_id):
+    with pytest.raises(ValueError):
+        store.set_task_plan_step_progress(
+            alice, project_id="p1", plan_id="plan-0123456789abcdef",
+            step_id=step_id, title="Step", completed=True, consent=True,
+        )
