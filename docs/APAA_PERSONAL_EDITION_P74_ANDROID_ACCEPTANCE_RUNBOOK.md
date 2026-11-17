@@ -18,7 +18,7 @@ Record exact commit SHA and app version. Use synthetic data only. Never capture 
 | A04 | Refresh and reopen app | Permitted projects/checkpoints persist | Synthetic record IDs |
 | A05 | Create harmless test project and inspect preview | No mutation before explicit Confirm | Before/after state |
 | A06 | Cancel project approval | No project created; cancel/denial audit recorded | Audit event IDs |
-| A07 | Confirm harmless test project | Exactly one project created; intent and outcome audit recorded | Audit event IDs |
+| A07 | Confirm harmless test project | Exactly one project created; intent and outcome audit recorded and visible in Owner Action history | Audit sequence IDs + redacted history view |
 | A08 | Replay same approval | Replay rejected; no second mutation | Redacted rejection |
 | A09 | Attempt unknown or prohibited action | Fail-closed denial; no handler dispatch | Policy reason code |
 | A10 | Logout; test 15-minute idle expiry and 12-hour absolute expiry | Protected pages/data, pending drafts and approval capabilities are inaccessible until re-login | Redacted session result |
