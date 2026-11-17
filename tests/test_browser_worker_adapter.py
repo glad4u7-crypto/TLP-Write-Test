@@ -37,18 +37,20 @@ class FakeSnapshotSource:
 
 
 class FakeProcess:
-    def __init__(self, result=None, *, fail_terminate=False):
+    def __init__(self, result=None, *, fail_terminate=False, block=False):
         self.result = result or {"ok": True}
         self.fail_terminate = fail_terminate
+        self.block = block
         self.terminate_calls = 0
         self.stop = threading.Event()
 
     def run(self, job, **kwargs):
-        while not self.stop.wait(0.01):
-            if kwargs["cancellation"].cancelled:
-                break
-            if time.monotonic() >= kwargs["deadline_monotonic"]:
-                break
+        if self.block:
+            while not self.stop.wait(0.01):
+                if kwargs["cancellation"].cancelled:
+                    break
+                if time.monotonic() >= kwargs["deadline_monotonic"]:
+                    break
         return self.result
 
     def terminate(self):
