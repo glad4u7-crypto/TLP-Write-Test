@@ -104,7 +104,13 @@ class ReadRequest:
                 raise CapabilityContractError("Page-read requests accept only a target URL.")
             _validate_https_target(self.target)
         elif self.capability is ReadCapability.FILE_INSPECT:
-            if self.query or not self.project_id or len(self.project_id) > 128:
+            if (
+                self.query
+                or not self.project_id
+                or self.project_id != self.project_id.strip()
+                or len(self.project_id) > 128
+                or any(ord(ch) < 32 for ch in self.project_id)
+            ):
                 raise CapabilityContractError("File inspection requires a bounded project_id and no query.")
             _validate_project_relative_path(self.target)
 
