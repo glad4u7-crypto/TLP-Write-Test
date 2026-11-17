@@ -13,7 +13,7 @@ class OCIRuntimeError(RuntimeError):
 
 
 _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
-_IMAGE_DIGEST = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
+_IMAGE_DIGEST = re.compile(r"^(?:sha256:[0-9a-f]{64}|.+@sha256:[0-9a-f]{64})$")
 _WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _CGROUP_PARENT = re.compile(r"^/sys/fs/cgroup/apaa/[a-z][a-z0-9_-]{0,31}$")
 
@@ -91,7 +91,7 @@ class PodmanOCIRuntime:
 
     def create(self, spec: OCIWorkerSpec) -> str:
         args = [
-            "create", "--pull=never",
+            "--cgroup-manager=cgroupfs", "create", "--pull=never",
             "--name", f"apaa-{spec.worker_id}",
             "--label", f"org.apaa.worker={spec.worker_id}",
             "--network", f"ns:{spec.network_namespace}",
