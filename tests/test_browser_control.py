@@ -132,3 +132,15 @@ def test_browser_boundary_rejects_owner_tenant_mismatch(tmp_path):
             audit_log=audit,
             owner_session_check=lambda: True,
         )
+
+
+def test_browser_read_can_never_use_auto_run_even_if_listed():
+    from core.safety import authorize_action
+
+    decision = authorize_action(
+        BROWSER_APPROVAL_ACTION,
+        auto_run=True,
+        auto_run_actions=(BROWSER_APPROVAL_ACTION,),
+    )
+    assert decision.allowed is False
+    assert "fresh explicit Owner approval" in decision.reason
