@@ -22,7 +22,7 @@ Provide the first application-level live-browsing execution boundary without ena
 3. Only GET and HEAD requests; mutation methods are blocked.
 4. Cross-origin redirects, subresources and other origin escapes are aborted.
 5. Maximum 250 requests per job.
-6. Downloads remain disabled; service workers remain blocked by the attested launcher; unexpected popup pages are closed.
+6. Downloads remain disabled; service workers remain blocked by the attested launcher; WebSocket/WSS channels are explicitly closed; unexpected popup pages are closed.
 7. Supported actions are limited to exact-origin navigation, visible text, page title, same-origin link metadata and a transient screenshot.
 8. Required acceptance audit must persist before browser launch; URL and page content are excluded from audit events.
 9. Browser context/session is closed after success or failure.
@@ -45,13 +45,14 @@ The test is not permission to browse arbitrary public websites and does not prov
 - No public-origin allowlist has been provisioned.
 - No live user browsing, authenticated sessions, cookies, form submission, downloads, purchases, payments, trading, money movement, paid APIs, Auto-Run, deployment or PR merge is enabled.
 - The proxy must enforce connection-time DNS resolution, pinned-IP dialing, TLS SNI/hostname verification and proxy-only worker egress.
-- Redirect, WebSocket/WSS, iframe, popup, subresource and DNS-rebinding behavior still require a full browser integration matrix at the actual isolated worker boundary.
+- WebSocket/WSS denial is implemented in the controller but still needs a dedicated real-browser assertion. Redirect, iframe, popup, subresource and DNS-rebinding behavior still require a full browser integration matrix at the actual isolated worker boundary.
 - The previous Action 09 Chromium TLS CI must also be green; no test is accepted from source inspection alone.
 
 ## Acceptance checklist
 
 - [x] Read-only controller authored behind the signed runtime launch function.
 - [x] Exact-origin request guard and GET/HEAD-only policy.
+- [x] WebSocket/WSS connections are explicitly denied; runtimes without the route API fail closed.
 - [x] Required audit-before-launch and bounded result handling.
 - [x] Unit tests authored for policy and lifecycle.
 - [x] Real Chromium local-fixture integration test authored.
