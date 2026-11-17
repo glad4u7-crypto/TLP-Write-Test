@@ -217,9 +217,12 @@ def test_cancel_terminates_remote_process_and_waits_for_cleanup(monkeypatch):
     thread = threading.Thread(target=run)
     thread.start()
     deadline = time.monotonic() + 2
-    while not any(call[0] == "start" for call in backend.calls) and time.monotonic() < deadline:
+    while (
+        worker._states.get("session-cancel-1234") is None
+        or worker._states["session-cancel-1234"].process is None
+    ) and time.monotonic() < deadline:
         time.sleep(0.01)
-    assert any(call[0] == "start" for call in backend.calls)
+    assert worker._states["session-cancel-1234"].process is not None
     cancellation.cancel()
     assert worker.terminate("session-cancel-1234") is True
     thread.join(timeout=2)
