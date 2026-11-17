@@ -2,7 +2,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.attested_browser_runtime import AttestedBrowserRuntime, BrowserRuntimeGateError
-from core.browser_execution import BrowserExecutionCoordinator
+from core.browser_execution import BrowserExecutionCoordinator, BrowserExecutionError
 from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_nftables import collect_signed_inspector_evidence
@@ -337,7 +337,7 @@ def test_execution_coordinator_rejects_invalid_worker_from_verified_gate():
         expected_proxy_addresses=[PROXY_IP],
         worker_start=lambda passed_spec, evidence: object(),
     )
-    with pytest.raises(Exception, match="invalid worker handle"):
+    with pytest.raises(BrowserExecutionError, match="invalid worker handle"):
         BrowserExecutionCoordinator.from_attested_runtime(
             gate,
             signed_evidence(spec, key),
