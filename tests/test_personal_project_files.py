@@ -70,6 +70,19 @@ def test_project_file_listing_never_follows_symlinked_file(tmp_path):
     assert [entry.name for entry in entries] == ["safe.txt"]
 
 
+
+
+def test_project_file_listing_rejects_null_bytes_in_preexisting_files(tmp_path):
+    root = tmp_path / "owner-data"
+    save_project_file(root, "project-1", "safe.txt", b"safe", consent=True)
+    directory = project_files_directory(root, "project-1")
+    # Simulate a file created outside the approved upload path or tampered locally.
+    (directory / "malformed.txt").write_bytes(b"visible\\x00hidden")
+
+    entries = list_project_files(root, "project-1")
+    assert [entry.name for entry in entries] == ["safe.txt"]
+
+
 def test_project_file_root_symlink_is_rejected_for_reading(tmp_path):
     actual = tmp_path / "actual"
     actual.mkdir(mode=0o700)
