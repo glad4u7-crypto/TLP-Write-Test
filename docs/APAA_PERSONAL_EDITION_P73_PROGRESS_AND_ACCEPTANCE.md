@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-PERSONAL-P73  
 **Date:** 2026-11-17  
 **Branch:** `apaa-personal-edition-foundation`  
-**Status:** Repository implementation and exact-head automated verification PASS; physical/external acceptance gates remain.  
+**Status:** P73 repository implementation has prior exact-head automated PASS evidence; the latest Owner-security/action-approval changes are awaiting their own exact-head CI. Physical/external acceptance gates remain.  
 **PR:** #13 — Draft / Open / Unmerged.
 
 ## 1. Implemented repository work
@@ -25,7 +25,7 @@
 - Approval receipts bind exact action, payload digest, tenant, session and bounded expiry.
 - Project creation is review-first and only executes on the explicit Confirm action.
 - Intent audit is persisted before project mutation; audit failure blocks dispatch.
-- Memory, knowledge, conversation, preference and checkpoint mutations use a fail-closed metadata-only audit wrapper. Explicit consent remains required for content writes.
+- Memory, knowledge, conversation, preference and checkpoint mutations use a fail-closed metadata-only audit wrapper. Each call now requires an explicit approval argument: save forms bind to the corresponding consent checkbox and delete actions bind to the named Owner delete button.
 - Audit records exclude task/content payloads and persist in the SQLite security database.
 - Auto-Run remains OFF with no configured Auto-Run allowlist.
 
@@ -134,4 +134,8 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 **Current code head:** `da83d1e0998948902524f3b1d8ae5590550e930f`.  
 **Earlier CI feedback:** workflow run `44006192350` on the prior PR validation snapshot found seven test failures (lockout-boundary expectation, identity cleanup coverage, reusable test auth setup, and planner UI fixtures). The underlying issues were corrected in follow-up commits. That failed run is not evidence for the current head. Exact-head CI for `da83d1e0998948902524f3b1d8ae5590550e930f` remains PENDING / NOT OBSERVED. Do not mark this workstream PASS until the full P73 workflow completes successfully on the exact head.
 
-**Still pending in this workstream:** dedicated passphrase-change UI, end-to-end action permission/approval coverage for every mutation surface, audit review of login/security events, and exact-head CI. Owner login implementation does not complete all Owner, Permission & Approval Security requirements.
+**Owner passphrase-change UI and payload-free security-event history:** implemented on the current branch. The local auth event table is not independently tamper-proof.
+
+**Action audit follow-up:** a code review found the common UI mutation wrapper self-supplied its approval value. The wrapper now requires an explicit boolean approval argument; all nine app mutation call sites pass the relevant Owner consent checkbox or the named delete-button event. Tests verify missing/non-boolean approval fails before audit intent or dispatch.
+
+**Current latest source head:** to be recorded after the full exact-head CI for these changes. Previous exact-head CI results do not apply to the new approval-hardening commits.
