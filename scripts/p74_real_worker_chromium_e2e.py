@@ -581,19 +581,23 @@ def _run_chromium_with_fd_snapshots(
         for reader in readers:
             reader.join(timeout=2)
         raise
+    for reader in readers:
+        reader.join(timeout=5)
     if len(snapshots) < max_snapshots:
         try:
             final_snapshot = snapshot_cgroup(
                 cgroup_dir, max_processes=96, max_fds_per_process=192,
             )
             final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=180_000)
-            final_safe_snapshot["capture_reason"] = "final"
+            if fd_marker_event.is_set():
+                final_safe_snapshot["capture_reason"] = "fd-ownership-marker-post-exit"
+                marker_trigger_snapshots += 1
+            else:
+                final_safe_snapshot["capture_reason"] = "final"
             snapshots.append(final_safe_snapshot)
         except Exception as exc:
             if len(diagnostic_errors) < 3:
                 diagnostic_errors.append(type(exc).__name__)
-    for reader in readers:
-        reader.join(timeout=5)
     stdout = "".join(captured["stdout"])
     stderr = "".join(captured["stderr"])
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
