@@ -111,7 +111,14 @@ class SecureBrowserAdapter:
         try:
             context = session.context
             page = session.page
-            if not callable(getattr(context, "route_web_socket", None)):\n                raise SecureBrowserAdapterError(\n                    "Browser runtime cannot enforce the required WebSocket-deny policy."\n                )\n            if not callable(getattr(context, "on", None)):\n                raise SecureBrowserAdapterError(\n                    "Browser runtime cannot enforce page-wide file chooser policy."\n                )
+            if not callable(getattr(context, "route_web_socket", None)):
+                raise SecureBrowserAdapterError(
+                    "Browser runtime cannot enforce the required WebSocket-deny policy."
+                )
+            if not callable(getattr(context, "on", None)):
+                raise SecureBrowserAdapterError(
+                    "Browser runtime cannot enforce page-wide file chooser policy."
+                )
             navigation = SafeNavigationController(
                 page,
                 self._policy,
