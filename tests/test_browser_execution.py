@@ -399,6 +399,7 @@ def test_cancel_wakes_coordinator_without_waiting_for_worker_callback():
     {"text": "x" * 1000},
     {"text": object()},
     {1: "non-string-key"},
+    {"nested": {1: "non-string-nested-key"}},
     {"number": float("nan")},
 ])
 def test_worker_result_must_be_json_safe_and_within_response_limit(result):
