@@ -514,15 +514,21 @@ def _browser_owner_session_is_active():
         and current >= float(auth_at) and current >= float(activity_at)
     )
 
-_browser_control_boundary = BrowserControlBoundary(
-    owner_principal=checkpoint_principal,
-    owner_tenant=tenant,
-    owner_verified=True,  # app-level Owner gate above has already succeeded
-    session_scope=_active_browser_session_scope,
-    approval_authority=st.session_state["approval_authority"],
-    audit_log=audit_log,
-    owner_session_check=_browser_owner_session_is_active,
+_browser_owner_verified = principal is None or (
+    global_owner_config is not None
+    and is_global_owner(principal, global_owner_config)
 )
+_browser_control_boundary = None
+if _browser_owner_verified:
+    _browser_control_boundary = BrowserControlBoundary(
+        owner_principal=checkpoint_principal,
+        owner_tenant=tenant,
+        owner_verified=True,  # trusted local/global Owner gate has succeeded
+        session_scope=_active_browser_session_scope,
+        approval_authority=st.session_state["approval_authority"],
+        audit_log=audit_log,
+        owner_session_check=_browser_owner_session_is_active,
+    )
 
 def visible_projects():
     if principal is not None:
