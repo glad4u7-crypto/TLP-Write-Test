@@ -24,20 +24,43 @@ class Diagnostic:
 _DATABASE_FIELDS = ("projects_db", "security_db", "owner_auth_db", "memory_db")
 
 
+def _path_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _contains_symlink_component(path: Path) -> bool:
+    for component in (path, *path.parents):
+        try:
+            metadata = component.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            return True
+    return False
+
+
 def _is_safe_regular_file(path: Path) -> bool:
+    if _contains_symlink_component(path):
+        return False
     try:
         metadata = path.lstat()
     except FileNotFoundError:
         return False
-    return stat.S_ISREG(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode)
+    return stat.S_ISREG(metadata.st_mode)
 
 
 def _directory_is_private(path: Path) -> bool:
+    if _contains_symlink_component(path):
+        return False
     try:
         metadata = path.lstat()
     except FileNotFoundError:
         return False
-    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+    if not stat.S_ISDIR(metadata.st_mode):
         return False
     return os.name != "posix" or not (metadata.st_mode & 0o077)
 
@@ -57,7 +80,7 @@ def inspect_personal_runtime(data_dir: str | Path) -> list[Diagnostic]:
     paths: PersonalRuntimePaths = personal_runtime_paths(data_dir)
     results: list[Diagnostic] = []
 
-    if not paths.data_dir.exists():
+    if not _path_exists(paths.data_dir):
         results.append(Diagnostic(
             "data_dir", "INFO", "Personal data directory is not initialized yet."
         ))
@@ -76,7 +99,7 @@ def inspect_personal_runtime(data_dir: str | Path) -> list[Diagnostic]:
 
     for field in _DATABASE_FIELDS:
         db_path = getattr(paths, field)
-        if not db_path.exists():
+        if not _path_exists(db_path):
             results.append(Diagnostic(
                 field, "INFO", "Database has not been created yet."
             ))
@@ -94,7 +117,7 @@ def inspect_personal_runtime(data_dir: str | Path) -> list[Diagnostic]:
             ))
 
     key_path = paths.signing_key
-    if not key_path.exists():
+    if not _path_exists(key_path):
         results.append(Diagnostic(
             "signing_key", "INFO", "Approval signing key has not been initialized yet."
         ))
@@ -120,7 +143,7 @@ def inspect_personal_runtime(data_dir: str | Path) -> list[Diagnostic]:
                 "signing_key", "FAIL", "Signing key permissions or length are invalid; key was not modified."
             ))
 
-    if paths.audit_log.exists():
+    if _path_exists(paths.audit_log):
         if _is_safe_regular_file(paths.audit_log):
             results.append(Diagnostic(
                 "audit_log", "PASS", "Audit log path is a regular non-symlink file."
