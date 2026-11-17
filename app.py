@@ -859,7 +859,7 @@ else:
             try:
                 tags = [tag.strip() for tag in memory_tags.split(",") if tag.strip()]
                 execute_audited_ui_mutation(
-                    audit_log, "memory.add",
+                    audit_log, "memory.add", memory_consent,
                     lambda: memory_store.add_memory(
                         tenant, category=memory_category, content=memory_content, tags=tags,
                         pinned=memory_pinned, consent=memory_consent,
@@ -876,7 +876,7 @@ else:
                 if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
                     try:
                         execute_audited_ui_mutation(
-                            audit_log, "memory.delete",
+                            audit_log, "memory.delete", True,
                             lambda: memory_store.delete_memory(tenant, item.memory_id),
                         )
                         st.rerun()
@@ -895,7 +895,7 @@ else:
             try:
                 tags = [tag.strip() for tag in knowledge_tags.split(",") if tag.strip()]
                 execute_audited_ui_mutation(
-                    audit_log, "knowledge.add",
+                    audit_log, "knowledge.add", knowledge_consent,
                     lambda: memory_store.add_knowledge(
                         tenant, title=knowledge_title, content=knowledge_content,
                         tags=tags, consent=knowledge_consent,
@@ -920,7 +920,7 @@ else:
                 if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
                     try:
                         execute_audited_ui_mutation(
-                            audit_log, "knowledge.delete",
+                            audit_log, "knowledge.delete", True,
                             lambda: memory_store.delete_knowledge(tenant, document.document_id),
                         )
                         st.rerun()
@@ -938,7 +938,7 @@ else:
         if conversation_submit:
             try:
                 execute_audited_ui_mutation(
-                    audit_log, "conversation.append_turn",
+                    audit_log, "conversation.append_turn", conversation_consent,
                     lambda: memory_store.append_turn(
                         tenant, conversation_id=conversation_id, role=conversation_role,
                         content=conversation_content, consent=conversation_consent,
@@ -955,7 +955,7 @@ else:
             if st.button("Delete this conversation history", key="delete_conversation_history"):
                 try:
                     execute_audited_ui_mutation(
-                        audit_log, "conversation.delete",
+                        audit_log, "conversation.delete", True,
                         lambda: memory_store.delete_conversation(tenant, context_id),
                     )
                     st.rerun()
@@ -972,7 +972,7 @@ else:
         if preference_submit:
             try:
                 execute_audited_ui_mutation(
-                    audit_log, "preference.save",
+                    audit_log, "preference.save", preference_consent,
                     lambda: memory_store.save_preference(
                         tenant, key=preference_key, value=preference_value,
                         consent=preference_consent,
@@ -987,7 +987,7 @@ else:
             if st.button("Delete preference", key=f"delete_preference_{key}"):
                 try:
                     execute_audited_ui_mutation(
-                        audit_log, "preference.delete",
+                        audit_log, "preference.delete", True,
                         lambda: memory_store.delete_preference(tenant, key),
                     )
                     st.rerun()
@@ -1013,7 +1013,7 @@ else:
             if checkpoint_submit:
                 try:
                     execute_audited_ui_mutation(
-                        audit_log, "checkpoint.save",
+                        audit_log, "checkpoint.save", checkpoint_consent,
                         lambda: checkpoint_access.save_checkpoint(
                             project_id=checkpoint_project, label=checkpoint_label,
                             summary=checkpoint_summary, next_action=checkpoint_next,
