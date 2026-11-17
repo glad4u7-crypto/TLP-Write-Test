@@ -36,14 +36,14 @@ def execute_audited_ui_mutation(
 
     try:
         result = operation()
-    except Exception as operation_error:
+    except Exception:
         try:
             audit_log.append(create_audit_event(action, False, "ui_mutation_failed"))
         except Exception as audit_error:
             raise UIActionAuditError(
                 "The change failed and its failure could not be recorded; manual review is required."
             ) from audit_error
-        raise operation_error
+        raise
 
     try:
         audit_log.append(create_audit_event(action, True, "ui_mutation_completed"))
