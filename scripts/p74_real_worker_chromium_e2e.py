@@ -236,13 +236,13 @@ def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str, cgroup_
         "--disable-dev-shm-usage", "--user-data-dir=/tmp/apaa-chromium-smoke",
         "--disable-background-networking", "--no-first-run", "--dump-dom", data_url,
     ]), cgroup_dir, timeout=45)
-    if "<html" not in result.stdout.lower() or marker not in result.stdout:
-        details = _chromium_failure_details(result, "local-data-url", marker)
-        raise RuntimeError(f"Chromium local dump-dom smoke test failed: {details}")
+    marker_present = "<html" in result.stdout.lower() and marker in result.stdout
     return ({
+        "exit_code": result.returncode,
         "stdout_bytes": len(result.stdout.encode("utf-8")),
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
-        "marker_present": True,
+        "marker_present": marker_present,
+        "failure": _chromium_failure_details(result, "local-data-url", marker) if not marker_present else None,
     }, fd_diagnostics)
 
 def _probe_blocked(
@@ -673,6 +673,8 @@ def main() -> int:
         local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
         evidence["chromium_local_dump_dom"] = local_smoke
         evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
+        if not local_smoke["marker_present"]:
+            raise RuntimeError(f"Chromium local dump-dom smoke test failed: {local_smoke['failure']}")
         evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
         post_start_state = post_start_inspect.get("State") or {}
