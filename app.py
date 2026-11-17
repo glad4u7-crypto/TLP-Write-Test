@@ -332,7 +332,13 @@ def visible_project(project_id):
         except AuthorizationDenied:
             return None
     project = registry.get(project_id)
-    return project if project and project.owner_subject == "local-prototype" else None
+    return (
+        project
+        if project
+        and project.owner_subject == PERSONAL_OWNER_TENANT.subject
+        and project.owner_issuer == PERSONAL_OWNER_TENANT.issuer
+        else None
+    )
 
 st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
