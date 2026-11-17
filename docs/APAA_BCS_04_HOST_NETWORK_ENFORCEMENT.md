@@ -393,3 +393,20 @@ and call the startup recovery boundary before exposing browser dispatch.
 The existing injected `IsolatedWorkerBackend` is still not a production backend.
 Browser/Worker dispatch and Public Live Browsing remain DISABLED; Auto-Run OFF.
 No merge or deployment.
+
+
+### Browser protocol and DNS confinement
+
+The signed Playwright Chromium launcher and disposable-host qualification now
+disable HTTP/2 (preventing cross-origin HTTP/2 connection coalescing), disable
+QUIC/HTTP/3, and apply a Chromium host-resolver rule that prevents local DNS
+resolution. The proxy address is numeric and pinned by signed firewall evidence;
+origin DNS is resolved only by the host-side pinned proxy. UDP DNS/QUIC probes
+showed the runner's default seccomp profile denies UDP socket creation with
+EPERM. The harness now records this explicitly as
+`seccomp_socket_creation_denied` for UDP probes only; it does not mislabel it
+as an nftables drop. TCP direct-egress probes still require a real
+network-unreachable/no-route/timeout result. IPv4 and IPv6 UDP/443 probes are
+both recorded. No seccomp rule was weakened.
+
+These protocol-confinement changes are queued for exact-head CI and disposable-host requalification.
