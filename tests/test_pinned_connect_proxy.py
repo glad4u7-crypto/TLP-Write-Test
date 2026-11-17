@@ -36,19 +36,19 @@ def _client_hello(host: str | None = "example.com") -> bytes:
     extensions = b""
     if host is not None:
         name = host.encode("ascii")
-        entry = b"\\x00" + len(name).to_bytes(2, "big") + name
+        entry = b"\x00" + len(name).to_bytes(2, "big") + name
         names = len(entry).to_bytes(2, "big") + entry
-        extensions = b"\\x00\\x00" + len(names).to_bytes(2, "big") + names
+        extensions = b"\x00\x00" + len(names).to_bytes(2, "big") + names
     body = (
-        b"\\x03\\x03" + b"\\x01" * 32 + b"\\x00"
-        + b"\\x00\\x02\\x13\\x01" + b"\\x01\\x00"
+        b"\x03\x03" + b"\x01" * 32 + b"\x00"
+        + b"\x00\x02\x13\x01" + b"\x01\x00"
         + len(extensions).to_bytes(2, "big") + extensions
     )
-    return b"\\x01" + len(body).to_bytes(3, "big") + body
+    return b"\x01" + len(body).to_bytes(3, "big") + body
 
 
 def _tls_record(payload: bytes) -> bytes:
-    return b"\\x16\\x03\\x03" + len(payload).to_bytes(2, "big") + payload
+    return b"\x16\x03\x03" + len(payload).to_bytes(2, "big") + payload
 
 
 def test_tls_client_hello_sni_is_parsed_and_canonicalized():
@@ -80,7 +80,7 @@ def test_tls_client_hello_duplicate_sni_is_rejected():
         + len(duplicate_extensions).to_bytes(2, "big")
         + duplicate_extensions
     )
-    duplicate = b"\\x01" + len(rebuilt_body).to_bytes(3, "big") + rebuilt_body
+    duplicate = b"\x01" + len(rebuilt_body).to_bytes(3, "big") + rebuilt_body
     with pytest.raises(ProxyPolicyError, match="exactly one host SNI"):
         _extract_client_hello_sni(duplicate)
 
@@ -109,7 +109,7 @@ def test_tls_client_hello_reader_rejects_non_handshake_records():
 
     receiver, sender = socket.socketpair()
     try:
-        sender.sendall(b"\\x17\\x03\\x03\\x00\\x01x")
+        sender.sendall(b"\x17\x03\x03\x00\x01x")
         with pytest.raises(ProxyPolicyError, match="valid handshake record"):
             _read_client_hello(receiver)
     finally:
