@@ -282,7 +282,11 @@ class PinnedConnectProxy:
             host, port_text = authority.rsplit(":", 1)
             try:
                 normalized = _canonical_host(host)
-                port = int(port_text)
+                # Require one canonical decimal port spelling; no plus sign,
+                # leading zeros, whitespace or parser-dependent variants.
+                if port_text != str(self.allowed_port):
+                    raise ProxyPolicyError("CONNECT port is not canonical")
+                port = self.allowed_port
             except (ProxyPolicyError, ValueError):
                 with self._stats_lock:
                     self._rejected_requests += 1
