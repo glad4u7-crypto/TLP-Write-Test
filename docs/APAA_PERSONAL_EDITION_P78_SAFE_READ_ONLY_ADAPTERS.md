@@ -1,6 +1,6 @@
 # APAA Personal Edition P78 — Safe Read-only Adapters
 
-**Status:** Implemented; exact-head CI required before PASS.
+**Status:** Implemented; exact branch-head CI PASS on 2026-11-17.
 
 ## Scope
 P78 adds a narrow read-only adapter boundary without enabling browser/worker execution or arbitrary action handlers.
@@ -38,3 +38,14 @@ Concrete public read-only providers are now implemented in `core/safe_network_pr
 - YouTube public search result reader (video discovery only)
 
 The providers use direct HTTPS, DNS resolution with globally-routable IP validation, pinned-IP TCP connections, TLS hostname verification, manual bounded redirects, response size/time limits, and no cookies/proxy/browser/JavaScript. The UI performs no request until the Owner explicitly submits the form. Results are displayed as text with explicit source-open links. See `docs/APAA_PERSONAL_EDITION_P78_NETWORK_PROVIDERS.md` for the security boundary and limitations.
+
+
+## Exact-head verification — 2026-11-17
+
+P73 Verification run [#235](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44023947699) passed on branch head `70ede93d20e7ff2780c7d4d1dbd68e2803a96a06`:
+- Python suite: **1,491 passed, 9 skipped**
+- Python compilation: PASS
+- Dependency audit: PASS; no known vulnerabilities
+- Responsive Android/Desktop Chromium smoke: **9 passed**
+
+This qualifies repository code and automated tests only. It does not qualify a physical Android device, live external provider availability, browser worker, host firewall, or network egress isolation.
