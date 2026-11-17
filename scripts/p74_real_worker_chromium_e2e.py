@@ -34,6 +34,7 @@ from core.nftables_attestation import NftablesPolicy, attest_nftables_json
 from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
 from core.oci_runtime_observer import PodmanWorkerObserver
 from core.pinned_connect_proxy import PinnedConnectProxy
+from core.chromium_fd_diagnostics import snapshot_cgroup, snapshot_json_safe
 
 
 def _required(name: str) -> str:
@@ -164,24 +165,85 @@ def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[
     }
 
 
-def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict[str, object]:
+
+def _run_chromium_with_fd_snapshots(
+    command: list[str], cgroup_dir: Path, *, timeout: int = 45,
+) -> tuple[subprocess.CompletedProcess[str], dict]:
+    """Run Chromium while taking bounded, read-only host /proc FD snapshots."""
+    if not cgroup_dir.is_absolute() or not cgroup_dir.is_dir():
+        raise RuntimeError("Chromium diagnostic cgroup is unavailable")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        encoding="utf-8", errors="replace", shell=False, close_fds=True,
+        start_new_session=True,
+    )
+    snapshots: list[dict] = []
+    diagnostic_errors: list[str] = []
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    try:
+        while process.poll() is None and time.monotonic() < deadline:
+            if len(snapshots) < 24:
+                try:
+                    snap = snapshot_cgroup(
+                        cgroup_dir, max_processes=96, max_fds_per_process=192,
+                    )
+                    snapshots.append(snapshot_json_safe(snap, max_bytes=180_000))
+                except Exception as exc:
+                    if len(diagnostic_errors) < 3:
+                        diagnostic_errors.append(type(exc).__name__)
+            time.sleep(0.35)
+        if process.poll() is None:
+            timed_out = True
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        stdout, stderr = process.communicate(timeout=5)
+    except Exception:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        raise
+    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    summary = {
+        "snapshot_count": len(snapshots),
+        "diagnostic_errors": diagnostic_errors,
+        "timed_out": timed_out,
+        "snapshots": snapshots,
+    }
+    if timed_out:
+        summary["timeout_seconds"] = timeout
+    return result, summary
+
+
+def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str, cgroup_dir: Path) -> tuple[dict[str, object], dict]:
     marker = "APAA_LOCAL_DUMP_DOM_OK"
     data_url = "data:text/html,<html><body>" + marker + "</body></html>"
-    result = _run(_podman_chromium_command(container_id, chromium_bin, [
+    result, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
         "--headless=new", "--disable-gpu", "--disable-quic",
         "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
         "--disable-crashpad-for-testing", "--disable-features=PassHistogramSharedMemoryOnLaunch",
         "--disable-dev-shm-usage", "--user-data-dir=/tmp/apaa-chromium-smoke",
         "--disable-background-networking", "--no-first-run", "--dump-dom", data_url,
-    ]), timeout=45)
+    ]), cgroup_dir, timeout=45)
     if "<html" not in result.stdout.lower() or marker not in result.stdout:
         details = _chromium_failure_details(result, "local-data-url", marker)
         raise RuntimeError(f"Chromium local dump-dom smoke test failed: {details}")
-    return {
+    return ({
         "stdout_bytes": len(result.stdout.encode("utf-8")),
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
         "marker_present": True,
-    }
+    }, fd_diagnostics)
 
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
@@ -604,11 +666,13 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
-        evidence["chromium_version"] = _run(
+        evidence["chromium_version"] = _run_chromium_with_fd_snapshots(
             _podman_chromium_command(container_id, chromium_bin, ["--version"]),
-            timeout=15,
-        ).stdout.strip()[:160]
-        evidence["chromium_local_dump_dom"] = _probe_chromium_local_dump_dom(container_id, chromium_bin)
+            cgroup_path, timeout=15,
+        )[0].stdout.strip()[:160]
+        local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
+        evidence["chromium_local_dump_dom"] = local_smoke
+        evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
         evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
         post_start_state = post_start_inspect.get("State") or {}
@@ -739,7 +803,7 @@ def main() -> int:
             evidence[f"proxy_tcp_preflight_{family}"] = preflight
             accepted_before_browser = proxy.accepted_connections
             rejected_before_browser = proxy.rejected_requests
-            page = _run(_podman_chromium_command(container_id, chromium_bin, [
+            page, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
 "--headless=new",
 "--disable-gpu",
 "--disable-quic",
