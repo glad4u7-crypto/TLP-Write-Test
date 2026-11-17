@@ -138,7 +138,8 @@ def setup_controller(monkeypatch, *, requests=(), audit=None, websocket_support=
 
     monkeypatch.setattr(live, "launch_chromium", launch)
     events = [] if audit is None else audit
-    controller = LiveBrowsingController(object(), audit=events.append)
+    audit_sink = events.append if callable(getattr(events, "append", None)) else events
+    controller = LiveBrowsingController(object(), audit=audit_sink)
     return controller, context, session, launches, events
 
 
