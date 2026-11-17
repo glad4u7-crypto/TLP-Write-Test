@@ -1566,6 +1566,16 @@ else:
             )
             if checkpoint_history:
                 st.caption(f"Task history · {len(checkpoint_history)} recent checkpoint(s)")
+                progress_columns = st.columns(3)
+                progress_columns[0].metric(
+                    "Active", sum(item.status == "active" for item in checkpoint_history)
+                )
+                progress_columns[1].metric(
+                    "Blocked", sum(item.status == "blocked" for item in checkpoint_history)
+                )
+                progress_columns[2].metric(
+                    "Completed", sum(item.status == "completed" for item in checkpoint_history)
+                )
                 for history_item in checkpoint_history:
                     with st.container(border=True):
                         st.write(f"**{history_item.label} · {history_item.status.upper()}**")
