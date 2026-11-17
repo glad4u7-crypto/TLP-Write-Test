@@ -3,6 +3,8 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from core.personal_runtime import PERSONAL_OWNER_TENANT
+
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -10,6 +12,7 @@ APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 def _app(tmp_path, monkeypatch):
     tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
     return AppTest.from_file(str(APP_PATH), default_timeout=15).run()
 
 
@@ -89,10 +92,13 @@ def test_cross_session_approval_receipt_is_rejected(tmp_path, monkeypatch):
 
     payload = {"name": "Cross session", "description": "Must not be authorized"}
     receipt = first.session_state["approval_authority"].issue(
-        "create_project", payload
+        "create_project", payload,
+        tenant=PERSONAL_OWNER_TENANT,
+        session_scope=first.session_state["approval_session_scope"],
     )
     result = second.session_state["execution_gateway"].execute(
-        "create_project", payload, approval_receipt=receipt
+        "create_project", payload, approval_receipt=receipt,
+        tenant=PERSONAL_OWNER_TENANT,
     )
 
     assert result.executed is False
