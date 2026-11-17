@@ -1,12 +1,12 @@
 """Fail-closed Playwright navigation controller.
 
-Context-level routing is preferred because it observes requests from every page
-in the context. This remains a browser request policy layer, not a network
-sandbox: WebSockets, browser/OS background traffic and traffic outside Playwright
-routing still require a separately enforced network egress boundary.
+Context-level routing can be installed for the full BrowserContext lifetime.
+This is a request-layer control, not a substitute for an OS/container egress
+firewall: browser-process traffic outside Playwright remains out of scope.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from core.browser_navigation import NavigationPolicy, NavigationPolicyError
@@ -16,68 +16,142 @@ class SafeNavigationError(RuntimeError):
     """Raised when navigation is blocked or cannot be completed safely."""
 
 
-class SafeNavigationController:
-    """Navigate with context-wide routing when a BrowserContext is supplied.
+RequestValidator = Callable[[Any], None]
 
-    Pass both context and page to enable context-level interception. Supplying
-    only page preserves the earlier page-scoped behavior for compatibility;
-    that narrower mode must not be treated as context-wide protection.
+
+class SafeNavigationController:
+    """Validate every routed request, redirect and subresource.
+
+    install() enables persistent context-wide routing. Without it,
+    navigate() retains the legacy temporary-route behavior.
     """
 
-    def __init__(self, page: Any, policy: NavigationPolicy, *, context: Any | None = None) -> None:
+    def __init__(
+        self,
+        page: Any,
+        policy: NavigationPolicy,
+        *,
+        context: Any | None = None,
+        request_validator: RequestValidator | None = None,
+    ) -> None:
         if page is None:
             raise TypeError("page is required.")
         if not isinstance(policy, NavigationPolicy):
             raise TypeError("policy must be a NavigationPolicy.")
         if context is not None and not callable(getattr(context, "route", None)):
             raise TypeError("context must provide a route method.")
+        if request_validator is not None and not callable(request_validator):
+            raise TypeError("request_validator must be callable.")
         self._page = page
         self._context = context
         self._router = context if context is not None else page
         self._policy = policy
+        self._request_validator = request_validator
         self._navigating = False
+        self._installed = False
+        # Bound-method objects are recreated on attribute access; retain the
+        # exact callback identity required by Playwright unroute().
+        self._route_handler = self._guard
 
     @property
     def context_wide(self) -> bool:
-        """Whether routing is installed on the entire BrowserContext."""
         return self._context is not None
 
+    @property
+    def installed(self) -> bool:
+        return self._installed
+
+    def _validate_request(self, request: Any) -> None:
+        """Validate the complete browser-reported redirect chain, then request policy."""
+        chain = [request]
+        seen = {request.url}
+        previous = getattr(request, "redirected_from", None)
+        while previous is not None:
+            previous_url = previous.url
+            if previous_url in seen:
+                raise NavigationPolicyError("Redirect loop detected.")
+            seen.add(previous_url)
+            chain.append(previous)
+            previous = getattr(previous, "redirected_from", None)
+        ordered_urls = [item.url for item in reversed(chain)]
+        self._policy.validate_redirect_chain(ordered_urls[0], ordered_urls[1:])
+        if self._request_validator is not None:
+            self._request_validator(request)
+
+    def _guard(self, route: Any) -> None:
+        try:
+            self._validate_request(route.request)
+        except Exception:
+            route.abort(error_code="blockedbyclient")
+        else:
+            route.continue_()
+
+    def install(self) -> None:
+        """Install a persistent route covering all pages in the context."""
+        if self._installed:
+            return
+        if not self.context_wide:
+            raise SafeNavigationError("Persistent routing requires a BrowserContext.")
+        try:
+            self._router.route("**/*", self._route_handler)
+        except Exception as exc:
+            raise SafeNavigationError("Could not install persistent request policy.") from exc
+        self._installed = True
+
+    def close(self) -> None:
+        """Remove the persistent route; safe to call more than once."""
+        if not self._installed:
+            return
+        try:
+            self._router.unroute("**/*", self._route_handler)
+        except Exception as exc:
+            raise SafeNavigationError("Could not remove persistent request policy.") from exc
+        finally:
+            self._installed = False
+
     def navigate(self, url: str, *, timeout_ms: int = 15_000) -> Any:
-        """Navigate after installing a temporary request policy route."""
         if self._navigating:
             raise SafeNavigationError("Concurrent navigation is not supported.")
         if type(timeout_ms) is not int or not 1_000 <= timeout_ms <= 60_000:
             raise ValueError("timeout_ms must be an integer from 1000 to 60000.")
         self._policy.validate_url(url)
         self._navigating = True
-        blocked: list[NavigationPolicyError] = []
+        blocked: list[Exception] = []
+        persistent = self._installed
 
-        def guard(route: Any) -> None:
+        def temporary_guard(route: Any) -> None:
             try:
-                self._policy.validate_url(route.request.url)
-            except NavigationPolicyError as exc:
+                self._validate_request(route.request)
+            except Exception as exc:
                 blocked.append(exc)
                 route.abort(error_code="blockedbyclient")
                 return
             route.continue_()
 
-        installed = False
+        installed_here = False
         try:
-            self._router.route("**/*", guard)
-            installed = True
-            response = self._page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            if not persistent:
+                self._router.route("**/*", temporary_guard)
+                installed_here = True
+            response = self._page.goto(
+                url, wait_until="domcontentloaded", timeout=timeout_ms
+            )
             if blocked:
-                raise SafeNavigationError("A request or redirect was blocked by navigation policy.") from blocked[0]
+                raise SafeNavigationError(
+                    "A request or redirect was blocked by navigation policy."
+                ) from blocked[0]
             return response
         except SafeNavigationError:
             raise
         except Exception as exc:
             if blocked:
-                raise SafeNavigationError("A request or redirect was blocked by navigation policy.") from blocked[0]
+                raise SafeNavigationError(
+                    "A request or redirect was blocked by navigation policy."
+                ) from blocked[0]
             raise SafeNavigationError("Browser navigation failed.") from exc
         finally:
             try:
-                if installed:
-                    self._router.unroute("**/*", guard)
+                if installed_here:
+                    self._router.unroute("**/*", temporary_guard)
             finally:
                 self._navigating = False

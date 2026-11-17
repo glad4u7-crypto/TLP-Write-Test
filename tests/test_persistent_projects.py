@@ -195,7 +195,7 @@ def test_persistent_gateway_uses_sqlite_audit_for_intent_and_completion(tmp_path
             "SELECT action, result, reason_code FROM durable_audit_events ORDER BY sequence"
         ).fetchall()
     assert rows == [
-        ("create_project", "denied", "authorized_dispatch_pending"),
+        ("create_project", "pending", "authorized_dispatch_pending"),
         ("create_project", "success", "action_executed"),
     ]
 

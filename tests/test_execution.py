@@ -337,3 +337,116 @@ def test_gateway_fails_closed_on_unexpected_intent_audit_backend_error(tmp_path,
     assert result.executed is False
     assert "not executed" in result.reason
     assert calls == []
+
+
+def _durable_gateway(tmp_path, handler):
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+    from core.storage import TenantKey
+
+    tenant = TenantKey("local://apaa-personal", "local-owner")
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    authority = ApprovalAuthority(
+        nonce_store=store,
+        signing_secret=b"p79-test-signing-secret-material-at-least-32-bytes",
+    )
+    gateway = ExecutionGateway(
+        {"write_file": handler},
+        approval_authority=authority,
+        audit_log=SQLiteExecutionAuditLog(store, tenant),
+        idempotency_store=store,
+        session_scope="p79-test-session",
+    )
+    return gateway, authority, tenant, store
+
+
+def test_gateway_durable_idempotency_blocks_duplicate_side_effect_after_restart(tmp_path):
+    calls = []
+    gateway, authority, tenant, store = _durable_gateway(tmp_path, lambda data: calls.append(data) or "ok")
+    payload = {"path": "safe.txt"}
+    key = "request-unique-0100"
+    first = gateway.execute(
+        "write_file", payload,
+        approval_receipt=authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session"),
+        tenant=tenant, idempotency_key=key,
+    )
+    second = gateway.execute(
+        "write_file", payload,
+        approval_receipt=authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session"),
+        tenant=tenant, idempotency_key=key,
+    )
+    assert first.executed is True
+    assert second.executed is False
+    assert "already completed" in second.reason
+    assert calls == [payload]
+
+
+def test_gateway_durable_idempotency_requires_key_and_owner(tmp_path):
+    calls = []
+    gateway, authority, tenant, _ = _durable_gateway(tmp_path, lambda data: calls.append(data))
+    payload = {"path": "safe.txt"}
+    receipt = authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session")
+    result = gateway.execute("write_file", payload, approval_receipt=receipt, tenant=tenant)
+    assert result.executed is False
+    assert calls == []
+
+
+def test_gateway_cancellation_is_checked_before_side_effect_and_not_replayed(tmp_path):
+    calls = []
+    gateway, authority, tenant, store = _durable_gateway(tmp_path, lambda data: calls.append(data))
+    payload = {"path": "cancelled.txt"}
+    key = "request-unique-0101"
+    result = gateway.execute(
+        "write_file", payload,
+        approval_receipt=authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session"),
+        tenant=tenant, idempotency_key=key, cancellation_check=lambda: True,
+    )
+    assert result.executed is False
+    assert "cancelled before" in result.reason
+    assert calls == []
+    assert store.claim_execution(tenant, key, "write_file", __import__("hashlib").sha256(
+        __import__("json").dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()) == "cancelled"
+
+
+def test_gateway_handler_failure_marks_request_uncertain_and_blocks_retry(tmp_path):
+    calls = []
+    def ambiguous_handler(data):
+        calls.append(data)
+        raise OSError("may have partially written")
+    gateway, authority, tenant, store = _durable_gateway(tmp_path, ambiguous_handler)
+    payload = {"path": "maybe-written.txt"}
+    key = "request-unique-0102"
+    first = gateway.execute(
+        "write_file", payload,
+        approval_receipt=authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session"),
+        tenant=tenant, idempotency_key=key,
+    )
+    second = gateway.execute(
+        "write_file", payload,
+        approval_receipt=authority.issue("write_file", payload, tenant=tenant, session_scope="p79-test-session"),
+        tenant=tenant, idempotency_key=key,
+    )
+    assert first.executed is False
+    assert "reconciliation" in first.reason
+    assert second.executed is False
+    assert "uncertain outcome" in second.reason
+    assert calls == [payload]
+    assert store.list_unresolved_executions(tenant)[0]["status"] == "uncertain"
+
+
+def test_gateway_dispatches_a_private_snapshot_of_the_approved_payload():
+    authority = ApprovalAuthority()
+    payload = {"path": "safe.txt", "metadata": {"tags": ["original"]}}
+    seen = []
+    def handler(snapshot):
+        seen.append(snapshot)
+        snapshot["metadata"]["tags"].append("handler-change")
+        return "ok"
+    gateway = ExecutionGateway({"write_file": handler}, approval_authority=authority)
+    receipt = authority.issue("write_file", payload)
+
+    result = gateway.execute("write_file", payload, approval_receipt=receipt)
+
+    assert result.executed is True
+    assert seen[0] is not payload
+    assert payload["metadata"]["tags"] == ["original"]

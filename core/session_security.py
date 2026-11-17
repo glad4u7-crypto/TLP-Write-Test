@@ -18,6 +18,10 @@ _IDENTITY_BOUND_KEYS = (
     "structured_task_source",
     "structured_task_clarification",
     "structured_task_input",
+    "apaa_saved_task_plan_selector",
+    "apaa_restore_backup_upload",
+    "apaa_project_file_upload",
+    "apaa_project_file_selector",
     "approval_session_scope",
     "approval_authority_config_id",
     "trusted_directory_enrolled_session",
@@ -27,6 +31,8 @@ _IDENTITY_BOUND_KEYS = (
     "global_owner_admin_context",
     "global_owner_pending_action",
     "global_owner_approval_receipt",
+    "apaa_local_authenticated_at",
+    "apaa_local_last_activity",
 )
 
 
@@ -44,9 +50,18 @@ def bind_session_identity(
         raise ValueError("A non-empty authenticated identity subject is required.")
 
     previous = session_state.get("active_identity_subject")
+    # Local authentication timestamps are cleared at identity boundaries but
+    # are not, by themselves, orphaned owner capabilities before first bind.
+    local_session_markers = {
+        "apaa_local_authenticated_at", "apaa_local_last_activity"
+    }
     has_orphaned_identity_state = (
         previous is None
-        and any(key in session_state for key in _IDENTITY_BOUND_KEYS)
+        and any(
+            key in session_state
+            for key in _IDENTITY_BOUND_KEYS
+            if key not in local_session_markers
+        )
     )
     changed = (
         (previous is not None and previous != identity_subject)
@@ -54,6 +69,12 @@ def bind_session_identity(
     )
     if changed:
         for key in _IDENTITY_BOUND_KEYS:
+            # On a first bind after a successful local login, retain only the
+            # just-verified local session timestamps while clearing every
+            # orphaned approval/runtime capability. A real identity switch
+            # invalidates those timestamps too.
+            if previous is None and key in local_session_markers:
+                continue
             session_state.pop(key, None)
     session_state["active_identity_subject"] = identity_subject
     return changed

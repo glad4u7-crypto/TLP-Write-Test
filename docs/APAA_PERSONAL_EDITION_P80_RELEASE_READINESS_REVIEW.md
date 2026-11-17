@@ -1,0 +1,104 @@
+# APAA Personal Edition — P80 Release Readiness Review
+
+**Checkpoint:** APAA-PERSONAL-P80  
+**Date:** 2026-11-17  
+**Branch:** `apaa-personal-edition-foundation`  
+**Review disposition:** **NO-GO — not releasable**  
+**PR:** #13 — Draft / Open / Unmerged.
+
+## Purpose
+
+Perform the Personal Edition v1 release review against the scope and safety requirements. This document records a release decision; it does not claim that outstanding external acceptance has been performed.
+
+## Release gate matrix
+
+| Gate | Evidence on current branch | Decision |
+|---|---|---|
+| Single local Owner boundary | Fixed server-side local Owner tenant, local passphrase authentication, owner-private data directory | Repository implementation present; physical device acceptance pending |
+| Persistent workspace | SQLite projects, security, memory/checkpoints and backup/restore code | Automated tests previously passed; owner-operated backup/restore drill not run |
+| Explicit approvals | Project creation gateway receipts plus fresh action/payload/tenant/session-bound receipts for memory, knowledge, conversation, preference and checkpoint UI mutations | Repository integration present; exact-head CI #184 PASS |
+| Idempotency and recovery | Tenant-scoped durable ledger wired to project creation; duplicate blocking; uncertain-state storage API | Project-create integration present; dedicated Owner recovery/reconciliation UI still outstanding; exact-head CI #184 PASS |
+| Read-only web/file/YouTube adapters | P76 request/result contracts only | **NOT IMPLEMENTED — P78 outstanding** |
+| Approved end-to-end mutations | Generic gateway and existing project/memory/checkpoint UI mutations; no new adapters | **NOT RELEASE-QUALIFIED — depends on P78 and P79 integration** |
+| Android usability/runtime | Responsive Chromium emulation only | **Physical Android A01–A12 NOT RUN** |
+| Backup/restore operations | Automated backup/restore tests and scripts | **Owner-operated drill NOT RUN** |
+| Dependency and workflow security | Prior exact-head P77 CI reported 1,449 passed / 9 skipped, 9 browser smoke checks | Does not cover latest P79 changes; latest exact-head CI pending |
+| Browser/Worker network isolation | Policy designs and separate OCI qualification harness | **NOT QUALIFIED; DISABLED** |
+| Independent security review | No independent review submission recorded | **NOT RECEIVED** |
+| Owner acceptance | No final Owner sign-off | **PENDING** |
+
+## Release-blocking findings
+
+1. P78 is still outstanding. P76 contains contracts only; no bounded adapter is enabled for web search, HTTPS page reading, project file inspection or YouTube discovery.
+2. P79's latest Owner UI receipt and project-idempotency integration needs exact-head CI. A dedicated Owner UI for inspecting and reconciling uncertain execution outcomes is still outstanding.
+3. Physical Android A01–A12 acceptance has not been performed on the actual Android device.
+4. The Owner-operated backup/restore drill on the intended local runtime has not been performed.
+5. Independent security review and explicit Owner acceptance are absent.
+6. Browser/Worker live network execution remains unqualified and must stay disabled.
+
+## Required next sequence
+
+1. Finish P78 with bounded read-only adapters and source/transport/path validation.
+2. Run exact-head CI for the latest payload-bound Owner UI receipt and durable project-idempotency integration; fix failures and rerun.
+3. Add a trusted Owner recovery screen for unresolved execution records and explicit reconciliation, with audit coverage and end-to-end tests.
+4. Complete physical Android A01–A12 and Owner-operated backup/restore drill.
+5. Obtain independent review of the exact tested SHA and close all findings.
+6. Obtain explicit Owner acceptance. Only then reconsider release status.
+
+## Release safety decision
+
+- No merge or deployment.
+- No public signup, LAN/public exposure, or remote access.
+- Browser/Worker dispatch remains DISABLED; Auto-Run OFF.
+- No paid provider/API, API keys, paid hosting, payment, purchase, trading, investment order or money movement.
+- PR #13 remains Draft/Open/Unmerged. C01 remains OPEN; C02 NOT STARTED.
+
+**Final P80 decision: NO-GO.** The release review checkpoint is documented, but Personal Edition v1 is not accepted or released.
+
+
+## Verification update
+
+- P79 predecessor head `63174c17cbb60958ca746aaf76886b7bb12eb355` passed P73 Verification #148 (1,463 Python passed, 9 skipped; compile and dependency audit PASS; 9 responsive browser smoke tests PASS).
+- Exact-head P73 Verification [#184](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44020636288) passed on `afd733421064bbc2bafefa75d514f7ce456b38ac`: **1,473 Python passed, 9 skipped**, compile PASS, dependency audit PASS, **9 browser smoke tests passed**.
+- The NO-GO release decision remains unchanged because P78 adapters, Owner recovery UI, physical Android acceptance, owner-operated backup/restore, independent security review and final Owner acceptance remain outstanding.
+
+
+## P78 / Owner Recovery implementation update — 2026-11-17
+
+- Added a descriptor-relative, no-follow, bounded UTF-8 project-file read adapter and an explicit read-only adapter registry.
+- Added provider wrappers for web search, HTTPS page reading and YouTube discovery, but no provider/network transport is enabled by default.
+- Added authenticated Owner Recovery UI for tenant-scoped unresolved executions. Pending outcomes remain blocked; uncertain outcomes require explicit Owner confirmation and a completed/cancelled choice. The original action is never retried.
+- Owner reconciliation now appends a payload-free hash-chain audit event in the same SQLite transaction as the state transition.
+- Added adapter, UI and reconciliation audit tests. Exact-head P73 CI for the latest P78 code head is pending.
+- P80 remains NO-GO until exact-head CI passes and the external acceptance gates (physical Android, owner-operated backup/restore, independent security review and explicit Owner acceptance) are completed. Web/YouTube network providers remain disabled pending separate transport/SSRF qualification.
+
+
+## Real read-only provider update — 2026-11-17
+
+- Added DuckDuckGo public search, public HTTPS page text reader, and YouTube public search adapters.
+- Added Owner-session UI; network access occurs only after explicit form submission.
+- Direct HTTPS uses DNS global-address validation, pinned-IP connection, TLS hostname verification, manual redirect revalidation, bounded response/time limits, and no cookies, proxy, browser, or JavaScript.
+- Automated tests are being verified against the exact latest commit. Live provider availability and changing public HTML formats remain operational dependencies; P80 is not a release approval.
+
+
+## Authoritative status reconciliation — 2026-11-17 (supersedes earlier pending implementation notes)
+
+The earlier P80 sections above are historical snapshots. The following is the current branch state and must be used for status decisions:
+
+- **P78 read-only adapters: IMPLEMENTED.** The branch contains bounded project-file inspection, an explicit read-only adapter registry, DuckDuckGo public search, HTTPS page reading, and YouTube public search. These are read-only capabilities; they do not register mutation handlers.
+- **Owner Recovery UI: IMPLEMENTED.** The authenticated Owner UI lists tenant-scoped unresolved execution records. Pending and uncertain outcomes are not automatically retried. Explicit Owner reconciliation is required, and the reconciliation state transition is recorded in the local hash-chain audit within the same SQLite transaction.
+- **Network safety boundary: CODE/TEST IMPLEMENTED, LIVE QUALIFICATION NOT COMPLETE.** The direct HTTPS transport validates public DNS answers, pins the selected IP for the connection, verifies TLS host identity, revalidates redirects, bounds response/time, and does not use cookies, browser execution or proxy environment. These tests do not qualify a live browser worker, host firewall, or all egress paths. Browser/Worker dispatch remains DISABLED.
+- **Exact-head verification:** branch head `70ede93d20e7ff2780c7d4d1dbd68e2803a96a06`, P73 Verification run [#235](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44023947699) — **SUCCESS**. Python suite: **1,491 passed, 9 skipped**; compile PASS; dependency audit PASS (no known vulnerabilities); Android/Desktop Chromium responsive smoke **9 passed**.
+- CI Android viewport emulation is not physical Android device acceptance.
+
+### Remaining external / Owner-operated C01 gates
+
+1. Physical Android A01–A12 on the Owner's actual phone: **NOT RUN**. This requires Owner-operated testing; remote CI cannot substitute.
+2. Owner-operated backup/restore drill on the intended local Android runtime: **NOT RUN**. Automated tests are not a substitute.
+3. Independent security review of the exact tested code and security boundaries: **NOT RECEIVED**.
+4. Final Owner acceptance: **PENDING**.
+5. Real isolated browser-worker transport and egress qualification (redirects, subresources, WebSocket, DNS rebinding, proxy outage, and direct TCP/DNS/UDP/QUIC bypass): **NOT QUALIFIED**; live Browser/Worker stays disabled.
+
+### Release decision
+
+P78 and the Owner Recovery implementation are no longer software implementation blockers. C01 nevertheless remains **OPEN / NOT COMPLETE** because the external gates above are outstanding. PR #13 remains Draft/Open/Unmerged. Do not merge, deploy, enable Browser/Worker, start C02, or claim Personal Edition release acceptance until the applicable gates have real evidence and the Owner explicitly accepts.

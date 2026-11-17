@@ -8,7 +8,10 @@ from core.browser_security import (
     validate_browser_job,
     validate_destination,
     validate_dns_answers,
+    validate_live_destination,
+    validate_live_browser_job,
     validate_redirect,
+    validate_redirect_chain,
 )
 
 
@@ -21,9 +24,9 @@ def test_canonicalizes_https_host_port_path_and_fragment():
 
 
 def test_canonicalizes_idn_to_ascii():
-    result = canonicalize_https_url("https://bücher.example/guide")
-    assert result.hostname == "xn--bcher-kva.example"
-    assert result.origin == "https://xn--bcher-kva.example"
+    result = canonicalize_https_url("https://bücher.com/guide")
+    assert result.hostname == "xn--bcher-kva.com"
+    assert result.origin == "https://xn--bcher-kva.com"
 
 
 @pytest.mark.parametrize("url", [
@@ -222,3 +225,135 @@ def test_no_network_or_dns_lookup_occurs_without_injected_resolver(monkeypatch):
 
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     assert validate_browser_job(valid_job(), now=1000).url == "https://example.com/docs"
+
+
+
+@pytest.mark.parametrize("url", [
+    "https://attacker.localhost/",
+    "https://printer.local/",
+    "https://service.internal/",
+    "https://staging.test/",
+    "https://docs.example/",
+    "https://hidden.onion/",
+])
+def test_blocks_reserved_and_local_use_dns_suffixes(url):
+    with pytest.raises(BrowserPolicyError):
+        canonicalize_https_url(url)
+
+
+def test_live_destination_requires_trusted_resolver_for_dns_names():
+    with pytest.raises(BrowserPolicyError, match="resolver is mandatory"):
+        validate_live_destination(
+            "https://example.com", ["https://example.com"], resolver=None
+        )
+
+
+def test_live_destination_returns_complete_public_address_set_for_pinning():
+    pinned = validate_live_destination(
+        "https://example.com/docs",
+        ["https://example.com"],
+        resolver=lambda host: ["93.184.216.34", "1.1.1.1", "93.184.216.34"],
+    )
+    assert pinned.target.url == "https://example.com/docs"
+    assert pinned.addresses == ("1.1.1.1", "93.184.216.34")
+
+
+def test_live_destination_rejects_mixed_public_and_private_dns_answers():
+    with pytest.raises(BrowserPolicyError):
+        validate_live_destination(
+            "https://example.com",
+            ["https://example.com"],
+            resolver=lambda host: ["93.184.216.34", "127.0.0.1"],
+        )
+
+
+def test_live_destination_ip_literal_is_validated_and_returned_for_pinning():
+    pinned = validate_live_destination(
+        "https://93.184.216.34/",
+        ["https://93.184.216.34"],
+        resolver=None,
+    )
+    assert pinned.addresses == ("93.184.216.34",)
+
+
+def test_redirect_chain_revalidates_and_pins_every_hop():
+    calls = []
+    def resolver(host):
+        calls.append(host)
+        return ["93.184.216.34"] if host == "example.com" else ["1.1.1.1"]
+
+    chain = validate_redirect_chain(
+        "https://example.com/start",
+        ["/next", "https://cdn.example.com/final"],
+        ["https://example.com", "https://cdn.example.com"],
+        resolver=resolver,
+        max_redirects=2,
+    )
+    assert [hop.target.url for hop in chain] == [
+        "https://example.com/start",
+        "https://example.com/next",
+        "https://cdn.example.com/final",
+    ]
+    assert calls == ["example.com", "example.com", "cdn.example.com"]
+
+
+def test_redirect_chain_rejects_excess_hops_and_loops():
+    with pytest.raises(BrowserPolicyError, match="limit"):
+        validate_redirect_chain(
+            "https://example.com/start",
+            ["/a", "/b"],
+            ["https://example.com"],
+            resolver=lambda host: ["93.184.216.34"],
+            max_redirects=1,
+        )
+    with pytest.raises(BrowserPolicyError, match="loop"):
+        validate_redirect_chain(
+            "https://example.com/start",
+            ["/start"],
+            ["https://example.com"],
+            resolver=lambda host: ["93.184.216.34"],
+            max_redirects=2,
+        )
+
+
+def test_redirect_chain_fails_closed_when_any_later_dns_lookup_fails():
+    calls = 0
+    def resolver(host):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ["93.184.216.34"]
+        raise OSError("DNS changed during redirect")
+    with pytest.raises(BrowserPolicyError, match="DNS"):
+        validate_redirect_chain(
+            "https://example.com/start",
+            ["/next"],
+            ["https://example.com"],
+            resolver=resolver,
+            max_redirects=2,
+        )
+
+
+
+def test_live_browser_job_entry_point_requires_dns_pinning():
+    job = valid_job()
+    with pytest.raises(BrowserPolicyError, match="resolver is mandatory"):
+        validate_live_browser_job(job, resolver=None, now=1000)
+
+    live = validate_live_browser_job(
+        job,
+        resolver=lambda host: ["93.184.216.34"],
+        now=1000,
+    )
+    assert live.job.job_id == "job_12345678"
+    assert live.destination.target.url == "https://example.com/docs"
+    assert live.destination.addresses == ("93.184.216.34",)
+
+
+def test_live_browser_job_entry_point_rejects_private_dns_answers():
+    with pytest.raises(BrowserPolicyError):
+        validate_live_browser_job(
+            valid_job(),
+            resolver=lambda host: ["93.184.216.34", "169.254.169.254"],
+            now=1000,
+        )

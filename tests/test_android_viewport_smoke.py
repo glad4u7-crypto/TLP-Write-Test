@@ -3,11 +3,14 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
 import pytest
+
+from core.personal_auth import LocalOwnerAuthStore
 
 playwright_api = pytest.importorskip("playwright.sync_api")
 sync_playwright = playwright_api.sync_playwright
@@ -38,6 +41,10 @@ def _wait_for_server(process: subprocess.Popen, timeout: float = 45.0) -> None:
 def streamlit_server():
     env = os.environ.copy()
     env.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+    personal_data = tempfile.TemporaryDirectory(prefix="apaa-android-smoke-")
+    env["APAA_PERSONAL_DATA_DIR"] = personal_data.name
+    auth = LocalOwnerAuthStore(Path(personal_data.name) / "owner-auth.sqlite3")
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
     process = subprocess.Popen(
         [
             sys.executable, "-m", "streamlit", "run", "app.py",
@@ -62,6 +69,17 @@ def streamlit_server():
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        personal_data.cleanup()
+
+
+
+def _open_owner_page(page, url: str) -> None:
+    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    owner_passphrase = page.get_by_label("Owner passphrase")
+    owner_passphrase.wait_for(timeout=30000)
+    owner_passphrase.fill("test-only owner passphrase")
+    page.get_by_role("button", name="Unlock APAA").click()
+    page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
 
 
 def test_pixel_sized_viewport_has_no_page_level_horizontal_overflow(streamlit_server):
@@ -70,8 +88,7 @@ def test_pixel_sized_viewport_has_no_page_level_horizontal_overflow(streamlit_se
         device = playwright.devices["Pixel 7"]
         context = browser.new_context(**device)
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.wait_for_timeout(1200)
 
         metrics = page.evaluate("""() => ({
@@ -94,8 +111,7 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         browser = playwright.chromium.launch()
         context = browser.new_context(**playwright.devices["Pixel 7"])
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.wait_for_timeout(1200)
 
         input_sizes = page.locator("input, textarea").evaluate_all(
@@ -107,9 +123,11 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         button_heights = page.locator(
             ".stButton > button, .stFormSubmitButton > button"
         ).evaluate_all(
-            "(nodes) => nodes.map(node => node.getBoundingClientRect().height)"
+            "(nodes) => nodes.map(node => node.getBoundingClientRect())."
+            "filter(rect => rect.width > 0 && rect.height > 0)."
+            "map(rect => rect.height)"
         )
-        assert button_heights, "Expected APAA primary/action buttons to render"
+        assert button_heights, "Expected visible APAA primary/action buttons to render"
         assert all(height >= 44 for height in button_heights), button_heights
 
         context.close()
@@ -123,7 +141,7 @@ def test_android_user_can_prepare_and_review_plan_without_execution(streamlit_se
         browser = playwright.chromium.launch()
         context = browser.new_context(**playwright.devices["Pixel 7"])
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
         task_input = page.get_by_label("Describe a task")
         task_input.fill(
@@ -178,8 +196,7 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
             has_touch=True,
         )
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
         page.wait_for_timeout(800)
 
@@ -193,8 +210,12 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
             ".stButton > button, .stFormSubmitButton > button"
           )).map(node => {
             const rect = node.getBoundingClientRect();
-            return {width: rect.width, height: rect.height};
-          })
+            return {
+              label: node.innerText || node.getAttribute("aria-label") || node.title || "",
+              width: rect.width,
+              height: rect.height
+            };
+          }).filter(rect => rect.width > 0 && rect.height > 0)
         })""")
         assert metrics["documentWidth"] <= metrics["viewport"] + 2, metrics
         assert metrics["bodyWidth"] <= metrics["viewport"] + 2, metrics
@@ -206,5 +227,33 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
             for target in metrics["primaryTargets"]
         ), metrics
 
+        context.close()
+        browser.close()
+
+
+def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(**playwright.devices["Pixel 7"], accept_downloads=True)
+        page = context.new_page()
+        _open_owner_page(page, streamlit_server)
+        backup_expander = page.locator("details").filter(has_text="Personal Backup & Restore").locator("summary")
+        backup_expander.evaluate("(element) => element.click()")
+        page.get_by_label("New backup encryption passphrase (12+ characters)").fill(
+            "test-only encrypted backup passphrase"
+        )
+        page.get_by_label("Confirm backup encryption passphrase").fill(
+            "test-only encrypted backup passphrase"
+        )
+        page.get_by_role("button", name="Create encrypted backup").focus()
+        page.keyboard.press("Enter")
+        page.get_by_text(
+            "Encrypted backup created. Keep the passphrase separately; APAA cannot recover it."
+        ).wait_for(timeout=30000)
+        with page.expect_download(timeout=30000) as download_info:
+            page.get_by_role("button", name="Download encrypted APAA backup").focus()
+            page.keyboard.press("Enter")
+        download = download_info.value
+        assert download.suggested_filename.endswith(".apaa.enc")
         context.close()
         browser.close()

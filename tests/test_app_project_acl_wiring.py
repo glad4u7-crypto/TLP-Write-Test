@@ -23,8 +23,7 @@ def test_checkpoint_project_picker_remains_owner_only():
     )
 
     assert (
-        "project_options = registry.list_projects_for_owner(principal) "
-        "if principal is not None else []"
+        "project_options = registry.list_projects_for_owner(checkpoint_principal)"
     ) in source
     assert "format_func=lambda value: registry.get(value).name" not in source
 

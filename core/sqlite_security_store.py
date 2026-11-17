@@ -158,6 +158,19 @@ class SQLiteSecurityStore:
                 change_id TEXT,
                 updated_at TEXT
             )""",
+            """CREATE TABLE IF NOT EXISTS execution_idempotency (
+                issuer TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                action TEXT NOT NULL,
+                payload_digest TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'uncertain', 'cancelled')),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (issuer, subject, request_key)
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_execution_idempotency_status
+                ON execution_idempotency (issuer, subject, status, updated_at)""",
         )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -290,6 +303,188 @@ class SQLiteSecurityStore:
             except Exception:
                 connection.rollback()
                 raise
+
+    _EXECUTION_REQUEST_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{15,127}$")
+
+    def claim_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        action: str,
+        payload_digest: str,
+        *,
+        now: int | None = None,
+    ) -> str:
+        """Atomically claim a tenant-scoped idempotency key without storing payloads.
+
+        Existing keys are never re-dispatched. A pending row left by a crash is
+        deliberately not auto-recovered because the external side effect may
+        already have happened.
+        """
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            raise ValueError("Execution idempotency key is invalid.")
+        if type(action) is not str or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", action):
+            raise ValueError("Execution action is invalid.")
+        if type(payload_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", payload_digest):
+            raise ValueError("Execution payload digest is invalid.")
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            raise ValueError("Execution timestamp is invalid.")
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    """SELECT action, payload_digest, status FROM execution_idempotency
+                       WHERE issuer = ? AND subject = ? AND request_key = ?""",
+                    (tenant.issuer, tenant.subject, request_key),
+                ).fetchone()
+                if row is not None:
+                    if row["action"] != action or not hmac.compare_digest(
+                        str(row["payload_digest"]), payload_digest
+                    ):
+                        connection.commit()
+                        return "conflict"
+                    connection.commit()
+                    return str(row["status"])
+                connection.execute(
+                    """INSERT INTO execution_idempotency
+                       (issuer, subject, request_key, action, payload_digest,
+                        status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                    (tenant.issuer, tenant.subject, request_key, action,
+                     payload_digest, current, current),
+                )
+                connection.commit()
+                return "claimed"
+            except Exception:
+                connection.rollback()
+                raise
+
+    def finish_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        status: str,
+        *,
+        now: int | None = None,
+    ) -> bool:
+        """Transition a claimed request once; pending -> terminal only."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            return False
+        if type(status) is not str or status not in {"completed", "uncertain", "cancelled"}:
+            return False
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    """UPDATE execution_idempotency SET status = ?, updated_at = ?
+                       WHERE issuer = ? AND subject = ? AND request_key = ?
+                         AND status = 'pending'""",
+                    (status, current, tenant.issuer, tenant.subject, request_key),
+                )
+                connection.commit()
+                return cursor.rowcount == 1
+            except Exception:
+                connection.rollback()
+                raise
+
+    def resolve_uncertain_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        resolution: str,
+        *,
+        owner_confirmed: bool,
+        now: int | None = None,
+    ) -> bool:
+        """Record an explicit owner reconciliation; never infer an outcome.
+
+        The caller must be a trusted, authenticated Owner UI/controller. This
+        storage primitive does not authenticate the owner itself.
+        """
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(owner_confirmed) is not bool or owner_confirmed is not True:
+            return False
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            return False
+        if type(resolution) is not str or resolution not in {"completed", "cancelled"}:
+            return False
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    """UPDATE execution_idempotency SET status = ?, updated_at = ?
+                       WHERE issuer = ? AND subject = ? AND request_key = ?
+                         AND status = 'uncertain'""",
+                    (resolution, current, tenant.issuer, tenant.subject, request_key),
+                )
+                if cursor.rowcount != 1:
+                    connection.commit()
+                    return False
+                # Reconciliation is a security-sensitive owner decision. Record
+                # it in the same transaction as the terminal state transition.
+                timestamp = datetime.fromtimestamp(current, timezone.utc).isoformat()
+                event = DurableAuditEvent(
+                    action="execution.reconcile",
+                    result=resolution,
+                    reason_code="owner_confirmed_execution_reconciliation",
+                    principal_fingerprint=hashlib.sha256(
+                        (tenant.issuer + "\\n" + tenant.subject).encode("utf-8")
+                    ).hexdigest(),
+                    request_id=request_key,
+                )
+                event_data = self._canonical_event(event, timestamp)
+                previous_hash = self._verify_audit_connection(connection)
+                entry_hash = self._hash(previous_hash, event_data)
+                connection.execute(
+                    """INSERT INTO durable_audit_events
+                       (timestamp, action, result, reason_code, principal_fingerprint,
+                        request_id, previous_hash, entry_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (timestamp, event.action, event.result, event.reason_code,
+                     event.principal_fingerprint, event.request_id,
+                     previous_hash, entry_hash),
+                )
+                connection.commit()
+                return True
+            except Exception:
+                connection.rollback()
+                raise
+
+    def list_unresolved_executions(
+        self, tenant: TenantKey, *, limit: int = 50
+    ) -> tuple[dict[str, object], ...]:
+        """List pending/uncertain metadata for owner reconciliation; never auto-retry."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("Execution recovery limit must be between 1 and 500.")
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """SELECT request_key, action, status, created_at, updated_at
+                   FROM execution_idempotency
+                   WHERE issuer = ? AND subject = ? AND status IN ('pending', 'uncertain')
+                   ORDER BY created_at LIMIT ?""",
+                (tenant.issuer, tenant.subject, limit),
+            ).fetchall()
+        return tuple({
+            "request_key": str(row["request_key"]),
+            "action": str(row["action"]),
+            "status": str(row["status"]),
+            "created_at": int(row["created_at"]),
+            "updated_at": int(row["updated_at"]),
+        } for row in rows)
 
     def consume_approval_nonce(
         self, tenant: TenantKey, nonce: str, expires_at: int, *, now: int | None = None
@@ -507,6 +702,42 @@ class SQLiteSecurityStore:
             except ValueError:
                 return False
 
+    def list_audit_events(
+        self, *, principal_fingerprint: str, limit: int = 50
+    ) -> tuple[dict[str, object], ...]:
+        """Read recent metadata-only events for one tenant after verifying the full chain."""
+        if (
+            type(principal_fingerprint) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", principal_fingerprint) is None
+        ):
+            raise ValueError("Audit principal fingerprint is invalid.")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Audit history limit must be between 1 and 1000.")
+        with closing(self._connect()) as connection:
+            # Never display a partial history as trustworthy when any row in
+            # the shared append-only chain has been altered.
+            self._verify_audit_connection(connection)
+            rows = connection.execute(
+                """SELECT sequence, timestamp, action, result, reason_code,
+                          request_id, entry_hash
+                   FROM durable_audit_events
+                   WHERE principal_fingerprint = ?
+                   ORDER BY sequence DESC LIMIT ?""",
+                (principal_fingerprint, limit),
+            ).fetchall()
+        return tuple(
+            {
+                "sequence": int(row["sequence"]),
+                "timestamp": str(row["timestamp"]),
+                "action": str(row["action"]),
+                "result": str(row["result"]),
+                "reason_code": str(row["reason_code"]),
+                "request_id": str(row["request_id"]),
+                "entry_hash": str(row["entry_hash"]),
+            }
+            for row in rows
+        )
+
     def last_audit_hash(self) -> str:
         with closing(self._connect()) as connection:
             return self._verify_audit_connection(connection)
@@ -552,10 +783,17 @@ class SQLiteExecutionAuditLog:
         if not all(hasattr(event, field) for field in ("action", "executed", "reason")):
             raise TypeError("Unsupported execution audit event.")
         import uuid
+        reason = str(event.reason)
+        if reason.endswith("_pending"):
+            result = "pending"
+        elif reason.endswith("_failed"):
+            result = "failed"
+        else:
+            result = "success" if event.executed else "denied"
         record = DurableAuditEvent(
             action=str(event.action),
-            result="success" if event.executed else "denied",
-            reason_code=str(event.reason),
+            result=result,
+            reason_code=reason,
             principal_fingerprint=self._principal_fingerprint,
             request_id=uuid.uuid4().hex,
         )
@@ -565,3 +803,10 @@ class SQLiteExecutionAuditLog:
         if not self._store.verify_audit_chain():
             raise ValueError("SQLite audit hash chain verification failed.")
         return self._store.last_audit_hash()
+
+    def list_recent_events(self, *, limit: int = 50) -> tuple[dict[str, object], ...]:
+        """Return verified recent metadata for this exact owner/tenant only."""
+        return self._store.list_audit_events(
+            principal_fingerprint=self._principal_fingerprint,
+            limit=limit,
+        )

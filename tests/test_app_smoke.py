@@ -1,8 +1,16 @@
 from pathlib import Path
 from types import SimpleNamespace
+import os
 
 import streamlit as st
 from streamlit.testing.v1 import AppTest
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_personal_runtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
 
 
 def _click_button_by_label(app: AppTest, label: str) -> None:
@@ -40,11 +48,25 @@ def _authenticated_test_user(monkeypatch, *, configure_owner=True):
     )
 
 
-def test_streamlit_app_renders_in_safe_local_prototype_mode():
+def _local_owner_app():
+    from core.personal_auth import LocalOwnerAuthStore
+
+    auth_path = Path(os.environ["APAA_PERSONAL_DATA_DIR"]) / "owner-auth.sqlite3"
+    auth = LocalOwnerAuthStore(auth_path)
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
     assert not app.exception
+    app.text_input[0].set_value("test-only owner passphrase")
+    _click_button_by_label(app, "Unlock APAA")
+    assert not app.exception
+    return app
+
+
+def test_streamlit_app_renders_in_safe_local_prototype_mode():
+    app = _local_owner_app()
+    assert not app.exception
     assert any("Autonomous AI Agent" in item.value for item in app.title)
-    assert any("Local prototype mode" in item.value for item in app.warning)
+    assert any("Personal local mode" in item.value for item in app.warning)
     assert any("External API: Disabled" in item.value for item in app.markdown)
 
 
@@ -224,7 +246,7 @@ def test_authenticated_app_fails_closed_for_unsafe_security_database_path(
 
 
 def test_project_creation_requires_review_then_explicit_confirmation():
-    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app = _local_owner_app()
     assert not app.exception
     app.text_input[0].set_value("UI approval test")
     app.text_area[0].set_value("Must not create before confirmation")
@@ -241,7 +263,7 @@ def test_project_creation_requires_review_then_explicit_confirmation():
 
 
 def test_project_review_can_be_cancelled_without_side_effect():
-    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app = _local_owner_app()
     assert not app.exception
     app.text_input[0].set_value("Cancelled project")
     app.text_area[0].set_value("Should not persist")
@@ -667,3 +689,120 @@ def test_owner_capabilities_are_cleared_when_authenticated_account_switches(monk
     assert "global_owner_authorized" not in app.session_state
     assert "global_owner_admin_context" not in app.session_state
     assert "global_owner_approval_receipt" not in app.session_state
+
+
+def test_local_owner_sidebar_exposes_read_only_runtime_health_and_backup_tools():
+    app = _local_owner_app()
+    assert not app.exception
+    labels = [button.label for button in app.button]
+    assert "Run local health checks" in labels
+    assert "Create encrypted backup" in labels
+
+    _click_button_by_label(app, "Run local health checks")
+    assert not app.exception
+    assert any("data_dir:" in item.value for item in app.success)
+    assert any("PASS" in item.value for item in app.success)
+
+
+
+def test_read_only_web_search_is_not_called_until_owner_submits(monkeypatch):
+    from core.capabilities import ReadCapability, ReadItem, ReadResult
+    from core.safe_network_providers import DuckDuckGoSearchProvider
+
+    calls = []
+
+    def fake_read(self, request):
+        calls.append(request.query)
+        return ReadResult(
+            ReadCapability.WEB_SEARCH,
+            (ReadItem("Safe test result", "https://example.org/result"),),
+            "test-only provider",
+        )
+
+    monkeypatch.setattr(DuckDuckGoSearchProvider, "read", fake_read)
+    app = _local_owner_app()
+    assert not app.exception
+    assert calls == []
+
+    query_input = next(
+        item for item in app.text_input if item.label == "Search the public web"
+    )
+    query_input.set_value("APAA read-only integration test")
+    submit = next(
+        item for item in app.form_submit_button if item.label == "Search web"
+    )
+    submit.click().run()
+
+    assert not app.exception
+    assert calls == ["APAA read-only integration test"]
+    assert any("Safe test result" in item.value for item in app.markdown)
+    assert any("https://example.org/result" in item.value for item in app.markdown)
+
+
+
+@pytest.mark.parametrize(
+    "provider_name,input_label,submit_label,query,capability",
+    [
+        (
+            "PublicWebPageReadProvider", "Read a public HTTPS page", "Read page",
+            "https://example.org/public", "WEB_PAGE_READ",
+        ),
+        (
+            "YouTubePublicSearchProvider", "Find public YouTube videos", "Search YouTube",
+            "APAA public video search", "YOUTUBE_SEARCH",
+        ),
+    ],
+)
+def test_public_page_and_youtube_ui_wait_for_explicit_submission(
+    monkeypatch, provider_name, input_label, submit_label, query, capability,
+):
+    import core.safe_network_providers as providers
+    from core.capabilities import ReadCapability, ReadItem, ReadResult
+
+    provider_class = getattr(providers, provider_name)
+    calls = []
+
+    def fake_read(self, request):
+        calls.append((request.capability.name, request.target or request.query))
+        cap = ReadCapability[capability]
+        locator = (
+            "https://www.youtube.com/watch?v=abcdefghijk"
+            if capability == "YOUTUBE_SEARCH"
+            else "https://example.org/item"
+        )
+        return ReadResult(
+            cap, (ReadItem("Safe public item", locator, "bounded excerpt"),),
+            "test-only provider",
+        )
+
+    monkeypatch.setattr(provider_class, "read", fake_read)
+    app = _local_owner_app()
+    assert not app.exception
+    assert calls == []
+
+    query_input = next(item for item in app.text_input if item.label == input_label)
+    query_input.set_value(query)
+    submit = next(item for item in app.form_submit_button if item.label == submit_label)
+    submit.click().run()
+
+    assert not app.exception
+    assert calls == [(capability, query)]
+    assert any("Safe public item" in item.value for item in app.markdown)
+
+
+def test_read_only_page_ui_reports_provider_errors_without_failing_app(monkeypatch):
+    import core.safe_network_providers as providers
+
+    def blocked_read(self, request):
+        raise providers.SafeNetworkError("blocked by test policy")
+
+    monkeypatch.setattr(providers.PublicWebPageReadProvider, "read", blocked_read)
+    app = _local_owner_app()
+    page_input = next(
+        item for item in app.text_input if item.label == "Read a public HTTPS page"
+    )
+    page_input.set_value("https://example.org/public")
+    next(item for item in app.form_submit_button if item.label == "Read page").click().run()
+
+    assert not app.exception
+    assert any("blocked or unavailable" in item.value for item in app.error)

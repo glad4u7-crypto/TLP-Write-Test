@@ -241,3 +241,21 @@ def test_identity_switch_and_logout_clear_global_owner_capabilities():
     state.update({key: object() for key in owner_keys})
     clear_session_identity(state)
     assert state == {}
+
+
+def test_first_local_owner_bind_preserves_verified_login_markers_but_clears_orphaned_capabilities():
+    state = {
+        "apaa_local_authenticated_at": 1000.0,
+        "apaa_local_last_activity": 1000.0,
+        "approval_session_scope": "stale-scope",
+        "approval_authority": object(),
+        "execution_gateway": object(),
+        "pending_project": {"name": "stale draft"},
+    }
+    assert bind_session_identity(state, "local-prototype") is True
+    assert state["apaa_local_authenticated_at"] == 1000.0
+    assert state["apaa_local_last_activity"] == 1000.0
+    assert "approval_session_scope" not in state
+    assert "approval_authority" not in state
+    assert "execution_gateway" not in state
+    assert "pending_project" not in state

@@ -23,6 +23,11 @@ _APPROVABLE_MUTATIONS = {
     "rename_file", "move_file", "create_draft_email",
     "send_email", "send_message", "publish_post",
     "create_playlist", "add_video_to_playlist",
+    "memory_add", "memory_delete", "knowledge_add", "knowledge_delete",
+    "conversation_append_turn", "conversation_delete",
+    "preference_save", "preference_delete", "checkpoint_save",
+    # Browser reads are always explicit-approval actions; never Auto-Run.
+    "browser_read",
 }
 
 _BLOCKED_TOKENS = {
@@ -82,6 +87,9 @@ def authorize_action(
 
     if normalized not in _APPROVABLE_MUTATIONS:
         return SafetyDecision(False, "Unknown or unregistered action is blocked by default.")
+
+    if normalized == "browser_read" and auto_run:
+        return SafetyDecision(False, "Browser actions always require a fresh explicit Owner approval.")
 
     if auto_run:
         allowed_auto_run = {_normalize(item) for item in auto_run_actions}

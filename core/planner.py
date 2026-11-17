@@ -254,3 +254,55 @@ def create_plan(task: Task) -> list[str]:
         "Prepare a proposed change or result.",
         "Run appropriate checks and report evidence.",
     ]
+
+
+def task_plan_from_dict(value: object) -> TaskPlan:
+    """Reconstruct and fully revalidate a persisted plan snapshot."""
+    if not isinstance(value, dict):
+        raise ValueError("Persisted task plan must be an object.")
+    expected = {
+        "schema_version", "plan_id", "task_description", "status", "steps",
+        "clarification_questions", "assumptions", "safety_notes",
+    }
+    if set(value) != expected:
+        raise ValueError("Persisted task plan fields are invalid.")
+    if not isinstance(value["steps"], (list, tuple)):
+        raise ValueError("Persisted task plan steps must be a list.")
+    steps = []
+    for item in value["steps"]:
+        if not isinstance(item, dict) or set(item) != {
+            "step_id", "title", "purpose", "category",
+            "expected_output", "requires_human_approval",
+        }:
+            raise ValueError("Persisted task plan step fields are invalid.")
+        try:
+            category = StepCategory(item["category"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Persisted task plan step category is invalid.") from exc
+        steps.append(PlanStep(
+            step_id=item["step_id"],
+            title=item["title"],
+            purpose=item["purpose"],
+            category=category,
+            expected_output=item["expected_output"],
+            requires_human_approval=item["requires_human_approval"],
+        ))
+    sequence_fields = ("clarification_questions", "assumptions", "safety_notes")
+    sequences = {}
+    for field_name in sequence_fields:
+        field_value = value[field_name]
+        if not isinstance(field_value, (list, tuple)):
+            raise ValueError(f"Persisted {field_name} must be a list.")
+        sequences[field_name] = tuple(field_value)
+    try:
+        status = PlanStatus(value["status"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Persisted task plan status is invalid.") from exc
+    return TaskPlan(
+        schema_version=value["schema_version"],
+        plan_id=value["plan_id"],
+        task_description=value["task_description"],
+        status=status,
+        steps=tuple(steps),
+        **sequences,
+    )

@@ -127,3 +127,62 @@ def test_gateway_does_not_allow_caller_to_override_its_session_scope():
     )
     assert result.executed is False
     assert registry.list_projects() == []
+
+
+
+def test_project_gateway_uses_durable_tenant_scoped_idempotency_ledger(tmp_path):
+    from core.sqlite_security_store import SQLiteSecurityStore
+    from core.storage import TenantKey
+
+    tenant = TenantKey("local://apaa-personal", "local-owner")
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    authority = ApprovalAuthority(
+        nonce_store=store,
+        signing_secret=b"project-idempotency-test-secret-material",
+    )
+    registry = ProjectRegistry()
+    gateway = build_project_gateway(
+        registry, authority, session_scope="owner-session",
+        idempotency_store=store,
+    )
+    payload = {"name": "One durable project", "description": "No duplicate dispatch"}
+
+    first_receipt = authority.issue(
+        "create_project", payload, tenant=tenant, session_scope="owner-session"
+    )
+    first = gateway.execute(
+        "create_project", payload, approval_receipt=first_receipt,
+        tenant=tenant, idempotency_key="owner-project-create-0001",
+    )
+    assert first.executed is True
+    assert len(registry.list_projects()) == 1
+
+    second_receipt = authority.issue(
+        "create_project", payload, tenant=tenant, session_scope="owner-session"
+    )
+    replay = gateway.execute(
+        "create_project", payload, approval_receipt=second_receipt,
+        tenant=tenant, idempotency_key="owner-project-create-0001",
+    )
+    assert replay.executed is False
+    assert "already completed" in replay.reason
+    assert len(registry.list_projects()) == 1
+
+
+def test_project_gateway_with_durable_ledger_requires_owner_and_request_key(tmp_path):
+    from core.sqlite_security_store import SQLiteSecurityStore
+
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    authority = ApprovalAuthority(
+        signing_secret=b"project-idempotency-test-secret-material",
+    )
+    registry = ProjectRegistry()
+    gateway = build_project_gateway(
+        registry, authority, idempotency_store=store,
+    )
+    payload = {"name": "Must not run", "description": ""}
+    receipt = authority.issue("create_project", payload)
+    result = gateway.execute("create_project", payload, approval_receipt=receipt)
+    assert result.executed is False
+    assert "validated owner and idempotency key" in result.reason
+    assert registry.list_projects() == []

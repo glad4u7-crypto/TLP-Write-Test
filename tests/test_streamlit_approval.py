@@ -1,7 +1,11 @@
 """Streamlit AppTest coverage for approval and per-session isolation."""
 from pathlib import Path
+import re
 
 from streamlit.testing.v1 import AppTest
+
+from core.personal_runtime import PERSONAL_OWNER_TENANT
+from core.personal_auth import LocalOwnerAuthStore
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -10,7 +14,15 @@ APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 def _app(tmp_path, monkeypatch):
     tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    return AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+    monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
+    auth = LocalOwnerAuthStore(tmp_path / ".apaa_personal" / "owner-auth.sqlite3")
+    if not auth.is_configured():
+        auth.configure("test-only owner passphrase", "test-only owner passphrase")
+    app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+    assert not app.exception
+    app.text_input[0].set_value("test-only owner passphrase")
+    _click(app, "Unlock APAA")
+    return app
 
 
 def _click(app, label):
@@ -35,10 +47,10 @@ def test_streamlit_project_creation_requires_review_then_explicit_confirm(
     _prepare_project(app)
 
     assert registry.list_projects() == []
-    assert app.session_state["pending_project"] == {
-        "name": "P06 UI test",
-        "description": "Approval integration test",
-    }
+    pending = app.session_state["pending_project"]
+    assert pending["name"] == "P06 UI test"
+    assert pending["description"] == "Approval integration test"
+    assert re.fullmatch(r"[0-9a-f]{48}", pending["idempotency_key"])
 
     _click(app, "Confirm and create project")
 
@@ -47,6 +59,7 @@ def test_streamlit_project_creation_requires_review_then_explicit_confirm(
     assert projects[0].name == "P06 UI test"
     assert projects[0].description == "Approval integration test"
     assert "pending_project" not in app.session_state
+    assert any("create_project" in item.value for item in app.caption)
 
 
 def test_streamlit_cancel_does_not_create_project(tmp_path, monkeypatch):
@@ -62,11 +75,13 @@ def test_streamlit_cancel_does_not_create_project(tmp_path, monkeypatch):
     assert "pending_project" not in app.session_state
 
 
-def test_streamlit_sessions_do_not_share_project_registry_or_approval_authority(
+def test_streamlit_sessions_share_owner_projects_but_not_approval_authority(
     tmp_path, monkeypatch
 ):
-    first = _app(tmp_path / "first", monkeypatch)
-    second = _app(tmp_path / "second", monkeypatch)
+    # Both browser sessions run as the same local OS owner, so durable owner
+    # projects are shared while session-scoped approval capabilities remain separate.
+    first = _app(tmp_path, monkeypatch)
+    second = _app(tmp_path, monkeypatch)
 
     first_registry = first.session_state["project_registry"]
     second_registry = second.session_state["project_registry"]
@@ -76,11 +91,12 @@ def test_streamlit_sessions_do_not_share_project_registry_or_approval_authority(
     assert first_registry is not second_registry
     assert first_authority is not second_authority
 
-    _prepare_project(first, name="Only first session")
+    _prepare_project(first, name="Owner-shared workspace")
     _click(first, "Confirm and create project")
 
     assert len(first_registry.list_projects()) == 1
-    assert second_registry.list_projects() == []
+    assert len(second_registry.list_projects()) == 1
+    assert second_registry.list_projects()[0].name == "Owner-shared workspace"
 
 
 def test_cross_session_approval_receipt_is_rejected(tmp_path, monkeypatch):
@@ -89,10 +105,13 @@ def test_cross_session_approval_receipt_is_rejected(tmp_path, monkeypatch):
 
     payload = {"name": "Cross session", "description": "Must not be authorized"}
     receipt = first.session_state["approval_authority"].issue(
-        "create_project", payload
+        "create_project", payload,
+        tenant=PERSONAL_OWNER_TENANT,
+        session_scope=first.session_state["approval_session_scope"],
     )
     result = second.session_state["execution_gateway"].execute(
-        "create_project", payload, approval_receipt=receipt
+        "create_project", payload, approval_receipt=receipt,
+        tenant=PERSONAL_OWNER_TENANT,
     )
 
     assert result.executed is False
@@ -128,10 +147,10 @@ def test_streamlit_replacing_reviewed_details_confirms_only_latest_payload(
     app.text_area[0].set_value("Only these reviewed details may be created")
     _click(app, "Review project details")
 
-    assert app.session_state["pending_project"] == {
-        "name": "Latest draft",
-        "description": "Only these reviewed details may be created",
-    }
+    pending = app.session_state["pending_project"]
+    assert pending["name"] == "Latest draft"
+    assert pending["description"] == "Only these reviewed details may be created"
+    assert re.fullmatch(r"[0-9a-f]{48}", pending["idempotency_key"])
     assert registry.list_projects() == []
 
     _click(app, "Confirm and create project")

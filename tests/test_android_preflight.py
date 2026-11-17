@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+
+from scripts.apaa_android_preflight import (
+    PreflightError,
+    check_streamlit,
+    prepare_private_data_dir,
+    validate_port,
+)
+
+
+@pytest.mark.parametrize("raw,expected", [("1024", 1024), ("8501", 8501), ("65535", 65535)])
+def test_valid_android_ports(raw, expected):
+    assert validate_port(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "abc", "85.01", "-1", "1023", "65536", "１２３４"])
+def test_invalid_android_ports_are_rejected(raw):
+    with pytest.raises(PreflightError):
+        validate_port(raw)
+
+
+def test_relative_data_directory_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(PreflightError, match="absolute path"):
+        prepare_private_data_dir(".apaa_personal")
+
+
+def test_private_data_directory_is_created_with_owner_only_permissions(tmp_path):
+    target = tmp_path / "private" / ".apaa_personal"
+    result = prepare_private_data_dir(target)
+    assert result == target
+    assert target.is_dir()
+    if os.name == "posix":
+        assert target.stat().st_mode & 0o777 == 0o700
+        assert target.stat().st_uid == os.getuid()
+
+
+def test_existing_directory_permissions_are_restricted(tmp_path):
+    target = tmp_path / ".apaa_personal"
+    target.mkdir(mode=0o755)
+    if os.name == "posix":
+        target.chmod(0o755)
+        prepare_private_data_dir(target)
+        assert target.stat().st_mode & 0o777 == 0o700
+
+
+def test_symlink_data_directory_is_rejected(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir(mode=0o700)
+    link = tmp_path / ".apaa_personal"
+    link.symlink_to(actual, target_is_directory=True)
+    with pytest.raises((PreflightError, OSError)):
+        prepare_private_data_dir(link)
+
+
+def test_regular_file_data_path_is_rejected(tmp_path):
+    target = tmp_path / ".apaa_personal"
+    target.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(PreflightError):
+        prepare_private_data_dir(target)
+
+
+def test_streamlit_dependency_check_fails_closed_when_missing(monkeypatch):
+    monkeypatch.setattr("scripts.apaa_android_preflight.importlib.util.find_spec", lambda name: None)
+    with pytest.raises(PreflightError, match="Streamlit is not installed"):
+        check_streamlit()
+
+
+def test_android_launcher_pins_loopback_xsrf_cors_and_disables_usage_telemetry():
+    launcher = Path(__file__).parents[1] / "scripts" / "apaa_android_start.sh"
+    source = launcher.read_text(encoding="utf-8")
+
+    assert "--server.address 127.0.0.1" in source
+    assert "--server.enableCORS true" in source
+    assert "--server.enableXsrfProtection true" in source
+    assert "--browser.gatherUsageStats false" in source
+    assert "--server.address 0.0.0.0" not in source
+
+
+def test_android_doctor_reports_runtime_without_exposing_environment_values(monkeypatch, capsys):
+    from scripts import apaa_android_doctor as doctor
+
+    monkeypatch.setattr(doctor, "_git_commit", lambda: "a" * 40)
+    monkeypatch.setattr(doctor, "_loopback_socket_available", lambda: True)
+    monkeypatch.setattr(
+        doctor,
+        "_package_version",
+        lambda name: "1.2.3" if name == "streamlit" else "50.0.0",
+    )
+    monkeypatch.setattr(doctor.importlib.util, "find_spec", lambda name: object())
+    results = doctor.collect_diagnostics()
+
+    assert results["streamlit_version"] == "1.2.3"
+    assert results["cryptography_version"] == "50.0.0"
+    assert results["loopback_bind_available"] is True
+    assert results["git_commit"] == "a" * 40
+    assert "password" not in " ".join(results).casefold()
+    assert "secret" not in " ".join(results).casefold()
+
+
+def test_android_doctor_main_marks_missing_runtime_as_blocked(monkeypatch, capsys):
+    from scripts import apaa_android_doctor as doctor
+
+    monkeypatch.setattr(
+        doctor,
+        "collect_diagnostics",
+        lambda: {
+            "python_version": "3.12.0",
+            "streamlit_version": "NOT INSTALLED",
+            "cryptography_version": "NOT INSTALLED",
+            "aes_256_gcm_available": False,
+            "scrypt_available": False,
+            "loopback_bind_available": True,
+            "git_commit": "UNKNOWN",
+        },
+    )
+    assert doctor.main() == 2
+    output = capsys.readouterr().out
+    assert "READ ONLY" in output
+    assert "BLOCKED" in output
+    assert "no network connection" in output

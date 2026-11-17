@@ -1,14 +1,18 @@
 import hashlib
+import json
 import hmac
 import os
 import secrets
 import sqlite3
+import time
+import tempfile
+from pathlib import Path
 import streamlit as st
 from core.mobile_ui import apply_mobile_ui
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from core.models import Task
-from core.planner import PlanStatus, StepCategory, create_structured_plan
+from core.planner import PlanStatus, StepCategory, create_structured_plan, task_plan_from_dict
 from core.projects import ProjectRegistry
 from core.persistent_projects import PersistentProjectRegistry
 from core.project_access import ProjectAccessControl
@@ -21,9 +25,32 @@ from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
+from core.personal_diagnostics import inspect_personal_runtime, diagnostics_summary
+from core.personal_project_files import (
+    MAX_PROJECT_FILE_BYTES, ProjectFileError, list_project_files,
+    project_files_directory, save_project_file,
+)
+from core.personal_backup import create_personal_backup, restore_personal_backup, PersonalBackupError
+from core.encrypted_backup import encrypt_backup_file, decrypt_backup_file, EncryptedBackupError
+from core.personal_runtime import (
+    PERSONAL_OWNER_TENANT,
+    load_or_create_approval_signing_key,
+    personal_runtime_paths,
+)
+from core.personal_auth import LocalOwnerAuthStore
+from core.browser_control import BrowserControlBoundary
+from core.read_only_adapters import ReadOnlyAdapterRegistry, ReadOnlyAdapterError, ProjectFileReadAdapter
+from core.capabilities import ReadCapability, ReadRequest
+from core.safe_network_providers import (
+    DuckDuckGoSearchProvider,
+    PublicWebPageReadProvider,
+    YouTubePublicSearchProvider,
+    SafeNetworkError,
+)
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
+from core.ui_mutations import execute_audited_ui_mutation
 from core.trusted_identity_directory import SQLiteTrustedIdentityDirectory
 from core.global_owner import GlobalOwnerConfigurationError, is_global_owner
 from core.global_owner_config import (
@@ -84,10 +111,160 @@ if auth_required:
 else:
     principal = None
     st.warning(
-        "Local prototype mode: authentication is not enforced. "
-        "Do not expose this instance publicly. Set [apaa].require_auth = true "
-        "after configuring OIDC."
+        "Personal local mode: this instance is for one owner on this device. "
+        "Remote/LAN access is blocked; keep the app bound to loopback."
     )
+    try:
+        server_address = str(st.get_option("server.address") or "").strip().lower()
+    except Exception:
+        server_address = ""
+    if server_address not in {"", "localhost", "127.0.0.1", "::1"}:
+        st.error("Personal local mode requires a loopback-only Streamlit server address.")
+        st.stop()
+
+    # Local Owner authentication is mandatory before any Principal, approval
+    # authority, gateway, project, memory or task capability is initialized.
+    personal_data_dir = os.environ.get(
+        "APAA_PERSONAL_DATA_DIR", str(Path.home() / ".apaa_personal")
+    )
+    personal_paths = personal_runtime_paths(personal_data_dir)
+    try:
+        local_owner_auth = LocalOwnerAuthStore(
+            personal_paths.owner_auth_db
+        )
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Owner authentication storage is not safe: {exc}")
+        st.stop()
+
+    now = time.time()
+    authenticated_at = st.session_state.get("apaa_local_authenticated_at")
+    last_activity = st.session_state.get("apaa_local_last_activity")
+    session_expired = (
+        authenticated_at is not None
+        and last_activity is not None
+        and (
+            now - float(last_activity) >= 15 * 60
+            or now - float(authenticated_at) >= 12 * 60 * 60
+        )
+    )
+    if session_expired:
+        clear_session_identity(st.session_state)
+        for key in (
+            "apaa_local_authenticated_at", "apaa_local_last_activity",
+            "approval_session_scope", "approval_authority",
+            "execution_gateway", "execution_gateway_owner",
+            "pending_project", "structured_task_plan", "structured_task_source",
+            "structured_task_clarification", "selected_project_id",
+            "project_registry", "project_registry_tenant",
+        ):
+            st.session_state.pop(key, None)
+        st.warning("Your APAA Owner session expired. Sign in again to continue.")
+
+    if not local_owner_auth.is_configured():
+        st.warning("First-time Owner setup. Create your private APAA passphrase.")
+        with st.form("apaa_owner_first_run_setup"):
+            new_owner_passphrase = st.text_input(
+                "Create Owner passphrase", type="password", max_chars=1024
+            )
+            confirm_owner_passphrase = st.text_input(
+                "Confirm Owner passphrase", type="password", max_chars=1024
+            )
+            setup_owner = st.form_submit_button("Create Owner protection")
+        if setup_owner:
+            try:
+                local_owner_auth.configure(
+                    new_owner_passphrase, confirm_owner_passphrase
+                )
+                st.success("Owner protection created. Sign in to open APAA.")
+                st.rerun()
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Owner protection could not be saved safely: {exc}")
+        st.stop()
+
+    if (
+        authenticated_at is None
+        or last_activity is None
+        or session_expired
+    ):
+        st.warning("APAA is locked. Only the configured Owner can unlock this session.")
+        with st.form("apaa_owner_login"):
+            owner_passphrase = st.text_input(
+                "Owner passphrase", type="password", max_chars=1024
+            )
+            unlock_owner = st.form_submit_button("Unlock APAA", type="primary")
+        if unlock_owner:
+            try:
+                if local_owner_auth.authenticate(owner_passphrase):
+                    st.session_state["apaa_local_authenticated_at"] = now
+                    st.session_state["apaa_local_last_activity"] = now
+                    # The identity binder creates a fresh approval scope only
+                    # after it has cleared any orphaned prior-session state.
+                    st.rerun()
+                st.error("Owner authentication failed or is temporarily locked.")
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Owner authentication could not be completed safely: {exc}")
+        st.stop()
+
+    # Refresh idle time only after a request reaches this authenticated gate.
+    st.session_state["apaa_local_last_activity"] = now
+
+    def _logout_local_owner():
+        try:
+            local_owner_auth.record_event("logout")
+        except (ValueError, OSError, sqlite3.Error):
+            # Logout must still revoke the in-memory session if audit storage fails.
+            pass
+        clear_session_identity(st.session_state)
+        for key in (
+            "apaa_local_authenticated_at", "apaa_local_last_activity",
+            "approval_session_scope", "approval_authority",
+            "execution_gateway", "execution_gateway_owner",
+            "pending_project", "structured_task_plan", "structured_task_source",
+            "structured_task_clarification", "selected_project_id",
+            "project_registry", "project_registry_tenant",
+        ):
+            st.session_state.pop(key, None)
+
+    st.sidebar.success("Owner session active · local device")
+    with st.sidebar.expander("Change Owner passphrase"):
+        with st.form("apaa_owner_change_passphrase"):
+            current_owner_passphrase = st.text_input(
+                "Current Owner passphrase", type="password", max_chars=1024
+            )
+            replacement_owner_passphrase = st.text_input(
+                "New Owner passphrase", type="password", max_chars=1024
+            )
+            confirm_replacement_passphrase = st.text_input(
+                "Confirm new Owner passphrase", type="password", max_chars=1024
+            )
+            change_owner_passphrase = st.form_submit_button("Change passphrase")
+        if change_owner_passphrase:
+            try:
+                changed = local_owner_auth.change_passphrase(
+                    current_owner_passphrase,
+                    replacement_owner_passphrase,
+                    confirm_replacement_passphrase,
+                )
+                if changed:
+                    clear_session_identity(st.session_state)
+                    for key in (
+                        "apaa_local_authenticated_at", "apaa_local_last_activity",
+                        "approval_session_scope", "approval_authority",
+                        "execution_gateway", "execution_gateway_owner",
+                    ):
+                        st.session_state.pop(key, None)
+                    st.success("Owner passphrase changed. Sign in again with the new passphrase.")
+                    st.rerun()
+                st.error("Passphrase change failed. Check the current passphrase or login lockout.")
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Passphrase change could not be completed safely: {exc}")
+
+    with st.sidebar.expander("Owner security events"):
+        for event_type, occurred_at in local_owner_auth.list_events(limit=25):
+            st.caption(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(occurred_at))} · {event_type}")
+
+    st.sidebar.button("Log out", on_click=_logout_local_owner)
 
 
 # Clear identity-bound drafts, approval authority and gateway if a different
@@ -164,6 +341,7 @@ if principal is not None:
             "project_db_path", ".apaa_projects/projects.sqlite3"
         )
         security_store = SQLiteSecurityStore(security_db_path)
+        active_security_store = security_store
         project_store = SQLiteProjectStore(project_db_path)
         project_access_control = ProjectAccessControl(project_store)
         project_access_controller = OwnerProjectAccessController(project_access_control)
@@ -237,18 +415,72 @@ if principal is not None:
         )
         st.session_state["project_registry_tenant"] = session_identity
 else:
-    memory_store = None
-    checkpoint_access = None
+    # Personal Edition local runtime: stable owner-only files survive app restarts.
+    personal_data_dir = os.environ.get(
+        "APAA_PERSONAL_DATA_DIR", str(Path.home() / ".apaa_personal")
+    )
+    personal_paths = personal_runtime_paths(personal_data_dir)
+    try:
+        signing_secret = load_or_create_approval_signing_key(personal_paths.data_dir)
+        personal_security_store = SQLiteSecurityStore(personal_paths.security_db)
+        active_security_store = personal_security_store
+        personal_project_store = SQLiteProjectStore(personal_paths.projects_db)
+    except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Personal runtime could not start safely: {exc}")
+        st.stop()
+    tenant = PERSONAL_OWNER_TENANT
+    # This Principal is created only by trusted local server code after the
+    # loopback-only boundary check; it is not derived from browser/task input
+    # and must never be reused for a network-exposed deployment.
+    local_owner_principal = Principal(
+        subject=tenant.subject, issuer=tenant.issuer, authenticated=True,
+        roles=("owner",),
+    )
+    try:
+        memory_store = SQLiteMemoryStore(personal_paths.memory_db)
+        checkpoint_access = OwnerProjectCheckpointAccess(
+            memory_store, personal_project_store, local_owner_principal
+        )
+    except (ValueError, OSError, TypeError, sqlite3.Error, PermissionError) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Personal memory storage could not start safely: {exc}")
+        st.stop()
+    authority_config_material = (
+        "apaa-personal-approval-authority-v1\\n"
+        + os.path.abspath(os.fspath(personal_paths.security_db))
+    ).encode("utf-8")
+    authority_config_id = hmac.new(
+        signing_secret, authority_config_material, hashlib.sha256
+    ).hexdigest()
+    if st.session_state.get("approval_authority_config_id") != authority_config_id:
+        st.session_state.pop("approval_authority", None)
+        st.session_state.pop("execution_gateway", None)
+        st.session_state.pop("execution_gateway_owner", None)
+        st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
+        st.session_state["approval_authority_config_id"] = authority_config_id
     if "approval_authority" not in st.session_state:
-        st.session_state["approval_authority"] = ApprovalAuthority()
-    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
-    if "project_registry" not in st.session_state:
-        st.session_state["project_registry"] = ProjectRegistry()
-    st.session_state["project_registry_tenant"] = "local-prototype"
+        st.session_state["approval_authority"] = ApprovalAuthority(
+            nonce_store=personal_security_store, signing_secret=signing_secret
+        )
+    audit_log = SQLiteExecutionAuditLog(personal_security_store, tenant)
+    if (
+        "project_registry" not in st.session_state
+        or st.session_state.get("project_registry_tenant") != "personal-local-owner"
+        or not isinstance(st.session_state.get("project_registry"), PersistentProjectRegistry)
+    ):
+        st.session_state["project_registry"] = PersistentProjectRegistry(
+            personal_project_store, tenant
+        )
+        st.session_state["project_registry_tenant"] = "personal-local-owner"
+
 if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
 registry = st.session_state["project_registry"]
+# Checkpoint UI uses the identity created by trusted OIDC middleware or by the
+# loopback-only local runtime; never derive this principal from client input.
+checkpoint_principal = principal if principal is not None else local_owner_principal
 gateway_owner = session_identity
 if (
     "execution_gateway" not in st.session_state
@@ -260,15 +492,52 @@ if (
         audit_log=audit_log,
         principal=principal,
         session_scope=st.session_state["approval_session_scope"],
+        idempotency_store=active_security_store,
     )
     st.session_state["execution_gateway_owner"] = gateway_owner
+
+# Browser Security is connected to the authenticated Owner, durable approval
+# authority and Action Audit. A guarded handler is registered but remains disabled.
+_active_browser_session_scope = st.session_state["approval_session_scope"]
+def _browser_owner_session_is_active():
+    if st.session_state.get("approval_session_scope") != _active_browser_session_scope:
+        return False
+    if principal is not None:
+        return principal.authenticated is True
+    auth_at = st.session_state.get("apaa_local_authenticated_at")
+    activity_at = st.session_state.get("apaa_local_last_activity")
+    current = time.time()
+    return (
+        isinstance(auth_at, (int, float)) and not isinstance(auth_at, bool)
+        and isinstance(activity_at, (int, float)) and not isinstance(activity_at, bool)
+        and current - float(auth_at) < 12 * 60 * 60
+        and current - float(activity_at) < 15 * 60
+        and current >= float(auth_at) and current >= float(activity_at)
+    )
+
+_browser_owner_verified = principal is None or (
+    global_owner_config is not None
+    and is_global_owner(principal, global_owner_config)
+)
+_browser_control_boundary = None
+if _browser_owner_verified:
+    _browser_control_boundary = BrowserControlBoundary(
+        owner_principal=checkpoint_principal,
+        owner_tenant=tenant,
+        owner_verified=True,  # trusted local/global Owner gate has succeeded
+        session_scope=_active_browser_session_scope,
+        approval_authority=st.session_state["approval_authority"],
+        audit_log=audit_log,
+        owner_session_check=_browser_owner_session_is_active,
+    )
 
 def visible_projects():
     if principal is not None:
         return registry.list_projects_for_principal(principal)
     return [
         project for project in registry.list_projects()
-        if project.owner_subject == "local-prototype"
+        if project.owner_subject == PERSONAL_OWNER_TENANT.subject
+        and project.owner_issuer == PERSONAL_OWNER_TENANT.issuer
     ]
 
 def visible_project(project_id):
@@ -278,7 +547,13 @@ def visible_project(project_id):
         except AuthorizationDenied:
             return None
     project = registry.get(project_id)
-    return project if project and project.owner_subject == "local-prototype" else None
+    return (
+        project
+        if project
+        and project.owner_subject == PERSONAL_OWNER_TENANT.subject
+        and project.owner_issuer == PERSONAL_OWNER_TENANT.issuer
+        else None
+    )
 
 st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
@@ -311,6 +586,313 @@ with st.sidebar:
     st.subheader("Safety")
     st.success("No paid API requests")
     st.success("External execution disabled")
+
+    if not auth_required:
+        with st.expander("Personal Runtime Health", expanded=False):
+            st.caption(
+                "Read-only preflight for this device's private APAA data. "
+                "It never creates, repairs, or changes databases or keys."
+            )
+            run_local_diagnostics = st.button(
+                "Run local health checks", key="apaa_run_local_diagnostics_button"
+            )
+            if run_local_diagnostics:
+                try:
+                    diagnostic_results = inspect_personal_runtime(personal_data_dir)
+                    passed, failed, info = diagnostics_summary(diagnostic_results)
+                    metric_cols = st.columns(3)
+                    metric_cols[0].metric("PASS", passed)
+                    metric_cols[1].metric("FAIL", failed)
+                    metric_cols[2].metric("INFO", info)
+                    for diagnostic in diagnostic_results:
+                        message = f"{diagnostic.status} · {diagnostic.code}: {diagnostic.detail}"
+                        if diagnostic.status == "PASS":
+                            st.success(message)
+                        elif diagnostic.status == "FAIL":
+                            st.error(message)
+                        else:
+                            st.info(message)
+                    if failed:
+                        st.warning(
+                            "One or more local runtime checks failed. APAA will not "
+                            "automatically repair protected data; investigate before continuing."
+                        )
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Local diagnostics could not complete safely: {exc}")
+
+    if not auth_required:
+        with st.expander("Personal Backup & Restore", expanded=False):
+            st.caption(
+                "New backups are encrypted with your own passphrase. Restore always "
+                "creates a new private directory and never overwrites live data."
+            )
+            backup_passphrase = st.text_input(
+                "New backup encryption passphrase (12+ characters)",
+                type="password",
+                key="apaa_backup_encrypt_passphrase",
+                max_chars=1024,
+            )
+            backup_passphrase_confirm = st.text_input(
+                "Confirm backup encryption passphrase",
+                type="password",
+                key="apaa_backup_encrypt_passphrase_confirm",
+                max_chars=1024,
+            )
+            if st.button("Create encrypted backup", key="apaa_create_personal_backup"):
+                try:
+                    if len(backup_passphrase) < 12:
+                        raise EncryptedBackupError("Use a backup passphrase with at least 12 characters.")
+                    if not hmac.compare_digest(backup_passphrase, backup_passphrase_confirm):
+                        raise EncryptedBackupError("Backup passphrases do not match.")
+                    backup_parent = Path(personal_data_dir).expanduser().absolute().parent
+                    with tempfile.TemporaryDirectory(
+                        prefix=".apaa-backup-download-", dir=str(backup_parent)
+                    ) as temporary_directory:
+                        backup_file = Path(temporary_directory) / "apaa-personal-backup.zip"
+                        encrypted_file = Path(temporary_directory) / "apaa-personal-backup.apaa.enc"
+                        create_personal_backup(personal_data_dir, backup_file)
+                        encrypt_backup_file(backup_file, encrypted_file, backup_passphrase)
+                        backup_bytes = encrypted_file.read_bytes()
+                    st.download_button(
+                        "Download encrypted APAA backup",
+                        data=backup_bytes,
+                        file_name=f"apaa-personal-backup-{time.strftime('%Y%m%d-%H%M%S')}.apaa.enc",
+                        mime="application/octet-stream",
+                        key="apaa_download_personal_backup",
+                    )
+                    st.success("Encrypted backup created. Keep the passphrase separately; APAA cannot recover it.")
+                    st.caption("The archive uses scrypt key derivation and chunked AES-256-GCM authentication. The approval signing key is excluded.")
+                except (PersonalBackupError, EncryptedBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Backup could not be created safely: {exc}")
+
+            uploaded_backup = st.file_uploader(
+                "Choose an encrypted APAA backup (.apaa.enc) or legacy plain ZIP",
+                type=["enc", "zip"],
+                key="apaa_restore_backup_upload",
+            )
+            uploaded_is_legacy = bool(
+                uploaded_backup is not None and uploaded_backup.name.lower().endswith(".zip")
+            )
+            legacy_confirmed = False
+            restore_passphrase = ""
+            if uploaded_backup is not None and uploaded_is_legacy:
+                st.warning("This is a legacy unencrypted archive. Only restore it if you created it and trust its source.")
+                legacy_confirmed = st.checkbox(
+                    "I understand this legacy backup is not encrypted",
+                    key="apaa_confirm_legacy_backup_restore",
+                )
+            elif uploaded_backup is not None:
+                restore_passphrase = st.text_input(
+                    "Backup decryption passphrase",
+                    type="password",
+                    key="apaa_backup_decrypt_passphrase",
+                    max_chars=1024,
+                )
+
+            restore_disabled = uploaded_backup is None or (uploaded_is_legacy and not legacy_confirmed)
+            if st.button(
+                "Verify and restore into a new directory",
+                key="apaa_restore_personal_backup",
+                disabled=restore_disabled,
+            ):
+                temporary_archive = None
+                temporary_plaintext = None
+                try:
+                    if uploaded_backup is None:
+                        st.error("Select a backup archive first.")
+                    elif uploaded_backup.size > 512 * 1024 * 1024:
+                        st.error("Backup archive exceeds the 512 MiB safety limit.")
+                    else:
+                        restore_parent = Path(personal_data_dir).expanduser().absolute().parent
+                        with tempfile.TemporaryDirectory(
+                            prefix=".apaa-restore-stage-", dir=str(restore_parent)
+                        ) as temporary_directory:
+                            temporary_root = Path(temporary_directory)
+                            temporary_archive = temporary_root / (
+                                "uploaded-legacy.zip" if uploaded_is_legacy else "uploaded.apaa.enc"
+                            )
+                            temporary_archive.write_bytes(uploaded_backup.getvalue())
+                            os.chmod(temporary_archive, 0o600)
+                            if uploaded_is_legacy:
+                                restore_source = temporary_archive
+                            else:
+                                if len(restore_passphrase) < 12:
+                                    raise EncryptedBackupError("Enter the backup passphrase (at least 12 characters).")
+                                temporary_plaintext = temporary_root / "decrypted-backup.zip"
+                                decrypt_backup_file(
+                                    temporary_archive, temporary_plaintext, restore_passphrase
+                                )
+                                restore_source = temporary_plaintext
+                            restored_directory = restore_parent / (
+                                f"{Path(personal_data_dir).name}-restored-"
+                                f"{int(time.time())}-{secrets.token_hex(4)}"
+                            )
+                            restore_personal_backup(restore_source, restored_directory)
+                            st.success(
+                                f"Backup verified and restored to a new private directory: {restored_directory}"
+                            )
+                            st.info(
+                                "To use this restored copy, stop APAA first, then restart it "
+                                "with APAA_PERSONAL_DATA_DIR set to the restored directory. "
+                                "The current live data directory was not replaced."
+                            )
+                except (PersonalBackupError, EncryptedBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Restore was rejected safely: {exc}")
+
+    with st.expander("Action history"):
+        try:
+            recent_actions = audit_log.list_recent_events(limit=25)
+            if not recent_actions:
+                st.caption("No audited actions have been recorded yet.")
+            else:
+                st.caption("Recent owner actions · audit hash chain verified")
+                for event in recent_actions:
+                    st.caption(
+                        f"#{event['sequence']} · {event['timestamp']} · "
+                        f"{event['action']} · {event['result']} · {event['reason_code']}"
+                    )
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            st.error(
+                "Action history integrity could not be verified. "
+                "New mutations remain fail-closed."
+            )
+
+    with st.expander("Owner Recovery · unresolved actions"):
+        st.caption(
+            "Read-only review of unresolved execution records. Pending actions "
+            "are never retried or automatically classified. Only an uncertain "
+            "record can be reconciled after your explicit confirmation."
+        )
+        try:
+            unresolved = active_security_store.list_unresolved_executions(
+                tenant, limit=25
+            )
+            if not unresolved:
+                st.caption("No unresolved execution records.")
+            else:
+                for recovery_item in unresolved:
+                    request_key = recovery_item["request_key"]
+                    st.markdown(
+                        f"**{recovery_item['action']}** · "
+                        f"{recovery_item['status']}"
+                    )
+                    st.caption(
+                        f"Created: {recovery_item['created_at']} · "
+                        f"Updated: {recovery_item['updated_at']} · "
+                        f"Reference: {request_key[:12]}"
+                    )
+                    if recovery_item["status"] == "pending":
+                        st.warning(
+                            "Outcome is still pending/unknown. This record cannot "
+                            "be reconciled here; inspect the external system first."
+                        )
+                    elif recovery_item["status"] == "uncertain":
+                        confirmed = st.checkbox(
+                            "I reviewed the external outcome and confirm this decision",
+                            key=f"owner_recovery_confirm_{request_key}",
+                        )
+                        left, right = st.columns(2)
+                        with left:
+                            mark_completed = st.button(
+                                "Confirm completed",
+                                key=f"owner_recovery_done_{request_key}",
+                                disabled=not confirmed,
+                            )
+                        with right:
+                            mark_cancelled = st.button(
+                                "Confirm cancelled",
+                                key=f"owner_recovery_cancel_{request_key}",
+                                disabled=not confirmed,
+                            )
+                        if mark_completed or mark_cancelled:
+                            resolution = "completed" if mark_completed else "cancelled"
+                            try:
+                                changed = active_security_store.resolve_uncertain_execution(
+                                    tenant, request_key, resolution,
+                                    owner_confirmed=True,
+                                )
+                                if changed:
+                                    st.success(
+                                        f"Owner reconciliation recorded: {resolution}. "
+                                        "The action was not re-executed."
+                                    )
+                                    st.rerun()
+                                st.error(
+                                    "The record changed or was already reconciled. "
+                                    "Refresh the recovery list."
+                                )
+                            except (ValueError, OSError, sqlite3.Error) as exc:
+                                st.error(
+                                    "Recovery could not be recorded safely. "
+                                    f"No retry was attempted: {exc}"
+                                )
+                    st.divider()
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            st.error(
+                "Owner recovery records could not be verified. "
+                "Reconciliation is disabled."
+            )
+
+    with st.expander("Public Web Research · Read-only"):
+        st.caption(
+            "Authenticated APAA-session public research only. Uses direct HTTPS and bounded "
+            "text extraction. No login, cookies, browser automation, uploads, "
+            "playlist changes, or website actions."
+        )
+        with st.form("apaa_public_readonly_research"):
+            research_provider = st.selectbox(
+                "Read-only provider",
+                (
+                    "Web Search · DuckDuckGo",
+                    "Read public HTTPS page",
+                    "YouTube public search",
+                ),
+            )
+            research_input = st.text_input(
+                "Search query or HTTPS page URL",
+                max_chars=2048,
+                help="For page reading, enter one public HTTPS URL. Private/local addresses are blocked.",
+            )
+            research_limit = st.selectbox("Maximum results", (5, 10, 15, 20), index=0)
+            run_public_research = st.form_submit_button("Search / Read", type="primary")
+        if run_public_research:
+            try:
+                provider_map = {
+                    "Web Search · DuckDuckGo": (
+                        ReadCapability.WEB_SEARCH, DuckDuckGoSearchProvider()
+                    ),
+                    "Read public HTTPS page": (
+                        ReadCapability.WEB_PAGE_READ, PublicWebPageReadProvider()
+                    ),
+                    "YouTube public search": (
+                        ReadCapability.YOUTUBE_SEARCH, YouTubePublicSearchProvider()
+                    ),
+                }
+                selected_capability, selected_provider = provider_map[research_provider]
+                if selected_capability is ReadCapability.WEB_PAGE_READ:
+                    read_request = ReadRequest(
+                        selected_capability, target=research_input
+                    )
+                else:
+                    read_request = ReadRequest(
+                        selected_capability, query=research_input,
+                        max_results=research_limit,
+                    )
+                readonly_registry = ReadOnlyAdapterRegistry((selected_provider,))
+                with st.spinner("Reading public information safely…"):
+                    read_result = readonly_registry.read(read_request)
+                st.caption(f"Source: {read_result.source_label}")
+                if not read_result.items:
+                    st.info("No public results were returned.")
+                for read_item in read_result.items:
+                    st.write(read_item.title)
+                    if read_item.excerpt:
+                        st.write(read_item.excerpt)
+                    st.link_button("Open source", read_item.locator)
+                if read_result.truncated:
+                    st.caption("Results were bounded; some content may be omitted.")
+            except (ValueError, OSError, ReadOnlyAdapterError, SafeNetworkError) as exc:
+                st.error(f"Public read-only request blocked or unavailable: {exc}")
 
 # Directory visibility is a separate, explicit consent. It never grants access.
 if principal is not None and trusted_identity_directory is not None:
@@ -480,6 +1062,7 @@ if prepare_project:
         st.session_state["pending_project"] = {
             "name": project_name.strip(),
             "description": project_description.strip(),
+            "idempotency_key": secrets.token_hex(24),
         }
 
 pending_project = st.session_state.get("pending_project")
@@ -502,6 +1085,10 @@ if pending_project:
             "name": pending_project["name"],
             "description": pending_project["description"],
         }
+        idempotency_key = pending_project.get("idempotency_key")
+        if not isinstance(idempotency_key, str) or not idempotency_key:
+            st.error("This project review has no valid one-time request key. Review the details again.")
+            st.stop()
         receipt = st.session_state["approval_authority"].issue(
             "create_project", payload, tenant=tenant,
             session_scope=st.session_state["approval_session_scope"]
@@ -511,6 +1098,7 @@ if pending_project:
             payload,
             approval_receipt=receipt,
             tenant=tenant,
+            idempotency_key=idempotency_key,
         )
         if result.executed:
             project = result.output
@@ -531,6 +1119,174 @@ else:
     st.write("Create your first project to start organizing agent tasks.")
 
 st.divider()
+def execute_owner_ui_mutation(action, approved, payload, operation):
+    """Route every Owner UI mutation through payload-bound approval + audit."""
+    return execute_audited_ui_mutation(
+        audit_log, action, approved, payload, operation,
+        approval_authority=st.session_state["approval_authority"],
+        tenant=tenant,
+        session_scope=st.session_state["approval_session_scope"],
+    )
+
+
+selected_file_project = visible_project(st.session_state.get("selected_project_id", ""))
+if not auth_required and selected_file_project is not None:
+    st.divider()
+    st.header("Project Files · Owner-only")
+    st.caption(
+        "Store small UTF-8 text files inside the selected project's private directory. "
+        "Uploads require explicit approval; inspection is read-only."
+    )
+    st.info(
+        "Project files are included in Personal Backup format v3. "
+        "Keep backup archives in a private location and verify a restore before relying on them."
+    )
+    with st.form("apaa_project_file_upload_form", clear_on_submit=True):
+        project_file_upload = st.file_uploader(
+            "Choose a text file",
+            type=["txt", "md", "csv", "json", "yaml", "yml", "py", "log"],
+            key="apaa_project_file_upload",
+        )
+        project_file_consent = st.checkbox(
+            "I approve storing this exact file in the selected project"
+        )
+        upload_project_file = st.form_submit_button(
+            "Review and save project file",
+            disabled=project_file_upload is None,
+        )
+    if upload_project_file:
+        try:
+            if project_file_upload is None:
+                st.error("Choose a file first.")
+            elif project_file_upload.size > MAX_PROJECT_FILE_BYTES:
+                st.error("Project files are limited to 64 KiB.")
+            else:
+                file_bytes = project_file_upload.getvalue()
+                file_digest = hashlib.sha256(file_bytes).hexdigest()
+                execute_owner_ui_mutation(
+                    "project_file.upload", project_file_consent,
+                    {
+                        "project_id": selected_file_project.project_id,
+                        "filename": project_file_upload.name,
+                        "size": len(file_bytes),
+                        "sha256": file_digest,
+                    },
+                    lambda payload: save_project_file(
+                        personal_data_dir, payload["project_id"],
+                        payload["filename"], file_bytes, consent=True,
+                    ),
+                )
+                st.success("Project file saved in the private project workspace.")
+                st.rerun()
+        except (ProjectFileError, PermissionError, OSError, ValueError, sqlite3.Error) as exc:
+            st.error(f"Project file was not saved: {exc}")
+
+    try:
+        project_file_entries = list_project_files(
+            personal_data_dir, selected_file_project.project_id
+        )
+    except ProjectFileError:
+        project_file_entries = []
+    if project_file_entries:
+        with st.form("apaa_project_file_inspect_form"):
+            selected_project_filename = st.selectbox(
+                "Inspect a stored text file",
+                options=[entry.name for entry in project_file_entries],
+                key="apaa_project_file_selector",
+            )
+            inspect_project_file = st.form_submit_button("Inspect file")
+        if inspect_project_file:
+            try:
+                file_adapter = ProjectFileReadAdapter(
+                    lambda project_id: project_files_directory(
+                        personal_data_dir, project_id, create=False
+                    )
+                )
+                file_registry = ReadOnlyAdapterRegistry((file_adapter,))
+                file_request = ReadRequest(
+                    ReadCapability.FILE_INSPECT,
+                    target=selected_project_filename,
+                    project_id=selected_file_project.project_id,
+                    max_results=1,
+                )
+                inspected = file_registry.read(file_request)
+                for item in inspected.items:
+                    st.caption(f"Read-only source: {item.locator}")
+                    st.code(item.excerpt, language="text")
+                if inspected.truncated:
+                    st.caption("Displayed text was bounded; the full file was not loaded into the UI.")
+            except (ProjectFileError, ReadOnlyAdapterError, ValueError, OSError) as exc:
+                st.error(f"Project file could not be inspected safely: {exc}")
+    else:
+        st.caption("No safe project text files are stored yet.")
+
+with st.expander("Read-only Web & YouTube Research", expanded=False):
+    st.caption(
+        "These controls perform a public, read-only HTTPS lookup only after you submit. "
+        "No login cookies, browser session, JavaScript, playlist edits or write actions are used."
+    )
+    with st.form("apaa_public_web_search_form"):
+        public_query = st.text_input("Search the public web", max_chars=1000)
+        public_search_submit = st.form_submit_button("Search web")
+    if public_search_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((DuckDuckGoSearchProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.WEB_SEARCH, query=public_query.strip(), max_results=10
+            ))
+            st.caption(read_result.source_label)
+            if not read_result.items:
+                st.info("No public web results were returned.")
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Open source]({item.locator})")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"Public web search was blocked or unavailable: {exc}")
+
+    with st.form("apaa_public_page_read_form"):
+        page_url = st.text_input("Read a public HTTPS page", max_chars=2048)
+        page_read_submit = st.form_submit_button("Read page")
+    if page_read_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((PublicWebPageReadProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.WEB_PAGE_READ, target=page_url.strip(), max_results=1
+            ))
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Open source]({item.locator})")
+                st.write(item.excerpt)
+            if read_result.truncated:
+                st.caption("The page excerpt was truncated to the safe display limit.")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"Page reading was blocked or unavailable: {exc}")
+
+    with st.form("apaa_youtube_public_search_form"):
+        youtube_query = st.text_input("Find public YouTube videos", max_chars=1000)
+        youtube_search_submit = st.form_submit_button("Search YouTube")
+    if youtube_search_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((YouTubePublicSearchProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.YOUTUBE_SEARCH, query=youtube_query.strip(), max_results=10
+            ))
+            st.caption(read_result.source_label)
+            if not read_result.items:
+                st.info("No public YouTube videos were returned.")
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Watch on YouTube]({item.locator})")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"YouTube search was blocked or unavailable: {exc}")
+
+def _resume_task_from_checkpoint(next_action: str) -> None:
+    """Prefill the planner with an Owner-selected checkpoint next action only."""
+    st.session_state["structured_task_input"] = next_action
+    st.session_state.pop("structured_task_plan", None)
+    st.session_state.pop("structured_task_source", None)
+    st.session_state.pop("structured_task_clarification", None)
+
+
 st.header("Task Workspace")
 task = st.text_area(
     "Describe a task",
@@ -556,6 +1312,36 @@ if plan is not None:
 
     if plan.status is PlanStatus.READY:
         st.success("READY · Reviewable plan prepared. Nothing has been executed.")
+        selected_plan_project = visible_project(st.session_state.get("selected_project_id", ""))
+        if selected_plan_project is not None and memory_store is not None:
+            with st.form("save_task_plan_form"):
+                save_plan_consent = st.checkbox(
+                    "I explicitly approve saving this plan to the selected project"
+                )
+                save_plan_submit = st.form_submit_button("Save plan to project")
+            if save_plan_submit:
+                try:
+                    execute_owner_ui_mutation(
+                        "task_plan.save", save_plan_consent,
+                        {
+                            "project_id": selected_plan_project.project_id,
+                            "plan_id": plan.plan_id,
+                            "task_description": plan.task_description,
+                            "plan": plan.to_dict(),
+                        },
+                        lambda payload: memory_store.save_task_plan(
+                            tenant, project_id=payload["project_id"],
+                            plan_id=payload["plan_id"],
+                            task_description=payload["task_description"],
+                            plan=payload["plan"], consent=True,
+                        ),
+                    )
+                    st.success("Plan saved to the selected project.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Plan could not be saved: {exc}")
+        else:
+            st.info("Select an existing project to save this plan across restarts.")
         for step in plan.steps:
             st.markdown(f"**{step.step_id} — {step.title}**")
             st.write(step.purpose)
@@ -568,6 +1354,69 @@ if plan is not None:
                     "Proposed change only — requires separate, action-specific "
                     "human approval. This screen does not issue approval."
                 )
+        if plan.steps:
+            st.subheader("Durable step progress")
+            if selected_plan_project is None or memory_store is None:
+                st.info("Select a project to save step progress across restarts.")
+            else:
+                try:
+                    progress_rows = memory_store.list_task_plan_step_progress(
+                        tenant, project_id=selected_plan_project.project_id,
+                        plan_id=plan.plan_id, limit=100,
+                    )
+                    progress_by_id = {item.step_id: item for item in progress_rows}
+                    completed_steps = sum(
+                        progress_by_id.get(step.step_id) is not None
+                        and progress_by_id[step.step_id].status == "completed"
+                        for step in plan.steps
+                    )
+                    st.progress(
+                        completed_steps / len(plan.steps),
+                        text=f"{completed_steps} of {len(plan.steps)} steps marked complete",
+                    )
+                    for step in plan.steps:
+                        current_progress = progress_by_id.get(step.step_id)
+                        is_completed = (
+                            current_progress is not None
+                            and current_progress.status == "completed"
+                        )
+                        with st.form(f"task_step_progress_{plan.plan_id}_{step.step_id}"):
+                            step_completed = st.checkbox(
+                                f"Completed: {step.title}",
+                                value=is_completed,
+                                key=f"step_done_{plan.plan_id}_{step.step_id}",
+                            )
+                            step_progress_consent = st.checkbox(
+                                "I approve saving this step status"
+                            )
+                            save_step_progress = st.form_submit_button(
+                                "Save step progress",
+                            )
+                        if save_step_progress:
+                            try:
+                                execute_owner_ui_mutation(
+                                    "task_plan.step_progress", step_progress_consent,
+                                    {
+                                        "project_id": selected_plan_project.project_id,
+                                        "plan_id": plan.plan_id,
+                                        "step_id": step.step_id,
+                                        "title": step.title,
+                                        "completed": step_completed,
+                                    },
+                                    lambda payload: memory_store.set_task_plan_step_progress(
+                                        tenant, project_id=payload["project_id"],
+                                        plan_id=payload["plan_id"], step_id=payload["step_id"],
+                                        title=payload["title"], completed=payload["completed"],
+                                        consent=True,
+                                    ),
+                                )
+                                st.success("Step progress saved and audited. No task was executed.")
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Step progress could not be saved: {exc}")
+                except (TypeError, ValueError, OSError, sqlite3.Error) as exc:
+                    st.error(f"Step progress is unavailable: {exc}")
+
     elif plan.status is PlanStatus.NEEDS_CLARIFICATION:
         st.warning("NEEDS CLARIFICATION · No plan steps were created.")
         for question in plan.clarification_questions:
@@ -607,6 +1456,40 @@ if plan is not None:
         for note in plan.safety_notes:
             st.write(f"- {note}")
 
+selected_plan_project = visible_project(st.session_state.get("selected_project_id", ""))
+if selected_plan_project is not None and memory_store is not None:
+    with st.expander("Saved task plans for this project", expanded=False):
+        try:
+            saved_plans = memory_store.list_task_plans(
+                tenant, project_id=selected_plan_project.project_id, limit=50
+            )
+            if not saved_plans:
+                st.caption("No saved task plans for this project.")
+            else:
+                saved_plan_ids = [item.plan_id for item in saved_plans]
+                selected_saved_plan = st.selectbox(
+                    "Choose a saved plan",
+                    options=saved_plan_ids,
+                    format_func=lambda value: next(
+                        f"{item.task_description[:90]} · {item.updated_at[:19]}"
+                        for item in saved_plans if item.plan_id == value
+                    ),
+                    key="apaa_saved_task_plan_selector",
+                )
+                if st.button("Load saved plan", key="apaa_load_saved_task_plan"):
+                    saved_record = next(
+                        item for item in saved_plans if item.plan_id == selected_saved_plan
+                    )
+                    try:
+                        restored_plan = task_plan_from_dict(json.loads(saved_record.plan_json))
+                        st.session_state["structured_task_plan"] = restored_plan
+                        st.session_state["structured_task_source"] = restored_plan.task_description
+                        st.rerun()
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        st.error(f"Saved plan failed validation and was not loaded: {exc}")
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            st.error(f"Saved task plans are unavailable: {exc}")
+
 st.caption(
     "Planning is offline and deterministic. This review screen is read-only: "
     "it cannot approve, dispatch, or execute a task."
@@ -617,12 +1500,12 @@ st.caption(
 )
 
 
-# Persistent memory is available only in authenticated mode. Every write has
-# a separate consent checkbox; signing in never opts a user into storage.
+# Persistent memory is available in the authenticated owner runtime and in
+# the loopback-only Personal Edition. Every write has a separate consent checkbox.
 st.divider()
 st.header("Memory & Knowledge")
-if principal is None:
-    st.info("Persistent memory is disabled in local prototype mode. Sign in to an authenticated deployment to use tenant-isolated memory.")
+if memory_store is None or checkpoint_access is None:
+    st.info("Persistent memory is unavailable because its private store did not initialize.")
 else:
     st.caption("Local SQLite storage · tenant-isolated · no external API · no automatic conversation capture")
     memory_tabs = st.tabs(["Memories", "Knowledge", "Conversation", "Preferences", "Checkpoints"])
@@ -639,21 +1522,31 @@ else:
         if memory_submit:
             try:
                 tags = [tag.strip() for tag in memory_tags.split(",") if tag.strip()]
-                memory_store.add_memory(
-                    tenant, category=memory_category, content=memory_content, tags=tags,
-                    pinned=memory_pinned, consent=memory_consent,
+                execute_owner_ui_mutation(
+                    "memory.add", memory_consent,
+                    {"category": memory_category, "content": memory_content, "tags": tags, "pinned": memory_pinned},
+                    lambda p: memory_store.add_memory(
+                        tenant, category=p["category"], content=p["content"], tags=p["tags"],
+                        pinned=p["pinned"], consent=True,
+                    ),
                 )
                 st.success("Memory saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         for item in memory_store.list_memories(tenant):
             with st.container(border=True):
                 st.write(f"**{item.category.title()}** · {item.content}")
                 st.caption(f"Tags: {', '.join(item.tags) or 'none'} · Saved: {item.created_at}")
                 if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
-                    memory_store.delete_memory(tenant, item.memory_id)
-                    st.rerun()
+                    try:
+                        execute_owner_ui_mutation(
+                            "memory.delete", True, {"memory_id": item.memory_id},
+                            lambda p: memory_store.delete_memory(tenant, p["memory_id"]),
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
     with memory_tabs[1]:
         st.subheader("Knowledge collection and retrieval")
@@ -666,13 +1559,17 @@ else:
         if knowledge_submit:
             try:
                 tags = [tag.strip() for tag in knowledge_tags.split(",") if tag.strip()]
-                memory_store.add_knowledge(
-                    tenant, title=knowledge_title, content=knowledge_content,
-                    tags=tags, consent=knowledge_consent,
+                execute_owner_ui_mutation(
+                    "knowledge.add", knowledge_consent,
+                    {"title": knowledge_title, "content": knowledge_content, "tags": tags},
+                    lambda p: memory_store.add_knowledge(
+                        tenant, title=p["title"], content=p["content"],
+                        tags=p["tags"], consent=True,
+                    ),
                 )
                 st.success("Knowledge document saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         knowledge_query = st.text_input("Search saved memories and knowledge")
         if knowledge_query.strip():
@@ -687,8 +1584,14 @@ else:
                 st.caption(f"Tags: {', '.join(document.tags) or 'none'} · Source: {document.source}")
                 st.write(document.content[:1200] + ("…" if len(document.content) > 1200 else ""))
                 if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
-                    memory_store.delete_knowledge(tenant, document.document_id)
-                    st.rerun()
+                    try:
+                        execute_owner_ui_mutation(
+                            "knowledge.delete", True, {"document_id": document.document_id},
+                            lambda p: memory_store.delete_knowledge(tenant, p["document_id"]),
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
     with memory_tabs[2]:
         st.subheader("Short-term conversation continuity")
@@ -700,21 +1603,31 @@ else:
             conversation_submit = st.form_submit_button("Save turn")
         if conversation_submit:
             try:
-                memory_store.append_turn(
-                    tenant, conversation_id=conversation_id, role=conversation_role,
-                    content=conversation_content, consent=conversation_consent,
+                execute_owner_ui_mutation(
+                    "conversation.append_turn", conversation_consent,
+                    {"conversation_id": conversation_id, "role": conversation_role, "content": conversation_content},
+                    lambda p: memory_store.append_turn(
+                        tenant, conversation_id=p["conversation_id"], role=p["role"],
+                        content=p["content"], consent=True,
+                    ),
                 )
                 st.success("Conversation turn saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         context_id = st.text_input("Load conversation ID", key="load_conversation_id")
         if context_id.strip():
             for turn in memory_store.conversation_context(tenant, context_id):
                 st.write(f"**{turn.role.title()}** · {turn.content}")
             if st.button("Delete this conversation history", key="delete_conversation_history"):
-                memory_store.delete_conversation(tenant, context_id)
-                st.rerun()
+                try:
+                    execute_owner_ui_mutation(
+                        "conversation.delete", True, {"conversation_id": context_id},
+                        lambda p: memory_store.delete_conversation(tenant, p["conversation_id"]),
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     with memory_tabs[3]:
         st.subheader("Saved preferences")
@@ -725,24 +1638,33 @@ else:
             preference_submit = st.form_submit_button("Save preference")
         if preference_submit:
             try:
-                memory_store.save_preference(
-                    tenant, key=preference_key, value=preference_value,
-                    consent=preference_consent,
+                execute_owner_ui_mutation(
+                    "preference.save", preference_consent,
+                    {"key": preference_key, "value": preference_value},
+                    lambda p: memory_store.save_preference(
+                        tenant, key=p["key"], value=p["value"], consent=True,
+                    ),
                 )
                 st.success("Preference saved.")
                 st.rerun()
-            except (ValueError, PermissionError) as exc:
+            except Exception as exc:
                 st.error(str(exc))
         for key, value in memory_store.get_preferences(tenant).items():
             st.write(f"**{key}:** {value}")
             if st.button("Delete preference", key=f"delete_preference_{key}"):
-                memory_store.delete_preference(tenant, key)
-                st.rerun()
+                try:
+                    execute_owner_ui_mutation(
+                        "preference.delete", True, {"key": key},
+                        lambda p: memory_store.delete_preference(tenant, p["key"]),
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     with memory_tabs[4]:
         st.subheader("Task checkpoint recovery")
         # Checkpoints remain private to the authenticated project owner.
-        project_options = registry.list_projects_for_owner(principal) if principal is not None else []
+        project_options = registry.list_projects_for_owner(checkpoint_principal)
         if project_options:
             with st.form("checkpoint_form", clear_on_submit=True):
                 checkpoint_project = st.selectbox(
@@ -757,14 +1679,20 @@ else:
                 checkpoint_submit = st.form_submit_button("Save checkpoint")
             if checkpoint_submit:
                 try:
-                    checkpoint_access.save_checkpoint(
-                        project_id=checkpoint_project, label=checkpoint_label,
-                        summary=checkpoint_summary, next_action=checkpoint_next,
-                        status=checkpoint_status, consent=checkpoint_consent,
+                    execute_owner_ui_mutation(
+                        "checkpoint.save", checkpoint_consent,
+                        {"project_id": checkpoint_project, "label": checkpoint_label,
+                         "summary": checkpoint_summary, "next_action": checkpoint_next,
+                         "status": checkpoint_status},
+                        lambda p: checkpoint_access.save_checkpoint(
+                            project_id=p["project_id"], label=p["label"],
+                            summary=p["summary"], next_action=p["next_action"],
+                            status=p["status"], consent=True,
+                        ),
                     )
                     st.success("Checkpoint saved.")
                     st.rerun()
-                except (ValueError, PermissionError) as exc:
+                except Exception as exc:
                     st.error(str(exc))
             selected_checkpoint_project = st.selectbox(
                 "Recover latest checkpoint for project",
@@ -772,11 +1700,34 @@ else:
                 format_func=lambda value: next(p.name for p in project_options if p.project_id == value),
                 key="recover_checkpoint_project",
             )
-            recovered = checkpoint_access.latest_checkpoint(selected_checkpoint_project)
-            if recovered:
-                st.write(f"**{recovered.label} · {recovered.status}**")
-                st.write(recovered.summary)
-                st.info("Next action: " + recovered.next_action)
+            checkpoint_history = memory_store.list_checkpoints(
+                tenant, selected_checkpoint_project, limit=50
+            )
+            if checkpoint_history:
+                st.caption(f"Task history · {len(checkpoint_history)} recent checkpoint(s)")
+                progress_columns = st.columns(3)
+                progress_columns[0].metric(
+                    "Active", sum(item.status == "active" for item in checkpoint_history)
+                )
+                progress_columns[1].metric(
+                    "Blocked", sum(item.status == "blocked" for item in checkpoint_history)
+                )
+                progress_columns[2].metric(
+                    "Completed", sum(item.status == "completed" for item in checkpoint_history)
+                )
+                for history_item in checkpoint_history:
+                    with st.container(border=True):
+                        st.write(f"**{history_item.label} · {history_item.status.upper()}**")
+                        st.caption(f"Updated: {history_item.updated_at}")
+                        st.write(history_item.summary)
+                        st.caption("Next action: " + history_item.next_action)
+                        if history_item.status in {"active", "blocked"}:
+                            st.button(
+                                "Resume in Task Workspace",
+                                key=f"resume_checkpoint_{history_item.checkpoint_id}",
+                                on_click=_resume_task_from_checkpoint,
+                                args=(history_item.next_action,),
+                            )
             else:
                 st.caption("No checkpoint exists for this project yet.")
         else:
