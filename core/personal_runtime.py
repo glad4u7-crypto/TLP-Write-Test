@@ -90,7 +90,9 @@ def load_or_create_approval_signing_key(data_dir: str | Path) -> bytes:
         try:
             descriptor = os.open(key_path, flags, 0o600)
         except FileExistsError:
-            pass
+            # Another local app worker may have won the atomic create race.
+            # Validate and load that exact file below; never overwrite it.
+            metadata = key_path.lstat()
         except OSError as exc:
             raise ValueError("Could not safely create the local approval key.") from exc
         else:
