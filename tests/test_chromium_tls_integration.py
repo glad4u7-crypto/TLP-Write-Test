@@ -106,8 +106,7 @@ class _ConnectProxy:
 def _write_certificates(tmp_path: Path, *, leaf_name: str, expired: bool):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    now = datetime.now(timezone.utc)
-    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "APAA Chromium Test Root")])
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # cryptography builder expects naive UTC\n    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "APAA Chromium Test Root")])
     ca = (
         x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
         .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
