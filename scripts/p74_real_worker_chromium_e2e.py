@@ -9,6 +9,7 @@ validated DNS answer set. TLS remains end-to-end in Chromium (SNI/cert checks).
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import os
@@ -111,6 +112,9 @@ def main() -> int:
         seccomp_profile = _required("APAA_P74_SECCOMP_PROFILE")
         target = canonicalize_https_url(_required("APAA_P74_TEST_URL"))
         allowed_origin = _required("APAA_P74_ALLOWED_ORIGIN")
+        expected_marker = _required("APAA_P74_EXPECTED_MARKER")
+        if not 1 <= len(expected_marker) <= 256:
+            raise RuntimeError("expected page marker must contain 1 to 256 characters")
         chromium_bin = os.environ.get("APAA_P74_CHROMIUM_BIN", "chromium")
         proxy_port = int(os.environ.get("APAA_P74_PROXY_PORT", "3128"))
         if target.origin != allowed_origin or target.port != 443:
@@ -270,11 +274,25 @@ def main() -> int:
                 "--dump-dom",
                 target.url,
             ], timeout=120)
-            if "<html" not in page.stdout.lower():
-                raise RuntimeError(f"Chromium returned no HTML over the {family} proxy")
+            if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
+                raise RuntimeError(f"Chromium did not return the expected controlled-page marker over the {family} proxy")
             evidence["tests"][f"chromium_https_via_{family}_proxy"] = True
-            evidence[f"chromium_{family}_stdout"] = page.stdout[:12000]
+            evidence[f"chromium_{family}_evidence"] = {
+                "stdout_sha256": hashlib.sha256(page.stdout.encode("utf-8")).hexdigest(),
+                "stdout_bytes": len(page.stdout.encode("utf-8")),
+                "expected_marker_present": True,
+            }
 
+        evidence["proxy_dialed_addresses"] = {
+            "ipv4_listener": list(proxy_servers[0].dialed_addresses),
+            "ipv6_listener": list(proxy_servers[1].dialed_addresses),
+        }
+        evidence["proxy_accepted_connections"] = {
+            "ipv4_listener": proxy_servers[0].accepted_connections,
+            "ipv6_listener": proxy_servers[1].accepted_connections,
+        }
+        if not all(evidence["proxy_accepted_connections"].values()):
+            raise RuntimeError("one or both proxy families did not record an upstream pinned TCP connection")
         evidence["result"] = "PASS"
         print("PASS: Chromium ran inside the isolated OCI worker through both IPv4 and IPv6 pinned proxies.")
         print("PASS: direct DNS, direct IPv4 TCP and direct IPv6 TCP were blocked.")
