@@ -1182,7 +1182,6 @@ if selected_plan_project is not None and memory_store is not None:
                         restored_plan = task_plan_from_dict(json.loads(saved_record.plan_json))
                         st.session_state["structured_task_plan"] = restored_plan
                         st.session_state["structured_task_source"] = restored_plan.task_description
-                        st.session_state["structured_task_input"] = restored_plan.task_description
                         st.rerun()
                     except (TypeError, ValueError, json.JSONDecodeError) as exc:
                         st.error(f"Saved plan failed validation and was not loaded: {exc}")
