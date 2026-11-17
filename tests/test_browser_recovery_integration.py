@@ -70,3 +70,18 @@ def test_audit_write_failure_latches_dispatch_before_worker_start(tmp_path):
     with pytest.raises(BrowserExecutionError, match="blocked"):
         coordinator.execute(raw_job("job_auditfail02"), resolver=lambda host: ["93.184.216.34"])
     assert worker.runs == 0
+
+
+def test_audit_records_do_not_contain_raw_job_or_session_identifiers(tmp_path):
+    ledger = private_ledger(tmp_path)
+    worker = Worker()
+    events = []
+    coordinator = BrowserExecutionCoordinator(worker, audit=events.append, recovery_ledger=ledger)
+    job_id = "job_sensitiveid01"
+
+    coordinator.execute(raw_job(job_id), resolver=lambda host: ["93.184.216.34"])
+
+    assert events
+    assert all("job_id" not in event and "session_id" not in event for event in events)
+    assert all(job_id not in repr(event) for event in events)
+    assert all(len(event["job_ref"]) == 24 and len(event["session_ref"]) == 24 for event in events)
