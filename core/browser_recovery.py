@@ -203,6 +203,7 @@ class SQLiteBrowserRecoveryLedger:
         if job_id is not None and (type(job_id) is not str or not 8 <= len(job_id) <= 128):
             raise ValueError("job ID is invalid")
         try:
+            self.verify_history()
             with self._database() as db:
                 if job_id is None:
                     rows = db.execute(
@@ -328,6 +329,7 @@ class SQLiteBrowserRecoveryLedger:
         now = self._now()
         try:
             with self._lock, self._database() as db:
+                self._verify_history_connection(db)
                 blocked = db.execute(
                     "SELECT value FROM browser_control WHERE key='dispatch_blocked'"
                 ).fetchone()
@@ -364,6 +366,7 @@ class SQLiteBrowserRecoveryLedger:
         now = self._now()
         try:
             with self._lock, self._database() as db:
+                self._verify_history_connection(db)
                 row = db.execute("SELECT state FROM browser_jobs WHERE job_id=?", (job_id,)).fetchone()
                 if row is None:
                     raise RecoveryLedgerError("job does not exist in the recovery ledger")
@@ -392,6 +395,7 @@ class SQLiteBrowserRecoveryLedger:
         now = self._now()
         try:
             with self._lock, self._database() as db:
+                self._verify_history_connection(db)
                 rows = db.execute(
                     "SELECT job_id FROM browser_jobs WHERE state IN ('accepted','running','cancel_requested')"
                 ).fetchall()
