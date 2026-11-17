@@ -311,6 +311,9 @@ if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
 registry = st.session_state["project_registry"]
+# Checkpoint UI uses the identity created by trusted OIDC middleware or by the
+# loopback-only local runtime; never derive this principal from client input.
+checkpoint_principal = principal if principal is not None else local_owner_principal
 gateway_owner = session_identity
 if (
     "execution_gateway" not in st.session_state
@@ -811,7 +814,7 @@ else:
     with memory_tabs[4]:
         st.subheader("Task checkpoint recovery")
         # Checkpoints remain private to the authenticated project owner.
-        project_options = registry.list_projects_for_owner(principal) if principal is not None else []
+        project_options = registry.list_projects_for_owner(checkpoint_principal)
         if project_options:
             with st.form("checkpoint_form", clear_on_submit=True):
                 checkpoint_project = st.selectbox(
