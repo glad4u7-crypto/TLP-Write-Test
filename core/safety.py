@@ -88,6 +88,9 @@ def authorize_action(
     if normalized not in _APPROVABLE_MUTATIONS:
         return SafetyDecision(False, "Unknown or unregistered action is blocked by default.")
 
+    if normalized == "browser_read" and auto_run:
+        return SafetyDecision(False, "Browser actions always require a fresh explicit Owner approval.")
+
     if auto_run:
         allowed_auto_run = {_normalize(item) for item in auto_run_actions}
         if normalized in allowed_auto_run:
