@@ -91,7 +91,7 @@ def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
     if marker_at < 0:
         return {"detected": False, "log_pid": None, "log_tid": None, "stack_frames": []}
     prefix = stderr[:marker_at]
-    log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+\]", prefix))
+    log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+:, prefix))
     identity = log_lines[-1] if log_lines else None
     stack_frames = [
         {"frame": int(index), "address": address.lower()}
@@ -185,7 +185,7 @@ def _chromium_binary_build_id(container_id: str) -> str | None:
         "p='/usr/lib/chromium/chromium'\n"
         "f=open(p,'rb')\n"
         "h=f.read(64)\n"
-        "if h[:4] != b'\\\\x7fELF' or h[4] != 2: raise SystemExit(3)\n"
+        "if h[:4] != b'\\x7fELF' or h[4] != 2: raise SystemExit(3)\n"
         "endian='<' if h[5] == 1 else '>'\n"
         "phoff=struct.unpack_from(endian+'Q',h,32)[0]\n"
         "entsize=struct.unpack_from(endian+'H',h,54)[0]\n"
@@ -199,7 +199,7 @@ def _chromium_binary_build_id(container_id: str) -> str | None:
         " f.seek(off); b=f.read(size); pos=0\n"
         " while pos+12 <= len(b):\n"
         "  ns,ds,nt=struct.unpack_from(endian+'III',b,pos); pos+=12\n"
-        "  name=b[pos:pos+ns].rstrip(b'\\\\0'); pos=(pos+ns+3)&~3\n"
+        "  name=b[pos:pos+ns].rstrip(b'\\0'); pos=(pos+ns+3)&~3\n"
         "  desc=b[pos:pos+ds]; pos=(pos+ds+3)&~3\n"
         "  if name == b'GNU' and nt == 3: print(desc.hex()); raise SystemExit(0)\n"
         "raise SystemExit(4)\n"
