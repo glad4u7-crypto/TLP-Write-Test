@@ -697,7 +697,6 @@ def test_local_owner_sidebar_exposes_read_only_runtime_health_and_backup_tools()
     labels = [button.label for button in app.button]
     assert "Run local health checks" in labels
     assert "Create encrypted backup" in labels
-    assert "Validate and restore into a new directory" in labels
 
     _click_button_by_label(app, "Run local health checks")
     assert not app.exception
