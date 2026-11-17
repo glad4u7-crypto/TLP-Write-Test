@@ -29,7 +29,9 @@ from core.cgroup_seccomp_provisioner import (
 )
 from core.linux_network_namespace import LinuxNetworkNamespaceProvisioner, NamespacePlan
 from core.nftables_firewall_provisioner import NftablesFirewallProvisioner
+from core.nftables_attestation import NftablesPolicy, attest_nftables_json
 from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
+from core.oci_runtime_observer import PodmanWorkerObserver
 from core.pinned_connect_proxy import PinnedConnectProxy
 
 
@@ -255,7 +257,19 @@ def main() -> int:
             namespace_name, proxy_ips=proxy_ips, proxy_port=proxy_port
         )
         evidence["nftables_ruleset"] = ruleset
+        live_json_ruleset = _run([
+            "ip", "netns", "exec", namespace_name, "nft", "-j", "list", "table", "inet", "apaa"
+        ]).stdout
+        nft_attestation = attest_nftables_json(
+            live_json_ruleset, NftablesPolicy(tuple(proxy_ips), proxy_port)
+        )
+        evidence["nftables_attestation"] = {
+            "ruleset_sha256": nft_attestation.ruleset_sha256,
+            "accept_rule_count": nft_attestation.accept_rule_count,
+            "chains": list(nft_attestation.chains),
+        }
         evidence["tests"]["nftables_exact_default_drop"] = True
+        evidence["tests"]["nftables_json_semantic_attestation"] = True
 
         for bind_ip in proxy_ips:
             proxy = PinnedConnectProxy(
@@ -325,6 +339,19 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
+        observation = PodmanWorkerObserver(runtime).observe(container_id, spec)
+        evidence["runtime_observation"] = {
+            "host_pid": observation.host_pid,
+            "process_start_time_ticks": observation.process_start_time_ticks,
+            "network_namespace_inode": observation.network_namespace_inode,
+            "cgroup_path": observation.cgroup_path,
+            "memory_max": observation.memory_max,
+            "cpu_max": observation.cpu_max,
+            "pids_max": observation.pids_max,
+            "seccomp_mode": observation.seccomp_mode,
+            "image_id": observation.image_id,
+        }
+        evidence["tests"]["independent_runtime_kernel_observation"] = True
         inspected = runtime.inspect(container_id)
         state = inspected.get("State") or {}
         host_pid = state.get("Pid")
