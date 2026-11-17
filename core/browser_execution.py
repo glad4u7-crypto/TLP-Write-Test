@@ -1,0 +1,251 @@
+"""P74 browser execution boundary: pinned HTTPS transport and job lifecycle.
+
+This module provides enforceable client-side primitives and an adapter contract.
+It does NOT create an OS sandbox or firewall. Production browser execution must
+be supplied by a separately reviewed container/VM adapter and verified by the
+signed attestation gate in core.attested_browser_runtime.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import http.client
+import ipaddress
+import ssl
+import threading
+import time
+from collections.abc import Callable, Mapping
+from typing import Any, Protocol
+
+from core.browser_security import (
+    BrowserJob,
+    BrowserPolicyError,
+    validate_live_browser_job,
+)
+
+
+class BrowserExecutionError(RuntimeError):
+    """Raised when secure browser execution cannot proceed."""
+
+
+class BrowserCancelled(BrowserExecutionError):
+    """Raised when a browser job is cancelled."""
+
+
+class CancellationToken:
+    """Thread-safe cooperative cancellation token with idempotent cancel()."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+
+    def cancel(self) -> bool:
+        was_set = self._event.is_set()
+        self._event.set()
+        return not was_set
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise BrowserCancelled("Browser job was cancelled.")
+
+
+@dataclass(frozen=True)
+class PinnedDestination:
+    """Exact DNS pin set bound to an HTTPS origin."""
+
+    hostname: str
+    port: int
+    addresses: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.hostname or type(self.port) is not int or not 1 <= self.port <= 65535:
+            raise ValueError("Invalid pinned destination.")
+        if not self.addresses:
+            raise ValueError("At least one pinned address is required.")
+        normalized = []
+        for value in self.addresses:
+            address = ipaddress.ip_address(value)
+            if not address.is_global or address.is_multicast or address.is_reserved:
+                raise ValueError("Pinned destinations must be public unicast IPs.")
+            normalized.append(address.compressed)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Duplicate pinned addresses are not permitted.")
+        object.__setattr__(self, "addresses", tuple(normalized))
+
+
+class PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that dials only a pre-authorized IP, with normal TLS SNI.
+
+    Certificate-chain validation and hostname verification remain enabled.
+    The HTTP Host header remains the logical hostname. Redirects are deliberately
+    not followed here; callers must re-authorize every redirect and obtain a new
+    pin set. A host firewall/proxy is still required to prevent other processes
+    or browser traffic from bypassing this transport.
+    """
+
+    def __init__(
+        self,
+        destination: PinnedDestination,
+        *,
+        timeout: float = 10.0,
+        context: ssl.SSLContext | None = None,
+    ) -> None:
+        if type(destination) is not PinnedDestination:
+            raise TypeError("A validated PinnedDestination is required.")
+        self.destination = destination
+        tls_context = context or ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+        if tls_context.verify_mode != ssl.CERT_REQUIRED or not tls_context.check_hostname:
+            raise ValueError("TLS certificate-chain and hostname verification are mandatory.")
+        super().__init__(
+            destination.hostname,
+            destination.port,
+            timeout=timeout,
+            context=tls_context,
+        )
+
+    def connect(self) -> None:
+        last_error: OSError | None = None
+        for pinned_ip in self.destination.addresses:
+            raw = None
+            try:
+                raw = self._create_connection((pinned_ip, self.destination.port), self.timeout)
+                peer = ipaddress.ip_address(raw.getpeername()[0]).compressed
+                if peer != pinned_ip:
+                    raise BrowserExecutionError("Socket peer differs from the authorized pinned IP.")
+                self.sock = self._context.wrap_socket(
+                    raw,
+                    server_hostname=self.destination.hostname,
+                )
+                return
+            except (OSError, ssl.SSLError, BrowserExecutionError) as exc:
+                last_error = exc if isinstance(exc, OSError) else OSError(str(exc))
+                if raw is not None:
+                    try:
+                        raw.close()
+                    except OSError:
+                        pass
+        raise BrowserExecutionError("All pinned HTTPS connection attempts failed.") from last_error
+
+
+class BrowserWorker(Protocol):
+    """Trusted adapter contract; implementation must provide OS-level isolation."""
+
+    def run(
+        self,
+        job: BrowserJob,
+        *,
+        session_id: str,
+        cancellation: CancellationToken,
+        deadline_monotonic: float,
+    ) -> Mapping[str, Any]: ...
+
+    def terminate(self, session_id: str) -> None: ...
+
+
+AuditWriter = Callable[[Mapping[str, Any]], None]
+
+
+class BrowserExecutionCoordinator:
+    """Fail-closed coordinator joining validation, cancellation and audit.
+
+    The worker is an explicit privileged adapter. No default or local-process
+    fallback exists. Audit write failure blocks execution and is also surfaced
+    during completion. Session identifiers are generated per job and never
+    reused; worker adapters must use a fresh browser context/profile each time.
+    """
+
+    def __init__(
+        self,
+        worker: BrowserWorker | None,
+        *,
+        audit: AuditWriter,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if worker is not None and not callable(getattr(worker, "run", None)):
+            raise TypeError("worker must implement run().")
+        if not callable(audit):
+            raise TypeError("audit must be callable.")
+        self._worker = worker
+        self._audit = audit
+        self._clock = clock
+        self._active: dict[str, CancellationToken] = {}
+        self._lock = threading.RLock()
+
+    def _record(self, event: str, *, job_id: str, session_id: str, detail: str) -> None:
+        # Never place cookies, page contents, credentials, or URL query values
+        # in the audit record. The caller may attach a separate approved digest.
+        record = {
+            "schema_version": 1,
+            "event": event,
+            "job_id": job_id,
+            "session_id": session_id,
+            "detail": detail,
+            "timestamp_monotonic": self._clock(),
+        }
+        self._audit(record)
+
+    def cancel(self, job_id: str) -> bool:
+        with self._lock:
+            token = self._active.get(job_id)
+            if token is None:
+                return False
+            changed = token.cancel()
+        self._record("cancel_requested", job_id=job_id, session_id=job_id, detail="user_or_controller")
+        if self._worker is not None:
+            try:
+                self._worker.terminate(job_id)
+            except Exception:
+                self._record("worker_terminate_error", job_id=job_id, session_id=job_id, detail="adapter_error")
+                raise BrowserExecutionError("Worker termination failed; job remains cancelled.")
+        return changed
+
+    def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
+        if self._worker is None:
+            raise BrowserExecutionError("No attested isolated worker adapter is configured; execution is disabled.")
+        # validate_live_browser_job enforces mandatory DNS resolution and returns
+        # a pinned destination contract; no unpinned BrowserJob entry is accepted.
+        try:
+            job, pinned = validate_live_browser_job(raw_job, resolver=resolver)
+        except (BrowserPolicyError, TypeError, ValueError) as exc:
+            raise BrowserExecutionError("Browser job failed live destination validation.") from exc
+
+        session_id = job.job_id
+        token = CancellationToken()
+        with self._lock:
+            if session_id in self._active:
+                raise BrowserExecutionError("Duplicate active browser job ID.")
+            self._active[session_id] = token
+
+        deadline = self._clock() + job.max_runtime_seconds
+        try:
+            self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
+            token.raise_if_cancelled()
+            result = self._worker.run(
+                job,
+                session_id=session_id,
+                cancellation=token,
+                deadline_monotonic=deadline,
+            )
+            token.raise_if_cancelled()
+            if self._clock() > deadline:
+                raise BrowserExecutionError("Browser job exceeded its runtime deadline.")
+            if not isinstance(result, Mapping):
+                raise BrowserExecutionError("Worker returned an invalid result envelope.")
+            self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
+            return dict(result)
+        except BrowserCancelled:
+            self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
+            raise
+        except Exception:
+            self._record("job_failed", job_id=job.job_id, session_id=session_id, detail="execution_error")
+            raise
+        finally:
+            with self._lock:
+                self._active.pop(session_id, None)
+            try:
+                self._record("session_closed", job_id=job.job_id, session_id=session_id, detail="ephemeral")
+            except Exception as exc:
+                # Audit integrity is mandatory: never silently swallow it.
+                raise BrowserExecutionError("Final browser audit write failed.") from exc
