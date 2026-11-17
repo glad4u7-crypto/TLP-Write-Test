@@ -703,3 +703,38 @@ def test_local_owner_sidebar_exposes_read_only_runtime_health_and_backup_tools()
     assert not app.exception
     assert any("data_dir:" in item.value for item in app.success)
     assert any("PASS" in item.value for item in app.success)
+
+
+
+def test_read_only_web_search_is_not_called_until_owner_submits(monkeypatch):
+    from core.capabilities import ReadCapability, ReadItem, ReadResult
+    from core.safe_network_providers import DuckDuckGoSearchProvider
+
+    calls = []
+
+    def fake_read(self, request):
+        calls.append(request.query)
+        return ReadResult(
+            ReadCapability.WEB_SEARCH,
+            (ReadItem("Safe test result", "https://example.org/result"),),
+            "test-only provider",
+        )
+
+    monkeypatch.setattr(DuckDuckGoSearchProvider, "read", fake_read)
+    app = _local_owner_app()
+    assert not app.exception
+    assert calls == []
+
+    query_input = next(
+        item for item in app.text_input if item.label == "Search the public web"
+    )
+    query_input.set_value("APAA read-only integration test")
+    submit = next(
+        item for item in app.form_submit_button if item.label == "Search web"
+    )
+    submit.click().run()
+
+    assert not app.exception
+    assert calls == ["APAA read-only integration test"]
+    assert any("Safe test result" in item.value for item in app.markdown)
+    assert any("https://example.org/result" in item.value for item in app.markdown)
