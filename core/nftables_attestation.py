@@ -162,7 +162,7 @@ def _expected(policy: NftablesPolicy) -> Counter[tuple[str, tuple[tuple[str, str
         # The installed nftables policy explicitly constrains new
         # connections with ct state new; the live JSON emits that match.
         add("output", eq(destination, raw_ip), eq("tcp.dport", policy.proxy_port),
-            eq("ct.state", "new"))
+            ("ct.state", "in", json.dumps("new", separators=(",", ":"))))
     return expected
 
 
