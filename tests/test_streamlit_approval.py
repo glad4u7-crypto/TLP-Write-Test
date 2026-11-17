@@ -65,11 +65,13 @@ def test_streamlit_cancel_does_not_create_project(tmp_path, monkeypatch):
     assert "pending_project" not in app.session_state
 
 
-def test_streamlit_sessions_do_not_share_project_registry_or_approval_authority(
+def test_streamlit_sessions_share_owner_projects_but_not_approval_authority(
     tmp_path, monkeypatch
 ):
-    first = _app(tmp_path / "first", monkeypatch)
-    second = _app(tmp_path / "second", monkeypatch)
+    # Both browser sessions run as the same local OS owner, so durable owner
+    # projects are shared while session-scoped approval capabilities remain separate.
+    first = _app(tmp_path, monkeypatch)
+    second = _app(tmp_path, monkeypatch)
 
     first_registry = first.session_state["project_registry"]
     second_registry = second.session_state["project_registry"]
@@ -79,11 +81,12 @@ def test_streamlit_sessions_do_not_share_project_registry_or_approval_authority(
     assert first_registry is not second_registry
     assert first_authority is not second_authority
 
-    _prepare_project(first, name="Only first session")
+    _prepare_project(first, name="Owner-shared workspace")
     _click(first, "Confirm and create project")
 
     assert len(first_registry.list_projects()) == 1
-    assert second_registry.list_projects() == []
+    assert len(second_registry.list_projects()) == 1
+    assert second_registry.list_projects()[0].name == "Owner-shared workspace"
 
 
 def test_cross_session_approval_receipt_is_rejected(tmp_path, monkeypatch):
