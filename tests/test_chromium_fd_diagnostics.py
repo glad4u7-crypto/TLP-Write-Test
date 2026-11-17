@@ -204,7 +204,7 @@ def test_executable_mapping_parser_keeps_only_sanitized_module_ranges(tmp_path):
         encoding="ascii",
     )
     mappings = _executable_mappings(proc, "chromium")
-    assert len(mappings) == 2
+    assert len(mappings) == 1
     assert mappings[0] == {
         "start": "0x55555000", "end": "0x55556000", "file_offset": "0x1000",
         "permissions": "r-xp", "device": "08:01", "inode": 123, "module": "chromium",
