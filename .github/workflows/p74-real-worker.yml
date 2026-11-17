@@ -11,6 +11,10 @@ on:
         description: Exact HTTPS origin matching test_url (scheme + host + optional port)
         required: true
         type: string
+      expected_marker:
+        description: Unique text that must appear in the controlled test page HTML
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -67,6 +71,7 @@ jobs:
         env:
           APAA_P74_TEST_URL: ${{ inputs.test_url }}
           APAA_P74_ALLOWED_ORIGIN: ${{ inputs.allowed_origin }}
+          APAA_P74_EXPECTED_MARKER: ${{ inputs.expected_marker }}
         run: |
           set -euo pipefail
           sudo env \
