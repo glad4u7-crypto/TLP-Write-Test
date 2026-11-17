@@ -362,7 +362,7 @@ def _run_chromium_with_fd_snapshots(
     timed_out = False
     try:
         while process.poll() is None and time.monotonic() < deadline:
-            if len(snapshots) < 24:
+            if len(snapshots) < 40:
                 try:
                     snap = snapshot_cgroup(
                         cgroup_dir, max_processes=96, max_fds_per_process=192,
@@ -371,7 +371,7 @@ def _run_chromium_with_fd_snapshots(
                 except Exception as exc:
                     if len(diagnostic_errors) < 3:
                         diagnostic_errors.append(type(exc).__name__)
-            time.sleep(0.35)
+            time.sleep(1.15)
         if process.poll() is None:
             timed_out = True
             try:
@@ -395,6 +395,15 @@ def _run_chromium_with_fd_snapshots(
         for reader in readers:
             reader.join(timeout=2)
         raise
+    if len(snapshots) < 40:
+        try:
+            final_snapshot = snapshot_cgroup(
+                cgroup_dir, max_processes=96, max_fds_per_process=192,
+            )
+            snapshots.append(snapshot_json_safe(final_snapshot, max_bytes=180_000))
+        except Exception as exc:
+            if len(diagnostic_errors) < 3:
+                diagnostic_errors.append(type(exc).__name__)
     for reader in readers:
         reader.join(timeout=5)
     stdout = "".join(captured["stdout"])
@@ -402,6 +411,7 @@ def _run_chromium_with_fd_snapshots(
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     summary = {
         "snapshot_count": len(snapshots),
+        "snapshot_interval_seconds": 1.15,
         "diagnostic_errors": diagnostic_errors,
         "timed_out": timed_out,
         "snapshots": snapshots,
