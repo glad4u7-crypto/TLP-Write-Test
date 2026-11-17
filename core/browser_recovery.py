@@ -7,6 +7,7 @@ cannot know whether a remote side effect happened before the crash.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import sqlite3
@@ -66,7 +67,7 @@ class SQLiteBrowserRecoveryLedger:
         self._clock = clock
         self._lock = threading.RLock()
         try:
-            with self._connect() as db:
+            with self._database() as db:
                 db.execute("""CREATE TABLE IF NOT EXISTS browser_jobs (
                     job_id TEXT PRIMARY KEY,
                     request_digest TEXT NOT NULL CHECK(length(request_digest)=64),
@@ -89,8 +90,17 @@ class SQLiteBrowserRecoveryLedger:
         db = sqlite3.connect(self.path, timeout=5.0, isolation_level="IMMEDIATE")
         db.execute("PRAGMA trusted_schema=OFF")
         db.execute("PRAGMA synchronous=FULL")
-        db.execute("PRAGMA journal_mode=DELETE")
         return db
+
+    @contextmanager
+    def _database(self):
+        """Commit/rollback and always close the SQLite connection."""
+        db = self._connect()
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def _now(self) -> float:
         value = self._clock()
@@ -121,7 +131,7 @@ class SQLiteBrowserRecoveryLedger:
         if type(reason_code) is not str or not reason_code or len(reason_code) > 64:
             raise ValueError("dispatch block reason code is invalid")
         try:
-            with self._lock, self._connect() as db:
+            with self._lock, self._database() as db:
                 db.execute(
                     "INSERT INTO browser_control(key,value,updated_at) VALUES('dispatch_blocked','1',?) "
                     "ON CONFLICT(key) DO UPDATE SET value='1', updated_at=excluded.updated_at",
