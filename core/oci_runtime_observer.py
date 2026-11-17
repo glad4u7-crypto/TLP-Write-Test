@@ -178,9 +178,12 @@ class PodmanWorkerObserver:
         parent = spec.cgroup_parent
         if not parent:
             raise WorkerObservationError("an explicit delegated cgroup parent is required")
-        expected_parent = "/" + str(Path(parent).relative_to("/sys/fs/cgroup")).strip("/")
-        # Procfs paths can be namespace-relative; prove actual membership
-        # from the host cgroup.procs files instead of trusting that string.
+        if type(parent) is not str or not parent.startswith("/apaa/") or ".." in Path(parent).parts:
+            raise WorkerObservationError("cgroup parent must be a hierarchy path inside /apaa")
+        # Podman --cgroup-parent takes a cgroup-hierarchy path, not the
+        # filesystem mount path (/sys/fs/cgroup). Prove actual membership
+        # from host cgroup.procs files rather than trusting procfs namespace paths.
+        expected_parent = parent
         parent_dir = self.cgroup_root / expected_parent.lstrip("/")
         try:
             cgroup_dir, cgroup_path = self._locate_pid_cgroup(
