@@ -1,8 +1,8 @@
-"""Fail-closed, ephemeral Playwright browser launch boundary.
+"""Explicitly opt-in local test browser launcher.
 
-P01 launches a local Chromium process only. It deliberately exposes no URL
-navigation, page interaction, download, persistent-profile, remote-debugging,
-or arbitrary launch-argument API. Playwright remains an optional dependency.
+This is not an isolated worker and must never be used for production browsing.
+Local launch is disabled by default; only test/developer code may opt in
+explicitly. Production automation must use the attested OCI worker backend.
 """
 from __future__ import annotations
 
@@ -99,11 +99,20 @@ class PlaywrightBrowserLauncher:
         policy: BrowserLaunchPolicy | None = None,
         *,
         playwright_factory: Callable[[], Any] | None = None,
+        allow_local_test: bool = False,
     ) -> None:
+        if type(allow_local_test) is not bool:
+            raise TypeError("allow_local_test must be an explicit boolean.")
         self.policy = policy or BrowserLaunchPolicy()
         self._playwright_factory = playwright_factory
+        self._allow_local_test = allow_local_test
 
     def launch(self) -> BrowserSession:
+        if not self._allow_local_test:
+            raise BrowserLaunchError(
+                "Host-local browser launch is disabled. Production browsing requires "
+                "the attested isolated OCI worker backend."
+            )
         try:
             require_browser_runtime()
         except RuntimeError as exc:
