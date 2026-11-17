@@ -191,7 +191,7 @@ class BrowserExecutionCoordinator:
         self._worker = worker
         self._audit = audit
         self._clock = clock
-        self._active: dict[str, tuple[CancellationToken, str]] = {}
+        self._active: dict[str, tuple[CancellationToken, str, threading.Event]] = {}
         self._lock = threading.RLock()
 
     @classmethod
@@ -231,13 +231,14 @@ class BrowserExecutionCoordinator:
             active = self._active.get(job_id)
             if active is None:
                 return False
-            token, session_id = active
+            token, session_id, termination_confirmed = active
             changed = token.cancel()
         termination_error = None
         if self._worker is not None:
             try:
                 if self._worker.terminate(session_id) is not True:
                     raise BrowserExecutionError("Worker termination was not confirmed.")
+                termination_confirmed.set()
             except Exception as exc:
                 termination_error = exc
         audit_error = None
@@ -276,10 +277,11 @@ class BrowserExecutionCoordinator:
 
         session_id = uuid.uuid4().hex
         token = CancellationToken()
+        termination_confirmed = threading.Event()
         with self._lock:
             if job.job_id in self._active:
                 raise BrowserExecutionError("Duplicate active browser job ID.")
-            self._active[job.job_id] = (token, session_id)
+            self._active[job.job_id] = (token, session_id, termination_confirmed)
 
         deadline = self._clock() + job.max_runtime_seconds
         worker_exit_confirmed = False
@@ -348,6 +350,7 @@ class BrowserExecutionCoordinator:
         finally:
             with self._lock:
                 self._active.pop(job.job_id, None)
+            worker_exit_confirmed = worker_exit_confirmed or termination_confirmed.is_set()
             try:
                 self._record(
                     "session_closed" if worker_exit_confirmed else "session_cleanup_unconfirmed",
