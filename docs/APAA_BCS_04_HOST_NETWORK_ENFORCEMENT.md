@@ -579,3 +579,24 @@ request policy only. Its CI step and test name now explicitly say
 test-only/local and do not claim OCI isolation or production sandbox proof.
 Only the disposable P74 real-host workflow can qualify the OCI network boundary
 and in-worker Chromium sandbox.
+
+
+## Real OCI Chromium failure analysis and safe retry
+
+The disposable-host qualification reached the real container and built the
+Chromium image, delegated cgroup-v2 subtree and network namespace. The first
+real Chromium run exited with code 139 because Crashpad attempted `ptrace`
+and `tgkill` operations denied by the worker seccomp policy. This was not
+evidence of a network bypass; the browser process itself did not complete.
+
+The qualification now adds Chromium's upstream `--disable-crashpad-for-testing`
+switch alongside the existing crash-reporting flags. Chromium documents this
+switch as preventing Crashpad initialization (the Crashpad binary is not
+started); it does **not** add `--no-sandbox` or relax the worker seccomp,
+namespace, capability or firewall policy. A regression test asserts the
+Crashpad switch is present and the no-sandbox bypass flag is absent.
+
+A fresh disposable-host run is being requested for this exact code revision.
+No success is claimed until both IPv4 and IPv6 Chromium HTTPS tests, direct
+egress negative tests, proxy-outage test, packet capture and cleanup evidence
+all pass.
