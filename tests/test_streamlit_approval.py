@@ -15,7 +15,8 @@ def _app(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
     auth = LocalOwnerAuthStore(tmp_path / ".apaa_personal" / "owner-auth.sqlite3")
-    auth.configure("test-only owner passphrase", "test-only owner passphrase")
+    if not auth.is_configured():
+        auth.configure("test-only owner passphrase", "test-only owner passphrase")
     app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
     assert not app.exception
     app.text_input[0].set_value("test-only owner passphrase")
