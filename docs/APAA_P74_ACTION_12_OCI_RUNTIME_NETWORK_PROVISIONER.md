@@ -128,3 +128,13 @@ Accordingly, passing the manual worker qualification will be necessary but
 not sufficient to enable Public Live Browsing. Production adapter integration,
 key provisioning/rotation, challenge replay protection, and full lifecycle
 recovery must also pass independently.
+
+
+## Remaining production-gate sequence
+
+1. Run the gated real-host Chromium qualification and retain the JSON evidence artifact.
+2. Extend the signed host-inspector nftables JSON parser to attest this exact dual-stack policy, including loopback and narrowly scoped IPv6 neighbour discovery, while rejecting every other ACCEPT path.
+3. Implement a trusted Podman runtime observation provider that independently reads inspect data, process start-time/PID identity, namespace inode, cgroup membership and live nftables JSON.
+4. Implement the production `IsolatedWorkerBackend` adapter and align its UID/GID, memory, CPU, PID, writable-mount and proxy settings exactly with `WorkerLaunchSpec`; do not hardcode a second independent profile.
+5. Bind host-attestor key provisioning, one-time challenge consumption, evidence freshness and cleanup/recovery to the owner-controlled control plane.
+6. Re-run the complete hostile-network, TLS, crash, timeout, orphan and cleanup matrix. Only then consider enabling any browser dispatch, with a separate explicit owner approval.
