@@ -75,6 +75,37 @@ class PodmanWorkerObserver:
             raise WorkerObservationError("unified cgroup path is unsafe")
         return value
 
+    @staticmethod
+    def _locate_pid_cgroup(parent: Path, pid: int, mount_root: Path) -> tuple[Path, str]:
+        """Find the unique cgroup-v2 directory that actually lists this host PID."""
+        matches: list[Path] = []
+        visited = 0
+        parent_real = parent.resolve(strict=True)
+        for current, dirs, _files in os.walk(parent_real, topdown=True, followlinks=False):
+            current_path = Path(current)
+            dirs[:] = [
+                name for name in dirs
+                if not (current_path / name).is_symlink()
+            ]
+            visited += 1
+            if visited > 4096 or len(current_path.relative_to(parent_real).parts) > 8:
+                raise WorkerObservationError("dedicated cgroup subtree exceeds safe inspection bounds")
+            procs = current_path / "cgroup.procs"
+            try:
+                entries = procs.read_text(encoding="ascii").split()
+            except OSError as exc:
+                raise WorkerObservationError("cgroup.procs cannot be read within the dedicated subtree") from exc
+            if str(pid) in entries:
+                matches.append(current_path)
+                if len(matches) > 1:
+                    raise WorkerObservationError("worker PID appears in multiple cgroup-v2 directories")
+        if len(matches) != 1:
+            raise WorkerObservationError("worker PID is not uniquely present in the dedicated cgroup-v2 subtree")
+        actual = matches[0]
+        if not actual.is_relative_to(mount_root.resolve(strict=True)):
+            raise WorkerObservationError("located worker cgroup escapes the cgroup-v2 mount")
+        return actual, "/" + str(actual.relative_to(mount_root.resolve(strict=True))).strip("/")
+
     def _normalize_cgroup_mount_path(self, value: str) -> str:
         """Normalize procfs paths that include the cgroup-v2 mount prefix."""
         try:
@@ -152,15 +183,13 @@ class PodmanWorkerObserver:
             raise WorkerObservationError(
                 f"worker process cgroup {cgroup_path!r} is outside dedicated subtree {expected_parent!r}"
             )
-        relative = cgroup_path.lstrip("/")
-        cgroup_dir = self.cgroup_root / relative
+        parent_dir = self.cgroup_root / expected_parent.lstrip("/")
         try:
-            if not cgroup_dir.resolve(strict=True).is_relative_to(self.cgroup_root.resolve(strict=True)):
-                raise WorkerObservationError("observed cgroup path escapes the cgroup-v2 mount")
+            cgroup_dir, cgroup_path = self._locate_pid_cgroup(
+                parent_dir, pid, self.cgroup_root
+            )
         except OSError as exc:
-            raise WorkerObservationError(
-                f"worker cgroup directory {str(cgroup_dir)!r} is unavailable ({type(exc).__name__})"
-            ) from exc
+            raise WorkerObservationError("dedicated worker cgroup subtree is unavailable") from exc
         memory = self._read(cgroup_dir / "memory.max")
         cpu = self._read(cgroup_dir / "cpu.max")
         pids = self._read(cgroup_dir / "pids.max")
