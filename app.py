@@ -27,7 +27,8 @@ from core.session_security import bind_session_identity, clear_session_identity,
 from core.storage import TenantKey
 from core.personal_diagnostics import inspect_personal_runtime, diagnostics_summary
 from core.personal_project_files import (
-    ProjectFileError, list_project_files, project_files_directory, save_project_file,
+    MAX_PROJECT_FILE_BYTES, ProjectFileError, list_project_files,
+    project_files_directory, save_project_file,
 )
 from core.personal_backup import create_personal_backup, restore_personal_backup, PersonalBackupError
 from core.personal_runtime import (
@@ -1077,6 +1078,8 @@ if not auth_required and selected_file_project is not None:
         try:
             if project_file_upload is None:
                 st.error("Choose a file first.")
+            elif project_file_upload.size > MAX_PROJECT_FILE_BYTES:
+                st.error("Project files are limited to 64 KiB.")
             else:
                 file_bytes = project_file_upload.getvalue()
                 file_digest = hashlib.sha256(file_bytes).hexdigest()
