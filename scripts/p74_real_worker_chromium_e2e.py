@@ -57,7 +57,7 @@ def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[s
                             timeout=timeout, shell=False)
     if result.returncode:
         diagnostic = " ".join((result.stderr or "").split())
-        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)
         diagnostic = diagnostic[:320]
         raise RuntimeError(
             f"qualification command failed: {_safe_command_label(command)} "
