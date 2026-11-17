@@ -13,7 +13,8 @@ attestation gate succeeds.
   - `PinnedDestination` accepts only explicit, normalized public unicast IPs.
   - `PinnedHTTPSConnection` dials the pinned IP, checks the connected peer,
     retains the original hostname for TLS SNI and certificate hostname checks,
-    and uses the platform trust store with certificate verification required.
+    requires TLS 1.2 or newer, and uses the platform trust store with
+    certificate verification required.
   - Redirects are not followed by this transport. Every redirect must be
     re-authorized and resolved to a fresh pin set by its caller.
   - `CancellationToken` provides cooperative cancellation.
@@ -33,7 +34,8 @@ attestation gate succeeds.
     browser execution remains disabled.
 
 - `tests/test_browser_execution.py`
-  - Covers TLS verification requirements, pinned IP validation, private/mixed
+  - Covers TLS 1.2+ enforcement, certificate verification requirements,
+    pinned IP validation, private/mixed
     DNS rejection, fail-closed worker configuration, audit failures, runtime
     result validation, cancellation, hard timeout termination and cleanup confirmation.
 
@@ -91,8 +93,8 @@ approved before C02 starts.
 
 ## Current checkpoint record
 
-- Latest implementation branch head: `93b24dc880a1e0b644a8bef09a2c156f102ee9a3`.
-- New P74 regression tests authored: 21 in `test_browser_execution.py` and 15 in `test_attested_browser_runtime.py` (36 total).
+- Latest implementation branch head: `8a55b0aea6fa5a5e3d0bf1e7ac09a222a281685e`.
+- New P74 regression tests authored: 22 in `test_browser_execution.py` and 15 in `test_attested_browser_runtime.py` (37 total).
 - Exact-head GitHub combined status and PR workflow lookup returned no check results. Therefore automated PASS is **not verified**.
 - No physical Android/device testing was performed.
 - Browser execution remains disabled until a real isolated worker, host-enforced egress boundary, durable audit adapter, and successful exact-head CI/security verification exist.
