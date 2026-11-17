@@ -91,8 +91,11 @@ class NftablesFirewallProvisioner:
             'add rule inet apaa output oifname "lo" accept',
             "add rule inet apaa input ct state established,related accept",
             "add rule inet apaa output ct state established,related accept",
-            "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } accept",
+            "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type nd-neighbor-solicit accept",
+            "add rule inet apaa input ip6 saddr fe80::/10 icmpv6 type nd-neighbor-advert accept",
             "add rule inet apaa output ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-solicit accept",
+            "add rule inet apaa output ip6 saddr fe80::/10 ip6 daddr fe80::/10 icmpv6 type nd-neighbor-advert accept",
+            "add rule inet apaa output ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type nd-neighbor-advert accept",
         ]
         for address in parsed:
             family = "ip" if address.version == 4 else "ip6"
