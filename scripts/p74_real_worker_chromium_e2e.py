@@ -84,9 +84,54 @@ def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[s
 
 
 
+def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
+    marker = "Crashing due to FD ownership violation:"
+    marker_at = stderr.rfind(marker)
+    if marker_at < 0:
+        return {"detected": False, "log_pid": None, "log_tid": None, "stack_frames": []}
+    prefix = stderr[:marker_at]
+    log_lines = list(re.finditer(r"\\[(\\d+):(\\d+):\\d{4}/\\d{6}\\.\\d+\\]", prefix))
+    identity = log_lines[-1] if log_lines else None
+    stack_frames = [
+        {"frame": int(index), "address": address.lower()}
+        for index, address in re.findall(r"(?m)^#(\\d+)\\s+(0x[0-9a-fA-F]+)", stderr[marker_at:])
+    ][:64]
+    return {
+        "detected": True,
+        "log_pid": int(identity.group(1)) if identity else None,
+        "log_tid": int(identity.group(2)) if identity else None,
+        "stack_frames": stack_frames,
+    }
+
+
+def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None:
+    container_pid = failure.get("fd_ownership_log_pid")
+    if type(container_pid) is not int:
+        return None
+    matches = []
+    for snapshot_index, snapshot in enumerate(diagnostics.get("snapshots", [])):
+        for process in snapshot.get("processes", []):
+            namespace_pids = process.get("status", {}).get("nspid", "").split()
+            if namespace_pids and namespace_pids[-1].isdigit() and int(namespace_pids[-1]) == container_pid:
+                matches.append({
+                    "snapshot_index": snapshot_index,
+                    "host_pid": process["pid"],
+                    "container_pid": container_pid,
+                    "ppid": process["ppid"],
+                    "comm": process["comm"],
+                    "executable": process.get("executable"),
+                    "role": process.get("role"),
+                    "start_time_ticks": process.get("start_time_ticks"),
+                    "fd_count_observed": process.get("fd_count_observed"),
+                    "status": process.get("status"),
+                })
+    return matches[-1] if matches else None
+
+
 def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
     stdout = page.stdout or ""
     stderr = page.stderr or ""
+    fd_crash = _fd_ownership_crash_identity(stderr)
     return {
         "family": family,
         "exit_code": page.returncode,
@@ -96,6 +141,10 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "expected_marker_present": expected_marker in stdout,
         "stderr_bytes": len(stderr.encode("utf-8", errors="replace")),
         "stderr_sha256": hashlib.sha256(stderr.encode("utf-8", errors="replace")).hexdigest(),
+        "fd_ownership_violation": fd_crash["detected"],
+        "fd_ownership_log_pid": fd_crash["log_pid"],
+        "fd_ownership_log_tid": fd_crash["log_tid"],
+        "fd_ownership_stack_frames": fd_crash["stack_frames"],
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
@@ -703,6 +752,10 @@ def main() -> int:
         evidence["chromium_local_dump_dom"] = local_smoke
         evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
         if not local_smoke["marker_present"]:
+            local_smoke["failure"]["process_mapping"] = _map_failure_to_fd_snapshot(
+                local_smoke["failure"], local_fd_diagnostics,
+            )
+            evidence["chromium_local_dump_dom"] = local_smoke
             raise RuntimeError(f"Chromium local dump-dom smoke test failed: {local_smoke['failure']}")
         evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
@@ -872,6 +925,7 @@ target.url,
             }
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
                 failure = _chromium_failure_details(page, family, expected_marker)
+                failure["process_mapping"] = _map_failure_to_fd_snapshot(failure, fd_diagnostics)
                 evidence["chromium_failure"] = failure
                 raise RuntimeError(
                     f"Chromium did not return the expected controlled-page marker over the {family} proxy "
