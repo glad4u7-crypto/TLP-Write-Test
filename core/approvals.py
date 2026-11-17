@@ -45,6 +45,10 @@ class ApprovalAuthority:
     """Issues short-lived, one-time receipts after a trusted UI confirmation."""
 
     def __init__(self, *, nonce_store: Any | None = None, signing_secret: bytes | None = None) -> None:
+        if nonce_store is not None and signing_secret is None:
+            raise ValueError(
+                "Durable nonce storage requires an explicitly supplied stable signing secret."
+            )
         if signing_secret is not None and (not isinstance(signing_secret, bytes) or len(signing_secret) < 32):
             raise ValueError("Signing secret must contain at least 32 bytes.")
         self._secret = signing_secret if signing_secret is not None else secrets.token_bytes(32)
