@@ -91,6 +91,39 @@ def _fd_metadata(pid_dir: Path, fd_name: str) -> dict | None:
     }
 
 
+def _executable_mappings(base: Path, executable: str | None) -> list[dict]:
+    """Capture sanitized address ranges for the process executable only."""
+    raw = _read_text(base / "maps", 262144) or ""
+    mappings = []
+    for line in raw.splitlines():
+        fields = line.split(maxsplit=5)
+        if len(fields) < 5:
+            continue
+        path = fields[5].removesuffix(" (deleted)") if len(fields) == 6 else ""
+        if not path.startswith("/") or (executable and Path(path).name != executable):
+            continue
+        start_end = fields[0].split("-", 1)
+        try:
+            start, end = int(start_end[0], 16), int(start_end[1], 16)
+            file_offset = int(fields[2], 16)
+            device = fields[3]
+            inode = int(fields[4])
+        except (ValueError, IndexError):
+            continue
+        mappings.append({
+            "start": hex(start),
+            "end": hex(end),
+            "file_offset": hex(file_offset),
+            "permissions": fields[1],
+            "device": device,
+            "inode": inode,
+            "module": Path(path).name,
+        })
+        if len(mappings) >= 32:
+            break
+    return mappings
+
+
 def _parse_status(raw: str) -> dict:
     wanted = {"Uid", "Gid", "NSpid", "Seccomp", "FDSize"}
     out: dict[str, str] = {}
@@ -174,6 +207,7 @@ def _read_process(
         "comm": comm,
         "executable": executable,
         "role": role,
+        "executable_mappings": _executable_mappings(base, executable),
         "state_code": state_code,
         "start_time_ticks": start_time,
         "status": status,
