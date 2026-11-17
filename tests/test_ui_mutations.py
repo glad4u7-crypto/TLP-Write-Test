@@ -66,3 +66,25 @@ def test_ui_mutation_reports_completion_audit_failure_for_manual_review():
         )
     assert calls == ["deleted"]
     assert [event.reason for event in audit.events] == ["ui_mutation_pending"]
+
+
+
+def test_sqlite_audit_distinguishes_pending_and_completed_ui_mutations(tmp_path):
+    import sqlite3
+
+    from core.personal_runtime import PERSONAL_OWNER_TENANT
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    audit = SQLiteExecutionAuditLog(store, PERSONAL_OWNER_TENANT)
+    execute_audited_ui_mutation(audit, "memory.add", lambda: "saved")
+
+    with sqlite3.connect(tmp_path / "security.sqlite3") as db:
+        rows = db.execute(
+            "SELECT result, reason_code FROM durable_audit_events ORDER BY sequence"
+        ).fetchall()
+    assert rows == [
+        ("pending", "ui_mutation_pending"),
+        ("success", "ui_mutation_completed"),
+    ]
+    assert store.verify_audit_chain()
