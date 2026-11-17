@@ -23,6 +23,10 @@ These are three independent browser-process tests. Each starts Playwright's Chro
 - The proxy accepts CONNECT only for the local fixture hostname aliases and exact fixture port; all other destinations are rejected.
 - CI installs `libnss3-tools` to provide `certutil`, then installs the pinned project dependencies and Playwright Chromium.
 
+## CI diagnostic note
+
+The first real Chromium CI attempt failed before navigation because the TLS fixture isolates `HOME`, causing Playwright to look for its browser binary under the temporary home rather than the runner cache. The workflow now pins `PLAYWRIGHT_BROWSERS_PATH` to `/home/runner/.cache/ms-playwright` for the hosted Ubuntu runner. This correction is awaiting a fresh successful CI run; it is not yet evidence of passing TLS validation.
+
 ## Verification state
 
 - [x] Three distinct Chromium navigation tests authored.
