@@ -242,7 +242,7 @@ def test_proxy_rejects_noncanonical_connect_port_spelling():
     thread = threading.Thread(target=proxy._handle_client, args=(server,), daemon=True)
     thread.start()
     try:
-        client.sendall(b"CONNECT example.com:+443 HTTP/1.1\\r\\n\\r\\n")
+        client.sendall(b"CONNECT example.com:+443 HTTP/1.1\r\n\r\n")
         response = client.recv(1024)
         assert response.startswith(b"HTTP/1.1 403")
         thread.join(timeout=2)
