@@ -54,3 +54,10 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 - PR #13 remains Draft/Open/Unmerged. C01 remains OPEN; C02 NOT STARTED.
 
 **Final P80 decision: NO-GO.** The release review checkpoint is documented, but Personal Edition v1 is not accepted or released.
+
+
+## Verification update
+
+- P79 predecessor head `63174c17cbb60958ca746aaf76886b7bb12eb355` passed P73 Verification #148 (1,463 Python passed, 9 skipped; compile and dependency audit PASS; 9 responsive browser smoke tests PASS).
+- P79 follow-up payload-snapshot and input-validation corrections are covered by later commit(s); exact-head P73 Verification #157 is still in progress/not yet concluded.
+- Therefore the NO-GO release decision remains unchanged.
