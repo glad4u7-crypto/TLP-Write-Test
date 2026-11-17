@@ -11,7 +11,7 @@ import base64
 import hashlib
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError, sync_playwright
@@ -147,6 +147,20 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             def guard_loopback(route):
                 url = route.request.url
                 parsed = urlsplit(url)
+                if parsed.path == "/cross-redirect":
+                    # Route.fetch(max_redirects=0) exposes the 302 response
+                    # without following it. Inspect Location before Chromium
+                    # can issue the cross-origin follow-up request.
+                    response = route.fetch(max_redirects=0)
+                    location = response.headers.get("location", "")
+                    destination = urljoin(url, location)
+                    destination_host = urlsplit(destination).hostname
+                    if destination_host not in ("127.0.0.1", "localhost"):
+                        blocked_requests.append(destination)
+                        route.abort("blockedbyclient")
+                        return
+                    route.fulfill(response=response)
+                    return
                 if parsed.scheme in ("http", "https") and parsed.hostname not in ("127.0.0.1", "localhost"):
                     blocked_requests.append(url)
                     route.abort("blockedbyclient")
