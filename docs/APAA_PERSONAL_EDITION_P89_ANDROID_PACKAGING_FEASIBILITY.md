@@ -22,7 +22,19 @@ Do **not** attempt to embed the full Streamlit server into an APK as a quick pac
 
 The Android-first product architecture already defines a responsive installable web experience as the first client stage, with a native Android shell only after the core client/API boundary and device-permission requirements are ready. P89 follows that architecture.
 
-## 3. Recommended delivery sequence
+## 3. Android runtime doctor (new)
+
+A read-only diagnostic command is now available for the Owner to run in the existing Termux checkout:
+
+```sh
+python scripts/apaa_android_doctor.py
+```
+
+It reports Python implementation/version, platform and CPU architecture, a Termux-detection boolean, Streamlit and cryptography versions, AES-GCM/scrypt availability, loopback socket-bind availability and the current Git commit. It does not print environment variables or filesystem paths, inspect personal files/browser profiles, read credentials, create/change files, or make network connections. It briefly binds a temporary socket to `127.0.0.1` only.
+
+Exit code 0 means the basic runtime dependencies and loopback bind are present; exit code 2 means review the reported missing requirements. This is not a substitute for launching APAA or completing physical A01–A12 acceptance.
+
+## 4. Recommended delivery sequence
 
 ### P89-A — Android browser experience hardening
 - Complete owner-run physical Android acceptance A01–A12 using the existing runbook.
@@ -44,7 +56,7 @@ The Android-first product architecture already defines a responsive installable 
 - Implement foreground/background lifecycle, process death recovery, network-loss handling and accessibility before any execution feature.
 - Sign release artifacts with a protected release key; document reproducible build inputs and update/rollback policy.
 
-## 4. Non-negotiable safety boundary
+## 5. Non-negotiable safety boundary
 
 - No public/LAN listener, tunnel or remote exposure.
 - Browser/Worker execution stays disabled until host-level egress isolation and all approval gates are independently qualified.
@@ -53,7 +65,7 @@ The Android-first product architecture already defines a responsive installable 
 - No hidden accessibility-service use, screen capture, background surveillance or silent device control.
 - No paid build/hosting service or external account connection by default.
 
-## 5. Exit criteria
+## 6. Exit criteria
 
 P89 is not complete until:
 1. The physical Android A01–A12 runbook is executed and evidence is recorded.
@@ -62,7 +74,7 @@ P89 is not complete until:
 4. No test bypasses loopback, authentication, approval or privacy controls.
 5. Any APK is reproducibly built, signed and independently verified before distribution.
 
-## 6. Current truthful status
+## 7. Current truthful status
 
 **Available now:** Termux + loopback browser launch path, owner authentication, private local storage, encrypted backup/restore, CI-tested responsive browser UI.
 
