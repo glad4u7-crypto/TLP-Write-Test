@@ -139,3 +139,15 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 **Action audit follow-up:** a code review found the common UI mutation wrapper self-supplied its approval value. The wrapper now requires an explicit boolean approval argument; all nine app mutation call sites pass the relevant Owner consent checkbox or the named delete-button event. Tests verify missing/non-boolean approval fails before audit intent or dispatch.
 
 **Current latest source head:** to be recorded after the full exact-head CI for these changes. Previous exact-head CI results do not apply to the new approval-hardening commits.
+
+
+## 9. Source-level action audit and browser-smoke fixture correction
+
+A further source audit identified two verification weaknesses and corrected them on this branch:
+
+1. The shared UI mutation wrapper previously supplied the action name as its own approval. It now requires an explicit boolean approval argument. All nine app call sites supply the matching Owner consent checkbox or the explicit named delete-button event. Missing approval and non-boolean approval fail before the intent audit and operation callback. Regression tests cover these paths and the existing fail-closed audit behavior.
+2. Android and desktop Playwright smoke fixtures did not configure a test Owner or complete the mandatory Owner login before expecting the task UI. Both fixtures now create a test-only local Owner in an isolated temporary data directory and authenticate through the actual Unlock APAA screen before testing responsive UI and plan preparation. This is CI test data only; no real Owner credential is used.
+
+The earlier run #90 had Python tests PASS while the browser-smoke job remained in progress. That run predates these fixture corrections and cannot verify the latest source. A fresh exact-head workflow is required.
+
+The source review also reconfirmed that the local auth-event SQLite table is payload-free but not independently tamper-proof; this limitation remains documented. The execution audit hash chain remains a separate tamper-evident control.
