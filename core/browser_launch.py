@@ -50,6 +50,12 @@ class BrowserSession:
         self._closed = False
 
     @property
+    def context(self) -> Any:
+        if self._closed:
+            raise BrowserLaunchError("Browser session is closed.")
+        return self._context
+
+    @property
     def page(self) -> Any:
         if self._closed:
             raise BrowserLaunchError("Browser session is closed.")
