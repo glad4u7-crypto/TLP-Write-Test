@@ -97,3 +97,31 @@ and refuses construction without an atomic durable replay ledger. Rotation
 therefore takes effect when a fresh adapter instance is created from the
 rotated keyring; already-running instances retain their original in-memory
 key material and must be retired by the owner-controlled supervisor.
+
+
+## Disposable Linux qualification — first real-host observations
+
+- Run #50 exposed two workflow defects before host provisioning: the workflow
+  passed Podman's bare local image ID without the required `sha256:` prefix,
+  and the root-created evidence file was unreadable to the artifact uploader.
+  Both workflow issues were corrected.
+- Run #51 then built the pinned local image and provisioned the disposable
+  namespace, dual-stack routes and firewall. It stopped at strict live nftables
+  JSON semantic attestation with
+  `NftablesAttestationError: live nftables ACCEPT rules differ from the exact approved policy`.
+  Cleanup was confirmed; the evidence artifact uploaded successfully.
+- The private artifact contained the human-readable firewall ruleset but not
+  the exact JSON that the verifier rejected. The harness now retains a bounded
+  exact JSON snapshot in the sanitized evidence artifact to diagnose the
+  mismatch. No browser request or network-bypass result was recorded in run #51.
+- The run #51 result is **FAIL / qualification incomplete**, not a host security
+  PASS. The next run is intended to identify and correct the exact nftables
+  JSON expression mismatch before Chromium or bypass tests can proceed.
+
+## Adapter factory CI correction
+
+APAA Security CI #386/#387 on the earlier factory commit failed because the
+new `from_keyring` classmethod had been inserted before the adapter's runtime
+state initialization, leaving `_states` and `_lock` unset. The initialization
+was moved back into `__init__` before the factory method. The correction is
+committed; exact-head CI is still required.
