@@ -131,9 +131,9 @@ def _run_connect_with_sni(monkeypatch, sni):
     monkeypatch.setattr(proxy_module, "connect_pinned", lambda *args, **kwargs: upstream)
     thread = threading.Thread(target=proxy._handle_client, args=(server,), daemon=True)
     thread.start()
-    client.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
+    client.sendall(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
     response = bytearray()
-    while b"\\r\\n\\r\\n" not in response:
+    while b"\r\n\r\n" not in response:
         response.extend(client.recv(1024))
     assert response.startswith(b"HTTP/1.1 200")
     wire = _tls_record(_client_hello(sni))
@@ -156,6 +156,8 @@ def test_proxy_rejects_tls_sni_mismatch_before_forwarding_client_hello(monkeypat
 
 
 def test_proxy_forwards_client_hello_only_after_matching_sni(monkeypatch):
+    import socket
+
     proxy, client, upstream_peer, thread, wire = _run_connect_with_sni(monkeypatch, "example.com")
     try:
         upstream_peer.settimeout(1)
