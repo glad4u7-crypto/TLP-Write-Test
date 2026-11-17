@@ -150,7 +150,9 @@ def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict
         "podman", "exec", "--user", "65532:65532", container_id, chromium_bin,
         "--headless=new", "--disable-gpu", "--disable-quic",
         "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
-        "--disable-crashpad-for-testing", "--no-first-run", "--dump-dom", data_url,
+        "--disable-crashpad-for-testing", "--disable-dev-shm-usage",
+        "--user-data-dir=/tmp/apaa-chromium-smoke", "--disable-background-networking",
+        "--no-first-run", "--dump-dom", data_url,
     ], timeout=45)
     if "<html" not in result.stdout.lower() or marker not in result.stdout:
         details = _chromium_failure_details(result, "local-data-url", marker)
@@ -728,6 +730,8 @@ def main() -> int:
                 # Disable Crashpad initialization only; Chromium's renderer and
                 # namespace sandbox remain enabled for this disposable test.
                 "--disable-crashpad-for-testing",
+                "--disable-dev-shm-usage",
+                "--user-data-dir=/tmp/apaa-chromium-" + family,
                 "--enable-logging=stderr",
                 "--v=1",
                 "--disable-http2",
@@ -807,6 +811,8 @@ def main() -> int:
                 chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
+                "--disable-dev-shm-usage",
+                "--user-data-dir=/tmp/apaa-chromium-outage-" + family,
                 "--disable-http2",
                 "--disable-background-networking", "--disable-component-update",
                 "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
