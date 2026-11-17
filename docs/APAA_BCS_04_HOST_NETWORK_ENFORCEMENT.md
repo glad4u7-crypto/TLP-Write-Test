@@ -145,3 +145,11 @@ encodes the scalar new-state condition with operator `in` and right operand
 that exact operator/value pair. The firewall's semantics remain unchanged;
 this only makes the attestor match the actual kernel ruleset representation.
 A further disposable-host run is required to verify the correction.
+
+
+Run #61 showed the remaining representation mismatch: nft 1.0.9 emits
+conntrack state sets as a JSON array (for example
+`["established","related"]`), not the nft JSON object form
+`{"set":[...]}`. The strict verifier and fixture now require the observed
+array representation, alongside the scalar `in "new"` form. No Chromium
+requests or bypass tests ran in #61. Requalification is required.
