@@ -15,8 +15,10 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 from core.browser_security import canonicalize_https_url
@@ -51,6 +53,61 @@ def _probe_blocked(command: list[str], description: str) -> None:
                              timeout=8, shell=False)
     if result.returncode == 0:
         raise RuntimeError(f"network bypass unexpectedly succeeded: {description}")
+
+
+def _audit_worker_capture(
+    pcap_path: Path,
+    *,
+    worker_ips: set[str],
+    proxy_ips: set[str],
+    proxy_port: int,
+) -> dict:
+    output = _run(["tcpdump", "-nn", "-r", str(pcap_path)], timeout=30).stdout
+    allowed_tcp = 0
+    arp_packets = 0
+    ndp_packets = 0
+    unexpected = []
+    endpoint_pattern = re.compile(r"\\bIP6?\\s+(\\S+)\\s+>\\s+(\\S+):")
+    for line in output.splitlines():
+        if "ARP," in line:
+            arp_packets += 1
+            continue
+        if "ICMP6" in line and ("neighbor solicitation" in line or "neighbor advertisement" in line):
+            ndp_packets += 1
+            continue
+        match = endpoint_pattern.search(line)
+        if not match:
+            if line.strip() and not line.startswith(("reading from file", "tcpdump:")):
+                unexpected.append(line[:240])
+            continue
+        source_text, destination_text = match.groups()
+        try:
+            source_ip_text, source_port_text = source_text.rsplit(".", 1)
+            destination_ip_text, destination_port_text = destination_text.rsplit(".", 1)
+            source_ip = ipaddress.ip_address(source_ip_text).compressed
+            destination_ip = ipaddress.ip_address(destination_ip_text).compressed
+            source_port = int(source_port_text)
+            destination_port = int(destination_port_text)
+        except (ValueError, IndexError):
+            unexpected.append(line[:240])
+            continue
+        forward = source_ip in worker_ips and destination_ip in proxy_ips and destination_port == proxy_port
+        reverse = source_ip in proxy_ips and destination_ip in worker_ips and source_port == proxy_port
+        if (forward or reverse) and ("Flags" in line or "tcp" in line.lower()):
+            allowed_tcp += 1
+        else:
+            unexpected.append(line[:240])
+    if unexpected:
+        raise RuntimeError("sink-side veth packet capture found non-proxy worker traffic: " + unexpected[0])
+    if allowed_tcp == 0:
+        raise RuntimeError("sink-side packet capture did not observe the approved proxy TCP flow")
+    return {
+        "allowed_proxy_tcp_packets": allowed_tcp,
+        "arp_packets": arp_packets,
+        "ipv6_neighbor_discovery_packets": ndp_packets,
+        "unexpected_packets": 0,
+        "capture_text_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
 
 
 def _evidence_write(path_value: str, evidence: dict) -> None:
@@ -93,6 +150,8 @@ def main() -> int:
     cgroup_path = None
     namespace_created = False
     proxy_servers: list[PinnedConnectProxy] = []
+    capture_process = None
+    capture_temp = None
     cleanup_errors: list[str] = []
     evidence: dict = {
         "result": "BLOCKED",
@@ -180,6 +239,16 @@ def main() -> int:
             proxy.start()
             proxy_servers.append(proxy)
         evidence["tests"]["pinned_proxy_ipv4_ipv6_listeners"] = True
+
+        capture_temp = tempfile.TemporaryDirectory(prefix="apaa-p74-pcap-")
+        capture_path = Path(capture_temp.name) / "worker-veth.pcap"
+        capture_process = subprocess.Popen(
+            ["tcpdump", "-nn", "-i", host_veth, "-U", "-w", str(capture_path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.25)
+        if capture_process.poll() is not None:
+            raise RuntimeError("sink-side tcpdump capture could not start")
 
         cgroup_path = cgroups.create(worker_id, CgroupLimits())
         evidence["cgroup_parent"] = str(cgroup_path)
@@ -306,6 +375,22 @@ def main() -> int:
                 "expected_marker_present": True,
             }
 
+        if capture_process is None or capture_temp is None:
+            raise RuntimeError("sink-side packet capture was not active during Chromium execution")
+        capture_process.send_signal(signal.SIGINT)
+        capture_process.wait(timeout=10)
+        capture_process = None
+        packet_summary = _audit_worker_capture(
+            capture_path,
+            worker_ips={str(ipaddress.ip_interface(plan.worker_ipv4).ip), str(ipaddress.ip_interface(plan.worker_ipv6).ip)},
+            proxy_ips=set(proxy_ips),
+            proxy_port=proxy_port,
+        )
+        evidence["packet_capture"] = packet_summary
+        evidence["tests"]["sink_side_packet_capture_proxy_only"] = True
+        capture_temp.cleanup()
+        capture_temp = None
+
         evidence["proxy_dialed_addresses"] = {
             "ipv4_listener": list(proxy_servers[0].dialed_addresses),
             "ipv6_listener": list(proxy_servers[1].dialed_addresses),
@@ -323,6 +408,21 @@ def main() -> int:
         evidence["error"] = f"{type(exc).__name__}: {exc}"
         print(f"BLOCKED: {type(exc).__name__}: {exc}")
     finally:
+        if capture_process is not None:
+            try:
+                capture_process.send_signal(signal.SIGINT)
+                capture_process.wait(timeout=5)
+            except Exception:
+                try:
+                    capture_process.kill()
+                    capture_process.wait(timeout=2)
+                except Exception:
+                    cleanup_errors.append("packet-capture: stop-not-confirmed")
+        if capture_temp is not None:
+            try:
+                capture_temp.cleanup()
+            except Exception:
+                cleanup_errors.append("packet-capture: temp-cleanup-failed")
         for proxy in reversed(proxy_servers):
             try:
                 proxy.close()
