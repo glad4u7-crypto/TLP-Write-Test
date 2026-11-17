@@ -142,6 +142,8 @@ def test_action_history_detects_recomputed_row_tampering_and_is_append_only(tmp_
 
     with pytest.raises(RecoveryLedgerError, match="integrity"):
         ledger.verify_history()
+    with pytest.raises(RecoveryLedgerError, match="integrity"):
+        ledger.claim("job_aftertamper01", "e" * 64, session_id="y" * 32)
 
 
 def test_sqlite_backup_and_restore_preserve_history_and_recover_running_job(tmp_path):
