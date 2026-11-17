@@ -299,11 +299,6 @@ class BrowserExecutionCoordinator:
         termination_confirmed = threading.Event()
         completed = threading.Event()
         outcome: dict[str, Any] = {}
-        with self._lock:
-            if job.job_id in self._active:
-                raise BrowserExecutionError("Duplicate active browser job ID.")
-            self._active[job.job_id] = (token, session_id, termination_confirmed, completed)
-
         deadline = self._clock() + job.max_runtime_seconds
         cleanup_mode: str | None = None
         try:
@@ -328,7 +323,13 @@ class BrowserExecutionCoordinator:
                 name=f"apaa-browser-{session_id[:12]}",
                 daemon=True,
             )
-            worker_thread.start()
+            # Register and start while holding the lock: cancel() cannot observe
+            # a session whose worker thread has not started yet.
+            with self._lock:
+                if job.job_id in self._active:
+                    raise BrowserExecutionError("Duplicate active browser job ID.")
+                self._active[job.job_id] = (token, session_id, termination_confirmed, completed)
+                worker_thread.start()
             timed_out = False
             while not completed.is_set():
                 remaining = deadline - self._clock()
