@@ -68,10 +68,12 @@ class LinuxNetworkNamespaceProvisioner:
         if self._require_root and os.geteuid() != 0:
             raise NamespaceProvisionError("CAP_NET_ADMIN/root is required; host networking is not an allowed fallback")
         created = False
+        veth_created = False
         try:
             self._run(["ip", "netns", "add", plan.name])
             created = True
             self._run(["ip", "link", "add", plan.host_veth, "type", "veth", "peer", "name", plan.worker_veth])
+            veth_created = True
             self._run(["ip", "link", "set", plan.worker_veth, "netns", plan.name])
             self._run(["ip", "addr", "add", plan.host_ipv4, "dev", plan.host_veth])
             self._run(["ip", "-6", "addr", "add", plan.host_ipv6, "dev", plan.host_veth])
@@ -85,6 +87,11 @@ class LinuxNetworkNamespaceProvisioner:
             self._run(["ip", "netns", "exec", plan.name, "ip", "route", "replace", "default", "via", gateway4])
             self._run(["ip", "netns", "exec", plan.name, "ip", "-6", "route", "replace", "default", "via", gateway6])
         except Exception:
+            if veth_created:
+                try:
+                    self._run(["ip", "link", "del", plan.host_veth])
+                except Exception:
+                    pass
             if created:
                 try:
                     self._run(["ip", "netns", "del", plan.name])
