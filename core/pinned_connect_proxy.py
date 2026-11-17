@@ -72,6 +72,8 @@ class PinnedConnectProxy:
         self._accepted_connections = 0
         self._rejected_requests = 0
         self._connection_slots = threading.BoundedSemaphore(32)
+        self._active_lock = threading.Lock()
+        self._active_sockets: set[socket.socket] = set()
 
     @property
     def dialed_addresses(self) -> tuple[str, ...]:
@@ -129,6 +131,8 @@ class PinnedConnectProxy:
 
     def _handle_client(self, client: socket.socket) -> None:
         upstream = None
+        with self._active_lock:
+            self._active_sockets.add(client)
         try:
             client.settimeout(self.timeout)
             request = bytearray()
@@ -177,6 +181,8 @@ class PinnedConnectProxy:
                     with self._stats_lock:
                         self._dialed_addresses.append(address)
                         self._accepted_connections += 1
+                    with self._active_lock:
+                        self._active_sockets.add(upstream)
                     break
                 except (OSError, PinnedEgressError) as exc:
                     last_error = exc
@@ -206,7 +212,11 @@ class PinnedConnectProxy:
         finally:
             if upstream is not None:
                 upstream.close()
+                with self._active_lock:
+                    self._active_sockets.discard(upstream)
             client.close()
+            with self._active_lock:
+                self._active_sockets.discard(client)
 
     @staticmethod
     def _respond(client: socket.socket, code: int, reason: str) -> None:
@@ -225,6 +235,17 @@ class PinnedConnectProxy:
             shutdown_thread.join(timeout=3)
         if thread is not None:
             thread.join(timeout=3)
+        with self._active_lock:
+            active_sockets = tuple(self._active_sockets)
+        for active in active_sockets:
+            try:
+                active.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                active.close()
+            except OSError:
+                pass
         if server is not None:
             server.server_close()
         if ((shutdown_thread is not None and shutdown_thread.is_alive())
