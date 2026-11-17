@@ -7,7 +7,7 @@ Android is a supported **local Owner-interface host**, not a qualified browser-w
 - Execution path: Android + Termux, same-phone local web application.
 - Owner interface: Android Chrome at `http://127.0.0.1:<configured-port>`.
 - Bind address: loopback only (`127.0.0.1`, `::1`, or `localhost`). Never bind the Owner interface to `0.0.0.0` or a LAN address.
-- Authentication: existing local Owner passphrase/session controls remain mandatory. Every protected mutation continues to require explicit Owner confirmation.
+- Authentication: the current app uses Streamlit OIDC when `[apaa].require_auth = true` and `[auth]` is configured. Unauthenticated local prototype mode is not an Owner-secure mode and must not be exposed or treated as accepted. No local Owner-passphrase feature is claimed by this milestone. Every protected mutation continues to require explicit Owner confirmation.
 - Browser runtime: Android/Termux browser-worker launch remains disabled. Browser work, when separately qualified, runs on an attested isolated Linux worker; Chrome on the phone is the control surface, not the automation worker.
 - Native APK: deferred. No Android accessibility service, device-control bridge, or cross-app automation is implied.
 - No payment, purchase, checkout, trading, money movement, arbitrary shell, public signup, or Auto-Run.
@@ -33,7 +33,7 @@ Android is a supported **local Owner-interface host**, not a qualified browser-w
 1. Start the APAA application manually in Termux using the documented local launcher.
 2. Bind only to `127.0.0.1` (or IPv6 loopback where explicitly configured).
 3. Open the exact local URL in Chrome on the same phone.
-4. Authenticate with the Owner passphrase.
+4. Authenticate through the configured OIDC provider as the Owner.
 5. Review each proposed action and explicitly approve or cancel it.
 6. Confirm action history and audit integrity after the test.
 7. Stop the app from Termux. If Android terminates it, restart manually and verify durable state recovery.
@@ -69,7 +69,7 @@ Record only redacted facts: handset model, Android version, Termux source/versio
 
 ## Acceptance status
 
-- Automated contract tests: added in `tests/test_android_compatibility.py`; exact-head CI must pass.
+- Automated contract tests: added in `tests/test_android_compatibility.py` and `tests/test_android_owner_ui.py`; exact-head CI must pass.\n- Android launcher: `scripts/android_owner_ui.py` requires OIDC auth and binds Streamlit to `127.0.0.1`.
 - Existing Android/Desktop browser viewport tests: useful UI regression evidence only.
 - Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone.
 - Android browser-worker runtime: **NOT SUPPORTED / DISABLED**.
