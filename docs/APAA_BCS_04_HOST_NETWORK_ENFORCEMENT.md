@@ -60,3 +60,32 @@ only process-lifetime protection and is not a production substitute.
   cleanup and physical Android VpnService tests remain unrun.
 - Browser dispatch and Public Live Browsing remain disabled. No merge or
   deployment is authorized by this implementation work.
+
+
+## Local attestation key lifecycle foundation
+
+Added `core/attestation_keyring.py` with explicit initial-key creation,
+rotation, retirement, revocation and trust-set export. The keyring requires an
+existing owner-owned 0700 directory, stores raw Ed25519 private keys and
+metadata as 0600 files, atomically replaces metadata, verifies private/public
+key correspondence, and removes a revoked private-key file after publishing
+the revocation state. Retired public keys remain trusted for verification of
+older evidence; revoked public keys are excluded.
+
+This is a local software keyring, not an HSM/TPM or out-of-band identity
+authority. Unlinking a file is not guaranteed secure media erasure, and
+backups may retain copies. Production signing requires independently managed
+key custody, protected backups, controlled distribution of trusted public
+keys, and a reviewed revocation propagation process. Do not treat this
+foundation as production key custody.
+
+## Verification note — CI #363
+
+APAA Security CI #363 on commit `711947a9fd13784c278befcd87e745a4426923e9`
+completed with **1,102 passed and 1 failed**. The only failure was a test
+assertion expecting the phrase "direct fallback" while the implementation
+correctly raised "browser reached the allowed page while its proxy was
+unavailable". The three Chromium TLS checks, restricted-proxy Chromium test,
+worker-adapter tests and host-inspector tests passed in that run. The assertion
+was corrected in a follow-up commit. The keyring additions and the correction
+still require exact-head CI verification.
