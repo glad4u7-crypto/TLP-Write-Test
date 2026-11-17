@@ -8,6 +8,8 @@ default; without an explicitly injected trusted backend, execution is blocked.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import ipaddress
+import re
 import secrets
 import threading
 import time
@@ -112,12 +114,27 @@ class AttestedBrowserWorkerAdapter:
             raise TypeError("A complete trusted IsolatedWorkerBackend is required.")
         if not isinstance(signing_key, Ed25519PrivateKey):
             raise TypeError("An externally provisioned Ed25519 signing key is required.")
-        if type(key_id) is not str or not key_id:
-            raise ValueError("A non-empty inspector key ID is required.")
+        if type(key_id) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}", key_id):
+            raise ValueError("A valid inspector key ID is required.")
         if not isinstance(trusted_public_keys, Mapping) or key_id not in trusted_public_keys:
             raise ValueError("The matching inspector public key must be explicitly trusted.")
-        if not 1 <= len(expected_proxy_addresses) <= 8:
+        if (not isinstance(expected_proxy_addresses, Sequence)
+                or isinstance(expected_proxy_addresses, (str, bytes))
+                or not 1 <= len(expected_proxy_addresses) <= 8):
             raise ValueError("One to eight exact proxy IP pins are required.")
+        normalized_proxy_ips: list[str] = []
+        for raw_ip in expected_proxy_addresses:
+            if type(raw_ip) is not str:
+                raise ValueError("Proxy IP pins must be strings.")
+            try:
+                address = ipaddress.ip_address(raw_ip)
+            except ValueError as exc:
+                raise ValueError("Proxy IP pin is malformed.") from exc
+            if address.is_unspecified or address.is_loopback or address.is_link_local or address.is_multicast or address.is_reserved:
+                raise ValueError("Proxy IP pin is not a usable unicast endpoint.")
+            normalized_proxy_ips.append(address.compressed.lower())
+        if len(set(normalized_proxy_ips)) != len(normalized_proxy_ips):
+            raise ValueError("Duplicate proxy IP pins are not permitted.")
         if not callable(challenge_factory):
             raise TypeError("challenge_factory must be callable.")
         if isinstance(cleanup_wait_seconds, bool) or not isinstance(cleanup_wait_seconds, (int, float)) or not 0 < cleanup_wait_seconds <= 60:
@@ -127,7 +144,7 @@ class AttestedBrowserWorkerAdapter:
         self._signing_key = signing_key
         self._key_id = key_id
         self._trusted_keys = dict(trusted_public_keys)
-        self._proxy_addresses = tuple(expected_proxy_addresses)
+        self._proxy_addresses = tuple(sorted(normalized_proxy_ips))
         self._challenge_factory = challenge_factory
         self._cleanup_wait = float(cleanup_wait_seconds)
         self._states: dict[str, _WorkerState] = {}
