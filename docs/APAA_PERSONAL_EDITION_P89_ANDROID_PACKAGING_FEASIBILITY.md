@@ -34,6 +34,8 @@ It reports Python implementation/version, platform and CPU architecture, a Termu
 
 Exit code 0 means the basic runtime dependencies and loopback bind are present; exit code 2 means review the reported missing requirements. This is not a substitute for launching APAA or completing physical A01–A12 acceptance.
 
+**CI verification:** exact-head run [#44047566168](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44047566168) passed on `2a6605e59017c35522ee2b1afe86661756f799c3`: 1,592 Python tests passed, 9 skipped; compile, dependency audit and Android-sized Chromium browser smoke all passed. This does not replace physical-device testing.
+
 ## 4. Recommended delivery sequence
 
 ### P89-A — Android browser experience hardening
