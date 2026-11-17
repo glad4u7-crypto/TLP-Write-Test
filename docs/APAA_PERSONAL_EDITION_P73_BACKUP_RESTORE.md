@@ -65,3 +65,10 @@ After restore:
 5. Keep the original data directory unchanged until the restored instance is reviewed.
 
 A successful automated restore test is software evidence only; it is not a substitute for an owner-operated recovery drill on the actual Android/host environment.
+
+
+## Automated verification status — 2026-11-17
+
+The current Personal Edition branch head `70ede93d20e7ff2780c7d4d1dbd68e2803a96a06` passed P73 Verification run [#235](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44023947699): 1,491 Python tests passed, 9 skipped; compile and dependency audit passed; 9 responsive browser smoke tests passed. The full Python suite includes the repository's automated backup/restore integrity, tamper rejection, audit-chain and approval-key rotation coverage.
+
+**Owner-operated Android backup/restore remains NOT RUN.** The Owner must perform the drill on the intended local runtime using synthetic data and a private local path. Do not upload the unencrypted backup archive or share it in chat. Preserve the original data directory until the restored instance is verified.
