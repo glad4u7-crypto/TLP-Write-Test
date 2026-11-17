@@ -187,6 +187,7 @@ class PinnedConnectProxy:
         self._connection_slots = threading.BoundedSemaphore(32)
         self._active_lock = threading.Lock()
         self._active_sockets: set[socket.socket] = set()
+        self._closing = threading.Event()
 
     @property
     def dialed_addresses(self) -> tuple[str, ...]:
@@ -207,6 +208,7 @@ class PinnedConnectProxy:
         if self._server is not None:
             raise RuntimeError("proxy is already running")
         owner = self
+        self._closing.clear()
 
         class Handler(socketserver.BaseRequestHandler):
             def handle(self):
@@ -216,10 +218,13 @@ class PinnedConnectProxy:
             address_family = socket.AF_INET6 if ipaddress.ip_address(owner.bind_address).version == 6 else socket.AF_INET
             request_queue_size = 32
             allow_reuse_address = False
-            daemon_threads = True
+            daemon_threads = False
             block_on_close = True
 
             def process_request(self, request, client_address):
+                if owner._closing.is_set():
+                    self.shutdown_request(request)
+                    return
                 if not owner._connection_slots.acquire(blocking=False):
                     owner._respond(request, 503, "Proxy Capacity Exhausted")
                     self.shutdown_request(request)
@@ -248,6 +253,8 @@ class PinnedConnectProxy:
         with self._active_lock:
             self._active_sockets.add(client)
         try:
+            if self._closing.is_set():
+                return
             client.settimeout(self.timeout)
             request = bytearray()
             while b"\r\n\r\n" not in request:
@@ -346,6 +353,7 @@ class PinnedConnectProxy:
         )
 
     def close(self) -> None:
+        self._closing.set()
         server, thread = self._server, self._thread
         self._server = self._thread = None
         shutdown_thread = None
