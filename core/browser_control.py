@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 from core.approvals import ApprovalAuthority, ApprovalReceipt
-from core.audit import JsonlAuditLog
+from core.audit import JsonlAuditLog, create_audit_event
 from core.browser_security import BrowserJob, validate_browser_job
 from core.execution import ActionHandlerDisabled, ExecutionGateway, ExecutionResult
 from core.identity import Principal, require_authenticated
@@ -111,6 +111,14 @@ class BrowserControlBoundary:
             "and verified isolated-worker egress evidence are not configured."
         )
 
+    def _record_audit(self, reason: str) -> None:
+        try:
+            self._audit_log.append(create_audit_event(BROWSER_APPROVAL_ACTION, False, reason))
+        except Exception as exc:
+            raise BrowserControlSecurityError(
+                "Action Audit persistence failed; browser control was blocked."
+            ) from exc
+
     def _require_active_owner(self) -> None:
         require_authenticated(self._principal)
         try:
@@ -132,26 +140,38 @@ class BrowserControlBoundary:
         now: int | None = None,
     ) -> ApprovalReceipt:
         """Issue a short-lived receipt only after an explicit Owner confirmation."""
-        self._require_active_owner()
+        try:
+            self._require_active_owner()
+        except BrowserControlSecurityError:
+            self._record_audit("browser_approval_owner_session_denied")
+            raise
         if owner_confirmed is not True:
+            self._record_audit("browser_approval_missing_owner_confirmation")
             raise BrowserControlSecurityError(
                 "A fresh explicit Owner confirmation is required."
             )
         current = int(time.time()) if now is None else now
         if type(current) is not int or current < 0:
             raise ValueError("Browser approval time is invalid.")
-        job = validate_browser_job(raw_job, now=current)
+        try:
+            job = validate_browser_job(raw_job, now=current)
+        except (TypeError, ValueError) as exc:
+            self._record_audit("browser_approval_job_validation_denied")
+            raise
         remaining = job.expires_at - current
         ttl = min(BROWSER_APPROVAL_TTL_SECONDS, remaining)
         if ttl < 1:
             raise BrowserControlSecurityError("Browser job has expired.")
-        return self._approval_authority.issue(
+        self._record_audit("browser_approval_requested")
+        receipt = self._approval_authority.issue(
             BROWSER_APPROVAL_ACTION,
             _job_payload(job),
             ttl_seconds=ttl,
             tenant=self._tenant,
             session_scope=self._session_scope,
         )
+        self._record_audit("browser_approval_issued")
+        return receipt
 
     def dispatch(
         self,
