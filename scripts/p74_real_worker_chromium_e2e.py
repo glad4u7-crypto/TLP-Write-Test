@@ -539,6 +539,7 @@ def main() -> int:
                 "--headless=new",
                 "--disable-gpu",
                 "--disable-quic",
+                "--disable-http2",
                 "--disable-background-networking",
                 "--disable-component-update",
                 "--disable-sync",
@@ -599,6 +600,7 @@ def main() -> int:
             outage = _probe_proxy_outage([
                 "podman", "exec", "--user", "65532:65532", container_id,
                 chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
+                "--disable-http2",
                 "--disable-background-networking", "--disable-component-update",
                 "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
                 "--proxy-bypass-list=<-loopback>", "--dump-dom", target.url,
