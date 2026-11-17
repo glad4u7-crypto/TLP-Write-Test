@@ -1278,6 +1278,56 @@ if plan is not None:
                     "Proposed change only — requires separate, action-specific "
                     "human approval. This screen does not issue approval."
                 )
+        if plan.steps:
+            st.subheader("Durable step progress")
+            if selected_plan_project is None or memory_store is None:
+                st.info("Select a project to save step progress across restarts.")
+            else:
+                try:
+                    progress_rows = memory_store.list_task_plan_step_progress(
+                        tenant, project_id=selected_plan_project.project_id,
+                        plan_id=plan.plan_id, limit=100,
+                    )
+                    progress_by_id = {item.step_id: item for item in progress_rows}
+                    completed_steps = sum(
+                        progress_by_id.get(step.step_id) is not None
+                        and progress_by_id[step.step_id].status == "completed"
+                        for step in plan.steps
+                    )
+                    st.progress(
+                        completed_steps / len(plan.steps),
+                        text=f"{completed_steps} of {len(plan.steps)} steps marked complete",
+                    )
+                    for step in plan.steps:
+                        current_progress = progress_by_id.get(step.step_id)
+                        is_completed = (
+                            current_progress is not None
+                            and current_progress.status == "completed"
+                        )
+                        with st.form(f"task_step_progress_{plan.plan_id}_{step.step_id}"):
+                            step_completed = st.checkbox(
+                                f"Completed: {step.title}",
+                                value=is_completed,
+                                key=f"step_done_{plan.plan_id}_{step.step_id}",
+                            )
+                            save_step_progress = st.form_submit_button(
+                                "Save step progress",
+                            )
+                        if save_step_progress:
+                            try:
+                                memory_store.set_task_plan_step_progress(
+                                    tenant, project_id=selected_plan_project.project_id,
+                                    plan_id=plan.plan_id, step_id=step.step_id,
+                                    title=step.title, completed=step_completed,
+                                    consent=True,
+                                )
+                                st.success("Step progress saved. No task was executed.")
+                                st.rerun()
+                            except (TypeError, ValueError, PermissionError, OSError, sqlite3.Error) as exc:
+                                st.error(f"Step progress could not be saved: {exc}")
+                except (TypeError, ValueError, OSError, sqlite3.Error) as exc:
+                    st.error(f"Step progress is unavailable: {exc}")
+
     elif plan.status is PlanStatus.NEEDS_CLARIFICATION:
         st.warning("NEEDS CLARIFICATION · No plan steps were created.")
         for question in plan.clarification_questions:
