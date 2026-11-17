@@ -26,6 +26,8 @@ _APPROVABLE_MUTATIONS = {
     "memory_add", "memory_delete", "knowledge_add", "knowledge_delete",
     "conversation_append_turn", "conversation_delete",
     "preference_save", "preference_delete", "checkpoint_save",
+    # Browser reads are always explicit-approval actions; never Auto-Run.
+    "browser_read",
 }
 
 _BLOCKED_TOKENS = {
