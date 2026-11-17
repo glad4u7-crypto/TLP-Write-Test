@@ -130,6 +130,19 @@ class LiveBrowsingController:
                         pass
 
             context.route("**/*", guard_request)
+            route_web_socket = getattr(context, "route_web_socket", None)
+            if not callable(route_web_socket):
+                raise LiveBrowsingError(
+                    "This Playwright runtime cannot enforce the WebSocket deny policy; browsing is blocked."
+                )
+
+            def deny_web_socket(web_socket: Any) -> None:
+                web_socket.close(
+                    code=1008,
+                    reason="WebSocket is disabled by the read-only browsing policy",
+                )
+
+            route_web_socket("**/*", deny_web_socket)
 
             def close_unexpected_page(unexpected: Any) -> None:
                 if unexpected is not page:
