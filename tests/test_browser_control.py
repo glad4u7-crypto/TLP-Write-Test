@@ -177,10 +177,12 @@ def test_approval_request_and_denial_are_recorded_without_job_payload(tmp_path):
     receipt = boundary.request_approval(_job(), owner_confirmed=True, now=1000)
     assert receipt.action == BROWSER_APPROVAL_ACTION
     events = audit.list_recent_events(limit=10)
-    reasons = {event["reason"] for event in events if event["action"] == BROWSER_APPROVAL_ACTION}
+    reasons = {event["reason_code"] for event in events if event["action"] == "browser_approval"}
     assert "browser_approval_missing_owner_confirmation" in reasons
-    assert "browser_approval_requested" in reasons
+    assert "browser_approval_requested_pending" in reasons
     assert "browser_approval_issued" in reasons
+    issued = next(event for event in events if event["reason_code"] == "browser_approval_issued")
+    assert issued["result"] == "success"
     assert security.verify_audit_chain() is True
 
 
