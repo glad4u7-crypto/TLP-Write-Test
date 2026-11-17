@@ -49,7 +49,8 @@ class CgroupV2Provisioner:
             resolved_cgroup_root = _CGROUP_ROOT.resolve(strict=True)
         except OSError as exc:
             raise IsolationEnforcementError("delegated cgroup subtree is unavailable") from exc
-        if not resolved_root.is_relative_to(resolved_cgroup_root) or resolved_root == resolved_cgroup_root:
+        if (self.root != resolved_root or not resolved_root.is_relative_to(resolved_cgroup_root)
+                or resolved_root == resolved_cgroup_root):
             raise IsolationEnforcementError("delegated cgroup subtree escapes the cgroup v2 mount")
         if not (_CGROUP_ROOT / "cgroup.controllers").is_file():
             raise IsolationEnforcementError("unified cgroup v2 is required")
@@ -87,7 +88,8 @@ class CgroupV2Provisioner:
     def attach(self, cgroup_path: str | Path, pid: int) -> None:
         root = self._verified_root()
         path = Path(cgroup_path)
-        if not path.is_absolute() or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name):
+        if (not path.is_absolute() or path.is_symlink() or path.resolve(strict=True) != path
+                or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name)):
             raise ValueError("cgroup path is outside the delegated worker subtree")
         if type(pid) is not int or pid <= 1:
             raise ValueError("worker PID is invalid")
