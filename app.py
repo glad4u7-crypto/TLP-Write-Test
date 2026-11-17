@@ -728,11 +728,14 @@ else:
                 st.write(f"**{item.category.title()}** · {item.content}")
                 st.caption(f"Tags: {', '.join(item.tags) or 'none'} · Saved: {item.created_at}")
                 if st.button("Delete memory", key=f"delete_memory_{item.memory_id}"):
-                    execute_audited_ui_mutation(
-                        audit_log, "memory.delete",
-                        lambda: memory_store.delete_memory(tenant, item.memory_id),
-                    )
-                    st.rerun()
+                    try:
+                        execute_audited_ui_mutation(
+                            audit_log, "memory.delete",
+                            lambda: memory_store.delete_memory(tenant, item.memory_id),
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
     with memory_tabs[1]:
         st.subheader("Knowledge collection and retrieval")
@@ -769,11 +772,14 @@ else:
                 st.caption(f"Tags: {', '.join(document.tags) or 'none'} · Source: {document.source}")
                 st.write(document.content[:1200] + ("…" if len(document.content) > 1200 else ""))
                 if st.button("Delete knowledge document", key=f"delete_knowledge_{document.document_id}"):
-                    execute_audited_ui_mutation(
-                        audit_log, "knowledge.delete",
-                        lambda: memory_store.delete_knowledge(tenant, document.document_id),
-                    )
-                    st.rerun()
+                    try:
+                        execute_audited_ui_mutation(
+                            audit_log, "knowledge.delete",
+                            lambda: memory_store.delete_knowledge(tenant, document.document_id),
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
     with memory_tabs[2]:
         st.subheader("Short-term conversation continuity")
@@ -801,11 +807,14 @@ else:
             for turn in memory_store.conversation_context(tenant, context_id):
                 st.write(f"**{turn.role.title()}** · {turn.content}")
             if st.button("Delete this conversation history", key="delete_conversation_history"):
-                execute_audited_ui_mutation(
-                    audit_log, "conversation.delete",
-                    lambda: memory_store.delete_conversation(tenant, context_id),
-                )
-                st.rerun()
+                try:
+                    execute_audited_ui_mutation(
+                        audit_log, "conversation.delete",
+                        lambda: memory_store.delete_conversation(tenant, context_id),
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     with memory_tabs[3]:
         st.subheader("Saved preferences")
@@ -830,11 +839,14 @@ else:
         for key, value in memory_store.get_preferences(tenant).items():
             st.write(f"**{key}:** {value}")
             if st.button("Delete preference", key=f"delete_preference_{key}"):
-                execute_audited_ui_mutation(
-                    audit_log, "preference.delete",
-                    lambda: memory_store.delete_preference(tenant, key),
-                )
-                st.rerun()
+                try:
+                    execute_audited_ui_mutation(
+                        audit_log, "preference.delete",
+                        lambda: memory_store.delete_preference(tenant, key),
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     with memory_tabs[4]:
         st.subheader("Task checkpoint recovery")
