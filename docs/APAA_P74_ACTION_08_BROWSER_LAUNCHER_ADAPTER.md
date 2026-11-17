@@ -18,7 +18,7 @@
 - `core/browser_launcher.py`
 - `tests/test_browser_launcher.py`
 
-The adapter requires a fresh pre-start runtime attestation, bound to the exact immutable worker launch-spec digest. It rejects missing, unknown, stale, unsafe, or already-running evidence before invoking the browser engine.
+The adapter is invoked only through the concrete `AttestedBrowserRuntime` gate. That gate verifies the Ed25519 signature, one-time challenge, fresh runtime attestation, exact immutable launch-spec digest, and signed host-firewall evidence before calling the adapter. The launcher does not accept caller-authored attestation dictionaries. It pins Chromium's proxy server to a numeric IP from the signed firewall allowlist, rather than resolving the proxy hostname inside the worker.
 
 Chromium launch uses only the attested proxy endpoint, sandboxing, and a fixed argument list. The context explicitly sets `ignore_https_errors=False`, blocks service workers, and disables downloads. No caller-supplied executable path, arbitrary arguments, certificate-ignore flag, persistent profile, or direct-network fallback is exposed.
 
@@ -26,7 +26,8 @@ If launch or context creation fails, the adapter closes any partially created br
 
 ## Test coverage authored
 
-- Approved attestation launches through the exact proxy.
+- Valid signed inspector evidence launches through the exact numeric proxy IP pin.
+- Unsigned/tampered evidence and challenge mismatch block browser startup.
 - TLS verification remains enabled in the browser context.
 - Unsafe firewall, direct-egress, DNS-egress, worker-state, and missing-field evidence blocks launch before browser startup.
 - Stale attestation blocks launch.
@@ -46,3 +47,4 @@ If launch or context creation fails, the adapter closes any partially created br
 - [ ] Independent security review.
 
 **Safety state:** No browser session has been launched. No live browsing, login, form submission, downloads, purchases, payments, trading, money movement, paid services, Auto-Run, deployment, or firewall changes are enabled.
+\n\n## Important trust-boundary correction\n\nAn earlier adapter revision accepted a plain runtime-attestation mapping. That interface was removed because it could be caller-forged and bypass the Ed25519 inspector gate. The current public entry point requires a concrete `AttestedBrowserRuntime` and signed evidence; the browser worker callback receives only `VerifiedInspectorEvidence` after the gate passes.\n
