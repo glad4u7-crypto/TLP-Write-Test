@@ -466,7 +466,7 @@ def test_symbolizer_prefers_exact_local_debian_dbgsym(monkeypatch, tmp_path):
 
     def fake_run(command, **kwargs):
         captured["command"] = command
-        return CompletedProcess(command, 0, "base::ScopedFD::reset()\\nsrc/base/files/scoped_file.cc:123\\n", "")
+        return CompletedProcess(command, 0, "base::ScopedFD::reset()\nsrc/base/files/scoped_file.cc:123\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     result = qualification._symbolize_failure_frames(
