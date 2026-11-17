@@ -64,24 +64,47 @@ class LocalOwnerAuthStore:
                     entry_hash TEXT
                 )"""
             )
-            columns = {row[1] for row in db.execute("PRAGMA table_info(local_owner_auth_events)").fetchall()}
-            if "previous_hash" not in columns:
-                db.execute("ALTER TABLE local_owner_auth_events ADD COLUMN previous_hash TEXT")
-            if "entry_hash" not in columns:
-                db.execute("ALTER TABLE local_owner_auth_events ADD COLUMN entry_hash TEXT")
-            rows = db.execute(
-                "SELECT event_id, event_type, occurred_at, previous_hash, entry_hash "
-                "FROM local_owner_auth_events ORDER BY event_id"
-            ).fetchall()
-            if any(row[3] is None or row[4] is None for row in rows):
-                previous = self._EVENT_GENESIS
-                for event_id, event_type, occurred_at, _, _ in rows:
-                    entry = self._event_hash(previous, int(event_id), str(event_type), int(occurred_at))
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                columns = {
+                    row[1] for row in db.execute(
+                        "PRAGMA table_info(local_owner_auth_events)"
+                    ).fetchall()
+                }
+                legacy_schema = (
+                    "previous_hash" not in columns or "entry_hash" not in columns
+                )
+                if "previous_hash" not in columns:
                     db.execute(
-                        "UPDATE local_owner_auth_events SET previous_hash=?, entry_hash=? WHERE event_id=?",
-                        (previous, entry, int(event_id)),
+                        "ALTER TABLE local_owner_auth_events ADD COLUMN previous_hash TEXT"
                     )
-                    previous = entry
+                if "entry_hash" not in columns:
+                    db.execute(
+                        "ALTER TABLE local_owner_auth_events ADD COLUMN entry_hash TEXT"
+                    )
+                if legacy_schema:
+                    rows = db.execute(
+                        "SELECT event_id, event_type, occurred_at "
+                        "FROM local_owner_auth_events ORDER BY event_id"
+                    ).fetchall()
+                    previous = self._EVENT_GENESIS
+                    for event_id, event_type, occurred_at in rows:
+                        entry = self._event_hash(
+                            previous, int(event_id), str(event_type), int(occurred_at)
+                        )
+                        db.execute(
+                            "UPDATE local_owner_auth_events "
+                            "SET previous_hash=?, entry_hash=? WHERE event_id=?",
+                            (previous, entry, int(event_id)),
+                        )
+                        previous = entry
+                # Never auto-reseal a database that already has the hash-chain
+                # schema: NULL or invalid hashes are corruption, not migration.
+                self._verify_events(db)
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
         self._secure_path(create_parent=False)
 
     def _secure_path(self, *, create_parent: bool) -> None:
