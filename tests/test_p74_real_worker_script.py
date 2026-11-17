@@ -274,18 +274,21 @@ def test_proxy_tcp_preflight_builds_valid_multiline_python(monkeypatch):
     assert "\\n" not in code
 
 
-def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch):
+def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch, tmp_path):
     from subprocess import CompletedProcess
 
     captured = {}
-    def successful(command, timeout=90):
+    def successful(command, cgroup_dir, timeout=45):
         captured["command"] = command
-        return CompletedProcess(command, 0, "<html>APAA_LOCAL_DUMP_DOM_OK</html>", "")
+        return CompletedProcess(command, 0, "<html>APAA_LOCAL_DUMP_DOM_OK</html>", ""), {"snapshot_count": 1}
 
-    monkeypatch.setattr(qualification, "_run", successful)
-    result = qualification._probe_chromium_local_dump_dom("worker-container", "chromium")
+    monkeypatch.setattr(qualification, "_run_chromium_with_fd_snapshots", successful)
+    result, diagnostics = qualification._probe_chromium_local_dump_dom(
+        "worker-container", "chromium", tmp_path,
+    )
 
     assert result["marker_present"] is True
+    assert diagnostics["snapshot_count"] == 1
     assert "data:text/html," in captured["command"][-1]
 
 
