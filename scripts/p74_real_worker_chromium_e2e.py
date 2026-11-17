@@ -22,6 +22,7 @@ import tempfile
 import time
 
 from core.browser_security import canonicalize_https_url
+from core.audit import redact_sensitive_text
 from core.cgroup_seccomp_provisioner import (
     CgroupLimits,
     CgroupV2Provisioner,
@@ -65,6 +66,22 @@ def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[s
         )
     return result
 
+
+
+
+def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
+    stdout = page.stdout or ""
+    stderr = page.stderr or ""
+    return {
+        "family": family,
+        "exit_code": page.returncode,
+        "stdout_bytes": len(stdout.encode("utf-8", errors="replace")),
+        "stdout_sha256": hashlib.sha256(stdout.encode("utf-8", errors="replace")).hexdigest(),
+        "stdout_html_present": "<html" in stdout.lower(),
+        "expected_marker_present": expected_marker in stdout,
+        "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
+        "stderr_preview": redact_sensitive_text(stderr[-600:], limit=320),
+    }
 
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
@@ -638,7 +655,13 @@ def main() -> int:
                 target.url,
             ], timeout=120)
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
-                raise RuntimeError(f"Chromium did not return the expected controlled-page marker over the {family} proxy")
+                failure = _chromium_failure_details(page, family, expected_marker)
+                evidence["chromium_failure"] = failure
+                raise RuntimeError(
+                    f"Chromium did not return the expected controlled-page marker over the {family} proxy "
+                    f"(exit={failure['exit_code']}; stdout_bytes={failure['stdout_bytes']}; "
+                    f"stdout_sha256={failure['stdout_sha256']}; stderr={failure['stderr_preview']})"
+                )
             evidence["tests"][f"chromium_https_via_{family}_proxy"] = True
             evidence[f"chromium_{family}_evidence"] = {
                 "stdout_sha256": hashlib.sha256(page.stdout.encode("utf-8")).hexdigest(),
