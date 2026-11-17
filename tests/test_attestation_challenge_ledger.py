@@ -47,3 +47,23 @@ def test_ledger_rejects_symlink_database_path(tmp_path):
     link.symlink_to(target)
     with pytest.raises(ValueError, match="symlink"):
         SQLiteChallengeLedger(link)
+
+
+def test_ledger_persists_only_challenge_digests(tmp_path):
+    import hashlib
+
+    challenge = "c" * 64
+    path = tmp_path / "attestation.sqlite3"
+    ledger = SQLiteChallengeLedger(path)
+    assert ledger.consume(challenge) is True
+    raw = path.read_bytes()
+    assert challenge.encode("ascii") not in raw
+    assert hashlib.sha256(challenge.encode("ascii")).hexdigest().encode("ascii") in raw
+
+
+def test_ledger_rejects_non_private_parent_directory(tmp_path):
+    parent = tmp_path / "shared"
+    parent.mkdir(mode=0o700)
+    os.chmod(parent, 0o755)
+    with pytest.raises(ValueError, match="owner-owned and private"):
+        SQLiteChallengeLedger(parent / "attestation.sqlite3")
