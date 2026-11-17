@@ -16,6 +16,7 @@ MOBILE_FIRST_CSS = r"""
 .stFormSubmitButton > button,
 [data-testid="stSidebar"] button {
     min-height: 44px;
+    min-width: 44px;
 }
 input, textarea, select,
 [data-baseweb="input"] input,
