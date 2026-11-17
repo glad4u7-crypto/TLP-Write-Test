@@ -383,8 +383,10 @@ def main() -> int:
         if capture_process is None or capture_temp is None:
             raise RuntimeError("sink-side packet capture was not active during Chromium execution")
         capture_process.send_signal(signal.SIGINT)
-        capture_process.wait(timeout=10)
+        capture_returncode = capture_process.wait(timeout=10)
         capture_process = None
+        if capture_returncode != 0:
+            raise RuntimeError("sink-side tcpdump did not exit cleanly")
         packet_summary = _audit_worker_capture(
             capture_path,
             worker_ips={str(ipaddress.ip_interface(plan.worker_ipv4).ip), str(ipaddress.ip_interface(plan.worker_ipv6).ip)},
