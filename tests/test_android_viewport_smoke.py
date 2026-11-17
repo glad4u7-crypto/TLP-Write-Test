@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from core.personal_auth import LocalOwnerAuthStore
+
 playwright_api = pytest.importorskip("playwright.sync_api")
 sync_playwright = playwright_api.sync_playwright
 expect = playwright_api.expect
@@ -41,6 +43,8 @@ def streamlit_server():
     env.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
     personal_data = tempfile.TemporaryDirectory(prefix="apaa-android-smoke-")
     env["APAA_PERSONAL_DATA_DIR"] = personal_data.name
+    auth = LocalOwnerAuthStore(Path(personal_data.name) / "owner-auth.sqlite3")
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
     process = subprocess.Popen(
         [
             sys.executable, "-m", "streamlit", "run", "app.py",
@@ -68,14 +72,23 @@ def streamlit_server():
         personal_data.cleanup()
 
 
+
+def _open_owner_page(page, url: str) -> None:
+    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    owner_passphrase = page.get_by_label("Owner passphrase")
+    owner_passphrase.wait_for(timeout=30000)
+    owner_passphrase.fill("test-only owner passphrase")
+    page.get_by_role("button", name="Unlock APAA").click()
+    page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+
+
 def test_pixel_sized_viewport_has_no_page_level_horizontal_overflow(streamlit_server):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         device = playwright.devices["Pixel 7"]
         context = browser.new_context(**device)
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.wait_for_timeout(1200)
 
         metrics = page.evaluate("""() => ({
@@ -129,7 +142,7 @@ def test_android_user_can_prepare_and_review_plan_without_execution(streamlit_se
         browser = playwright.chromium.launch()
         context = browser.new_context(**playwright.devices["Pixel 7"])
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
         task_input = page.get_by_label("Describe a task")
         task_input.fill(
