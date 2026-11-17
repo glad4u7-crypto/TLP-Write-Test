@@ -375,7 +375,7 @@ class SQLiteSecurityStore:
             raise TypeError("A validated TenantKey is required.")
         if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
             return False
-        if status not in {"completed", "uncertain", "cancelled"}:
+        if type(status) is not str or status not in {"completed", "uncertain", "cancelled"}:
             return False
         current = int(time.time()) if now is None else now
         if type(current) is not int or current < 0:
@@ -415,7 +415,7 @@ class SQLiteSecurityStore:
             return False
         if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
             return False
-        if resolution not in {"completed", "cancelled"}:
+        if type(resolution) is not str or resolution not in {"completed", "cancelled"}:
             return False
         current = int(time.time()) if now is None else now
         if type(current) is not int or current < 0:
