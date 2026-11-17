@@ -399,6 +399,7 @@ class SQLiteBrowserRecoveryLedger:
                     if row:
                         raise DuplicateBrowserJob("job ID was already consumed; automatic replay is forbidden") from exc
                     raise RecoveryLedgerError("job claim violated a ledger constraint") from exc
+                self._append_history(db, job_id, "accepted", now, None)
         except (DuplicateBrowserJob, BrowserDispatchBlocked, RecoveryLedgerError):
             raise
         except sqlite3.Error as exc:
