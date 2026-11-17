@@ -222,32 +222,43 @@ def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
         return {"status": "debug-tools-unavailable", "frames": []}
     env = dict(os.environ)
     env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
-    found = subprocess.run(
-        [finder, "debuginfo", build_id], check=False, capture_output=True,
-        text=True, timeout=45, shell=False, env=env,
-    )
+    try:
+        found = subprocess.run(
+            [finder, "debuginfo", build_id], check=False, capture_output=True,
+            text=True, timeout=20, shell=False, env=env,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {"status": "debuginfod-unavailable-or-timeout", "build_id": build_id, "frames": []}
     if found.returncode != 0 or not found.stdout.strip():
         return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
     debug_file = found.stdout.strip().splitlines()[-1]
-    symbolized = []
-    for frame in failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", []):
-        offset = frame.get("module_offset")
-        if not isinstance(offset, str) or not re.fullmatch(r"0x[0-9a-f]+", offset):
-            continue
+    source_frames = failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", [])
+    valid_frames = [
+        frame for frame in source_frames
+        if isinstance(frame.get("module_offset"), str)
+        and re.fullmatch(r"0x[0-9a-f]+", frame["module_offset"])
+    ][:64]
+    if not valid_frames:
+        return {"status": "no-executable-frame-offsets", "build_id": build_id, "frames": []}
+    try:
         result = subprocess.run(
-            [addr2line, "-f", "-C", "-e", debug_file, offset],
-            check=False, capture_output=True, text=True, timeout=10, shell=False,
+            [addr2line, "-f", "-C", "-e", debug_file]
+            + [frame["module_offset"] for frame in valid_frames],
+            check=False, capture_output=True, text=True, timeout=20, shell=False,
         )
-        lines = (result.stdout or "").splitlines()
-        if result.returncode == 0 and lines:
-            function = redact_sensitive_text(lines[0], limit=240)
-            location = lines[1] if len(lines) > 1 else "??:0"
-            location = location.rsplit("/", 1)[-1][:160]
+    except (subprocess.TimeoutExpired, OSError):
+        return {"status": "addr2line-timeout-or-unavailable", "build_id": build_id, "frames": []}
+    lines = (result.stdout or "").splitlines()
+    symbolized = []
+    if result.returncode == 0:
+        for index, frame in enumerate(valid_frames):
+            function = lines[index * 2] if index * 2 < len(lines) else "??"
+            location = lines[index * 2 + 1] if index * 2 + 1 < len(lines) else "??:0"
             symbolized.append({
                 "frame": frame.get("frame"),
-                "module_offset": offset,
-                "function": function,
-                "source_location": location,
+                "module_offset": frame["module_offset"],
+                "function": redact_sensitive_text(function, limit=240),
+                "source_location": location.rsplit("/", 1)[-1][:160],
             })
     return {
         "status": "symbolized" if symbolized else "symbols-loaded-no-matching-frames",
