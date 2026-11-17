@@ -43,6 +43,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m playwright install --with-deps chromium
+      - name: Python syntax check
+        run: python -m compileall -q app.py core tests
       - name: Chromium TLS — trusted CA accepted
         env:
           PYTHONDONTWRITEBYTECODE: "1"
