@@ -60,11 +60,9 @@ def main() -> int:
             raise RuntimeError("network namespace path is outside /run/netns")
 
         namespace = namespace_path.rsplit("/", 1)[-1]
-        rules = NftablesFirewallProvisioner().verify_ruleset(
+        NftablesFirewallProvisioner().verify_ruleset(
             namespace, proxy_ips=[proxy_ip.compressed], proxy_port=proxy_port
         )
-        if "policy drop" not in rules:
-            raise RuntimeError("installed firewall is not default DROP")
 
         spec = OCIWorkerSpec(
             image=image,
@@ -85,15 +83,31 @@ def main() -> int:
             raise RuntimeError("OCI inspect did not confirm no-new-privileges")
         if not any(item == f"seccomp={seccomp_profile}" for item in security):
             raise RuntimeError("OCI inspect did not confirm the requested seccomp profile")
-        if host.get("Memory") != spec.limits.memory_bytes or host.get("PidsLimit") != spec.limits.pids_limit:
-            raise RuntimeError("OCI inspect did not confirm memory and PID limits")
+        expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
+        if (
+            host.get("Memory") != spec.limits.memory_bytes
+            or host.get("PidsLimit") != spec.limits.pids_limit
+            or host.get("NanoCpus") != expected_cpu_nanos
+        ):
+            raise RuntimeError("OCI inspect did not confirm CPU, memory and PID limits")
         if config.get("User") != "65532:65532" or not str(host.get("NetworkMode", "")).startswith("ns:"):
             raise RuntimeError("OCI inspect did not confirm non-root user and isolated network namespace")
 
         runtime.start(container_id)
+        # Kernel read-backs confirm the worker is in cgroup v2 and seccomp is active.
+        cgroup = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/memory.max"]).stdout.strip()
+        cpu = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/cpu.max"]).stdout.strip()
+        pids = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/pids.max"]).stdout.strip()
+        status = _run(["podman", "exec", container_id, "cat", "/proc/self/status"]).stdout
+        if cgroup != str(spec.limits.memory_bytes) or cpu != "100000 100000" or pids != str(spec.limits.pids_limit):
+            raise RuntimeError("kernel cgroup-v2 read-back does not match requested worker limits")
+        seccomp_lines = [line for line in status.splitlines() if line.startswith("Seccomp:")]
+        if seccomp_lines != ["Seccomp:\t2"]:
+            raise RuntimeError("kernel does not report an active seccomp filter")
+
         proxy_host = f"[{proxy_ip.compressed}]" if proxy_ip.version == 6 else proxy_ip.compressed
         proxy_url = f"http://{proxy_host}:{proxy_port}"
-        _run([
+        page = _run([
             "podman", "exec", "--user", "65532:65532", container_id,
             chromium_bin,
             "--headless=new",
@@ -108,6 +122,8 @@ def main() -> int:
             "--dump-dom",
             target.url,
         ], timeout=120)
+        if "<html" not in page.stdout.lower():
+            raise RuntimeError("Chromium did not return an HTML document")
         print("PASS: Chromium ran inside the isolated container through the configured proxy.")
         print("NOTE: sink-side packet capture, TLS negative tests, DNS rebinding and full bypass matrix still require independent host evidence.")
         return 0
