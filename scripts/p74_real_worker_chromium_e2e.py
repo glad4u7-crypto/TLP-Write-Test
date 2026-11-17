@@ -19,6 +19,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from core.browser_security import canonicalize_https_url
@@ -175,8 +176,30 @@ def _run_chromium_with_fd_snapshots(
     process = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         encoding="utf-8", errors="replace", shell=False, close_fds=True,
-        start_new_session=True,
+        start_new_session=True, bufsize=0,
     )
+    # Drain both pipes concurrently; otherwise verbose Chromium stderr can fill
+    # the OS pipe buffer and stall the very process being diagnosed.
+    captured = {"stdout": [], "stderr": []}
+    captured_chars = {"stdout": 0, "stderr": 0}
+
+    def _drain(name: str, stream) -> None:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            remaining = 2_000_000 - captured_chars[name]
+            if remaining > 0:
+                kept = chunk[:remaining]
+                captured[name].append(kept)
+                captured_chars[name] += len(kept)
+
+    readers = [
+        threading.Thread(target=_drain, args=("stdout", process.stdout), daemon=True),
+        threading.Thread(target=_drain, args=("stderr", process.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
     snapshots: list[dict] = []
     diagnostic_errors: list[str] = []
     deadline = time.monotonic() + timeout
@@ -206,7 +229,7 @@ def _run_chromium_with_fd_snapshots(
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-        stdout, stderr = process.communicate(timeout=5)
+        process.wait(timeout=5)
     except Exception:
         try:
             os.killpg(process.pid, signal.SIGKILL)
