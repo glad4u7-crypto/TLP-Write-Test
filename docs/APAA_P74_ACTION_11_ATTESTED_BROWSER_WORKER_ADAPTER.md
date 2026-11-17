@@ -29,7 +29,7 @@ The backend must enforce user/PID/network/IPC/UTS/mount namespaces, read-only ro
 
 ## Tests and CI
 
-- `tests/test_browser_worker_adapter.py` covers bootstrap ordering, signature-gate handoff, missing/invalid inspector, cleanup on failure, mandatory process/storage teardown, duplicate session IDs and cancellation.
+- `tests/test_browser_worker_adapter.py` covers bootstrap ordering, a real Ed25519 + nftables evidence-verification path before remote start, missing/invalid inspector, cleanup on failure, mandatory process/storage teardown, duplicate session IDs and cancellation.
 - CI now runs the adapter contract tests as a separate step.
 - Existing attestation, nftables parser, proxy and pinned-IP connector tests remain part of the broader security suite.
 
@@ -50,6 +50,7 @@ This is an attested adapter/orchestration layer, **not a complete Linux containe
 - [x] Cancellation and teardown are joined to the coordinator contract.
 - [x] Process exit and ephemeral-storage cleanup must both be confirmed.
 - [x] Contract tests added to CI.
+- [x] Adapter integration test exercises the actual signed-evidence verifier before the backend start callback.
 - [ ] Exact-head CI passes all TLS, live-browsing, adapter and regression tests.
 - [ ] A concrete host/container backend is implemented and independently reviewed.
 - [ ] Real Linux namespace, seccomp, cgroup/resource and nftables enforcement is observed on the target host.
