@@ -199,9 +199,9 @@ def test_proxy_re_resolves_and_rejects_dns_rebinding_to_private_ip(monkeypatch):
     client1, server1 = socket.socketpair()
     first = threading.Thread(target=proxy._handle_client, args=(server1,), daemon=True)
     first.start()
-    client1.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\n\\r\\n")
+    client1.sendall(b"CONNECT example.com:443 HTTP/1.1\r\n\r\n")
     response = bytearray()
-    while b"\\r\\n\\r\\n" not in response:
+    while b"\r\n\r\n" not in response:
         response.extend(client1.recv(1024))
     assert response.startswith(b"HTTP/1.1 200")
     wire = _tls_record(_client_hello("example.com"))
@@ -214,9 +214,9 @@ def test_proxy_re_resolves_and_rejects_dns_rebinding_to_private_ip(monkeypatch):
     client2, server2 = socket.socketpair()
     second = threading.Thread(target=proxy._handle_client, args=(server2,), daemon=True)
     second.start()
-    client2.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\n\\r\\n")
+    client2.sendall(b"CONNECT example.com:443 HTTP/1.1\r\n\r\n")
     response2 = bytearray()
-    while b"\\r\\n\\r\\n" not in response2:
+    while b"\r\n\r\n" not in response2:
         response2.extend(client2.recv(1024))
     assert response2.startswith(b"HTTP/1.1 502")
     second.join(timeout=2)
