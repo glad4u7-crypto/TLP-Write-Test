@@ -120,3 +120,17 @@ P74 therefore has real policy code and regression coverage added, but Browser Se
 - Reserved suffix hardening intentionally rejects `.example`; an inherited IDN normalization test had used `bücher.example` as an accepted fixture. CI exposed the mismatch (1 failed, 1,393 passed, 9 skipped on the earlier snapshot); the fixture was corrected to `bücher.com`.
 - Latest branch head after the fixture correction and verification notes: `7cf35d218a32edc4bb194633539653619548790e`.
 - Exact-head workflow [#43993446488](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43993446488) is running on this latest head. Do not claim PASS until both Python tests and browser smoke complete successfully.
+
+
+## 8. S09-C01 Owner, Permission & Approval Security — implementation started
+
+- Added `core/personal_auth.py`: first-run single-Owner passphrase setup, salted scrypt verifier, constant-time comparison, persistent five-attempt/five-minute lockout, and authenticated passphrase rotation primitive.
+- Wired the local Owner gate into `app.py` before local Principal, approval authority, execution gateway, project registry, memory or task UI initialization.
+- Added explicit Unlock and Logout flows. Logout and 15-minute idle / 12-hour absolute expiry clear pending drafts, approval authority, gateway and identity-bound runtime state.
+- Added `owner-auth.sqlite3` to canonical PersonalRuntime paths and included it in private backup/restore. Restore preserves the Owner verifier while still generating a fresh approval signing key, invalidating outstanding approval receipts.
+- Added unit and Streamlit AppTest coverage for first-run setup, passphrase storage, wrong password, persistent lockout, passphrase rotation, login, logout, idle/absolute expiry and failed-login isolation.
+- Updated existing local AppTest fixtures to authenticate through the new gate.
+
+**Current code head:** `8cca17578f16c5d0ab12ff5849ef5b6096a211e5` (exact-head CI not yet observed for this commit). Do not mark this workstream PASS until the full P73 workflow completes successfully on the exact head.
+
+**Still pending in this workstream:** dedicated passphrase-change UI, end-to-end action permission/approval coverage for every mutation surface, audit review of login/security events, and exact-head CI. Owner login implementation does not complete all Owner, Permission & Approval Security requirements.
