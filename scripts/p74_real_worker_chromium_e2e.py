@@ -68,12 +68,19 @@ def _audit_worker_capture(
     ndp_packets = 0
     unexpected = []
     endpoint_pattern = re.compile(r"\bIP6?\s+(\S+)\s+>\s+(\S+):")
+    worker_v4 = next((value for value in worker_ips if ipaddress.ip_address(value).version == 4), None)
+    host_v4 = next((value for value in proxy_ips if ipaddress.ip_address(value).version == 4), None)
     for line in output.splitlines():
         if "ARP," in line:
-            arp_packets += 1
-            continue
-        if "ICMP6" in line and ("neighbor solicitation" in line or "neighbor advertisement" in line):
-            ndp_packets += 1
+            # Only the expected worker -> veth-gateway resolution and its reply
+            # are legitimate on this point-to-point link.
+            expected_request = bool(worker_v4 and host_v4 and
+                                    f"who-has {host_v4} tell {worker_v4}" in line)
+            expected_reply = bool(host_v4 and f"Reply {host_v4} is-at " in line)
+            if expected_request or expected_reply:
+                arp_packets += 1
+            else:
+                unexpected.append(line[:240])
             continue
         match = endpoint_pattern.search(line)
         if not match:
@@ -81,6 +88,24 @@ def _audit_worker_capture(
                 unexpected.append(line[:240])
             continue
         source_text, destination_text = match.groups()
+        # NDP is the only non-TCP exception. It must remain link-local and
+        # use link-local or link-scoped multicast destinations; arbitrary
+        # ICMPv6 traffic is not silently treated as harmless neighbour traffic.
+        if "ICMP6" in line and ("neighbor solicitation" in line or "neighbor advertisement" in line):
+            try:
+                source_ip = ipaddress.ip_address(source_text)
+                destination_ip = ipaddress.ip_address(destination_text.rstrip(":"))
+            except ValueError:
+                unexpected.append(line[:240])
+                continue
+            scoped_multicast = (destination_ip.version == 6 and destination_ip.is_multicast
+                                and destination_ip.packed[1] & 0x0F == 2)
+            if source_ip.version == 6 and source_ip.is_link_local and (
+                    destination_ip.is_link_local or scoped_multicast):
+                ndp_packets += 1
+            else:
+                unexpected.append(line[:240])
+            continue
         try:
             source_ip_text, source_port_text = source_text.rsplit(".", 1)
             destination_ip_text, destination_port_text = destination_text.rsplit(".", 1)
