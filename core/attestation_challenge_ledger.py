@@ -7,6 +7,7 @@ and back it up as part of the host security state.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import re
 import sqlite3
@@ -40,7 +41,7 @@ class SQLiteChallengeLedger:
             if not stat.S_ISREG(self.path.stat().st_mode) or mode & 0o077:
                 raise ValueError("existing challenge ledger must be a private regular file")
         try:
-            with self._connect() as db:
+            with self._database() as db:
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS consumed_challenges ("
                     "challenge TEXT PRIMARY KEY CHECK(length(challenge)=64), "
@@ -58,6 +59,15 @@ class SQLiteChallengeLedger:
         db.execute("PRAGMA synchronous=FULL")
         return db
 
+    @contextmanager
+    def _database(self):
+        db = self._connect()
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
     def consume(self, challenge: str, *, now: int | None = None) -> bool:
         if type(challenge) is not str or not re.fullmatch(r"[0-9a-f]{64}", challenge):
             raise ValueError("challenge must be a lowercase 256-bit hexadecimal value")
@@ -65,7 +75,7 @@ class SQLiteChallengeLedger:
         if type(timestamp) is not int or timestamp < 0:
             raise ValueError("challenge consumption timestamp is invalid")
         try:
-            with self._lock, self._connect() as db:
+            with self._lock, self._database() as db:
                 cursor = db.execute(
                     "INSERT INTO consumed_challenges(challenge, consumed_at) "
                     "VALUES (?, ?) ON CONFLICT(challenge) DO NOTHING",
