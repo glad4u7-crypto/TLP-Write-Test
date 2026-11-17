@@ -21,6 +21,16 @@ from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
+from core.personal_runtime import (
+    PERSONAL_OWNER_TENANT,
+    load_or_create_approval_signing_key,
+    personal_runtime_paths,
+)
+from core.personal_runtime import (
+    PERSONAL_OWNER_TENANT,
+    load_or_create_approval_signing_key,
+    personal_runtime_paths,
+)
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
@@ -237,14 +247,50 @@ if principal is not None:
         )
         st.session_state["project_registry_tenant"] = session_identity
 else:
+    # Personal Edition local runtime: stable owner-only files survive app restarts.
+    personal_data_dir = os.environ.get(
+        "APAA_PERSONAL_DATA_DIR", str(Path.home() / ".apaa_personal")
+    )
+    personal_paths = personal_runtime_paths(personal_data_dir)
+    try:
+        signing_secret = load_or_create_approval_signing_key(personal_paths.data_dir)
+        personal_security_store = SQLiteSecurityStore(personal_paths.security_db)
+        personal_project_store = SQLiteProjectStore(personal_paths.projects_db)
+    except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Personal runtime could not start safely: {exc}")
+        st.stop()
+    tenant = PERSONAL_OWNER_TENANT
     memory_store = None
     checkpoint_access = None
+    authority_config_material = (
+        "apaa-personal-approval-authority-v1\\n"
+        + os.path.abspath(os.fspath(personal_paths.security_db))
+    ).encode("utf-8")
+    authority_config_id = hmac.new(
+        signing_secret, authority_config_material, hashlib.sha256
+    ).hexdigest()
+    if st.session_state.get("approval_authority_config_id") != authority_config_id:
+        st.session_state.pop("approval_authority", None)
+        st.session_state.pop("execution_gateway", None)
+        st.session_state.pop("execution_gateway_owner", None)
+        st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
+        st.session_state["approval_authority_config_id"] = authority_config_id
     if "approval_authority" not in st.session_state:
-        st.session_state["approval_authority"] = ApprovalAuthority()
-    audit_log = JsonlAuditLog(".apaa_audit/execution.jsonl")
-    if "project_registry" not in st.session_state:
-        st.session_state["project_registry"] = ProjectRegistry()
-    st.session_state["project_registry_tenant"] = "local-prototype"
+        st.session_state["approval_authority"] = ApprovalAuthority(
+            nonce_store=personal_security_store, signing_secret=signing_secret
+        )
+    audit_log = SQLiteExecutionAuditLog(personal_security_store, tenant)
+    if (
+        "project_registry" not in st.session_state
+        or st.session_state.get("project_registry_tenant") != "personal-local-owner"
+        or not isinstance(st.session_state.get("project_registry"), PersistentProjectRegistry)
+    ):
+        st.session_state["project_registry"] = PersistentProjectRegistry(
+            personal_project_store, tenant
+        )
+        st.session_state["project_registry_tenant"] = "personal-local-owner"
+
 if "selected_project_id" not in st.session_state:
     st.session_state["selected_project_id"] = ""
 
@@ -268,7 +314,8 @@ def visible_projects():
         return registry.list_projects_for_principal(principal)
     return [
         project for project in registry.list_projects()
-        if project.owner_subject == "local-prototype"
+        if project.owner_subject == PERSONAL_OWNER_TENANT.subject
+        and project.owner_issuer == PERSONAL_OWNER_TENANT.issuer
     ]
 
 def visible_project(project_id):
