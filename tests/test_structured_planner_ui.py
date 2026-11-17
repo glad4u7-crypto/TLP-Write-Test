@@ -2,11 +2,23 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from core.personal_auth import LocalOwnerAuthStore
 from core.planner import PlanStatus
 
 
-def _app():
-    return AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+def _app(tmp_path, monkeypatch):
+    data_dir = tmp_path / ".apaa_personal"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(data_dir))
+    auth = LocalOwnerAuthStore(data_dir / "owner-auth.sqlite3")
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app.text_input[0].set_value("test-only owner passphrase")
+    matches = [button for button in app.button if button.label == "Unlock APAA"]
+    assert len(matches) == 1
+    matches[0].click().run()
+    assert not app.exception
+    return app
 
 
 def _prepare(app, description):
@@ -20,8 +32,8 @@ def _prepare(app, description):
     assert not app.exception
 
 
-def test_ready_plan_is_rendered_as_read_only_structured_steps():
-    app = _app().run()
+def test_ready_plan_is_rendered_as_read_only_structured_steps(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch).run()
     assert not app.exception
     _prepare(app, "Review the repository and summarize risks")
 
@@ -34,8 +46,8 @@ def test_ready_plan_is_rendered_as_read_only_structured_steps():
     assert app.session_state["execution_gateway"].audit_events == ()
 
 
-def test_mutation_step_is_visibly_marked_as_proposal_only():
-    app = _app().run()
+def test_mutation_step_is_visibly_marked_as_proposal_only(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch).run()
     _prepare(app, "Create a draft report")
 
     plan = app.session_state["structured_task_plan"]
@@ -45,8 +57,8 @@ def test_mutation_step_is_visibly_marked_as_proposal_only():
     assert app.session_state["execution_gateway"].audit_events == ()
 
 
-def test_clarification_response_replans_without_dispatch():
-    app = _app().run()
+def test_clarification_response_replans_without_dispatch(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch).run()
     _prepare(app, "do it")
 
     first_plan = app.session_state["structured_task_plan"]
@@ -68,8 +80,8 @@ def test_clarification_response_replans_without_dispatch():
     assert app.session_state["execution_gateway"].audit_events == ()
 
 
-def test_blocked_plan_displays_safety_notes_without_execution():
-    app = _app().run()
+def test_blocked_plan_displays_safety_notes_without_execution(tmp_path, monkeypatch):
+    app = _app(tmp_path, monkeypatch).run()
     _prepare(app, "Trade stock now")
 
     plan = app.session_state["structured_task_plan"]
