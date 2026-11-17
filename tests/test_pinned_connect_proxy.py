@@ -169,3 +169,61 @@ def test_proxy_forwards_client_hello_only_after_matching_sni(monkeypatch):
     finally:
         client.close()
         upstream_peer.close()
+
+
+def test_proxy_re_resolves_and_rejects_dns_rebinding_to_private_ip(monkeypatch):
+    import ipaddress
+    import socket
+    import threading
+    import core.pinned_connect_proxy as proxy_module
+
+    records = [
+        [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("8.8.8.8", 443))],
+        [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))],
+    ]
+    calls = []
+    def resolver(*_args):
+        return records.pop(0)
+
+    upstream_peer, upstream = socket.socketpair()
+    connect_calls = []
+    def fake_connect(pinned, address, *, timeout):
+        connect_calls.append(address)
+        return upstream
+
+    monkeypatch.setattr(proxy_module, "connect_pinned", fake_connect)
+    proxy = PinnedConnectProxy(
+        "172.20.0.2", 3128, allowed_hosts=["example.com"], resolver=resolver,
+    )
+
+    client1, server1 = socket.socketpair()
+    first = threading.Thread(target=proxy._handle_client, args=(server1,), daemon=True)
+    first.start()
+    client1.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\n\\r\\n")
+    response = bytearray()
+    while b"\\r\\n\\r\\n" not in response:
+        response.extend(client1.recv(1024))
+    assert response.startswith(b"HTTP/1.1 200")
+    wire = _tls_record(_client_hello("example.com"))
+    client1.sendall(wire)
+    assert upstream_peer.recv(len(wire)) == wire
+    client1.shutdown(socket.SHUT_RDWR)
+    first.join(timeout=2)
+    assert not first.is_alive()
+
+    client2, server2 = socket.socketpair()
+    second = threading.Thread(target=proxy._handle_client, args=(server2,), daemon=True)
+    second.start()
+    client2.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\n\\r\\n")
+    response2 = bytearray()
+    while b"\\r\\n\\r\\n" not in response2:
+        response2.extend(client2.recv(1024))
+    assert response2.startswith(b"HTTP/1.1 502")
+    second.join(timeout=2)
+    assert not second.is_alive()
+    assert connect_calls == ["8.8.8.8"]
+    assert proxy.accepted_connections == 1
+    assert proxy.rejected_requests == 1
+    client1.close()
+    client2.close()
+    upstream_peer.close()
