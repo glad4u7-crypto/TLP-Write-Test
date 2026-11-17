@@ -63,7 +63,7 @@ The dedicated P73 GitHub Actions workflow runs:
 
 The current client is a responsive Streamlit web application. It is not a native APK and is not yet an installable PWA.
 
-Automated viewport and Chromium tests are supplemental only. Physical Android A01–A12 checks remain BLOCKED until the owner has a private HTTPS/authenticated test environment and performs the checks on the actual Android phone. Live OIDC login/logout/session expiry, two-account grant/revoke and independent evidence review also remain external acceptance gates.
+Automated viewport and Chromium tests are supplemental only. Physical Android A01–A12 checks still require the owner to run them on the actual Android phone. For this local single-Owner Personal Edition, use a same-device loopback app and local passphrase; remote HTTPS/OIDC and two-account grant/revoke are future remote/enterprise deployment concerns, not C01 Personal Edition prerequisites. Android/Termux runtime compatibility remains unqualified until actually exercised.
 
 ## 4. Safety and product scope
 
@@ -79,12 +79,12 @@ Automated viewport and Chromium tests are supplemental only. Physical Android A0
 ## 5. Remaining before C01 closure
 
 1. Review exact final-head CI and fix any failures.
-2. Run an owner-operated backup/restore drill on the intended Android/host environment.
-3. Complete physical Android A01–A12 and live private HTTPS/OIDC owner session checks.
-4. Complete independent review of the redacted evidence and exact tested SHA.
-5. Close remaining external protected-key, anti-rollback-anchor, real-host network and operational recovery gates required by the C01 closure checklist.
+2. Run an owner-operated backup/restore drill on the intended local Personal Edition runtime.
+3. Complete physical Android A01–A12 on the actual device, using local Owner passphrase authentication.
+4. Complete independent review of redacted evidence and exact tested SHA.
+5. Complete the browser transport/egress qualification before any Browser handler is registered or enabled.
 
-**Current disposition:** P73 repository implementation and exact-head automated verification are PASS. S09 C01 remains OPEN / NOT COMPLETE because physical Android, live private HTTPS/OIDC, owner-operated recovery drill, independent key/anti-rollback and real-host review gates remain. C02 remains NOT STARTED.
+**Current disposition:** P73 repository implementation and the stated exact-head automated verifications are PASS. S09 C01 remains OPEN / NOT COMPLETE because physical Android acceptance, owner-operated recovery drill, browser transport/egress qualification and independent review/Owner acceptance remain. Enterprise HSM/TPM and independent remote anchor are outside this Personal Edition scope. C02 remains NOT STARTED.
 
 
 ## 6. P74 preparation completed
