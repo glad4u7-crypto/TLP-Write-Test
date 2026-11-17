@@ -6,7 +6,7 @@ claim to exercise Chromium's own network stack.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import socket
 import ssl
 import threading
@@ -19,7 +19,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
 def _make_certificates(tmp_path, *, expired: bool):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "APAA Test Root CA")])
     ca_cert = (
