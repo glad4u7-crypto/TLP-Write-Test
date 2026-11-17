@@ -19,6 +19,12 @@ def _canonical_host(value: str) -> str:
     if type(value) is not str or not value or value.endswith(".") or "%" in value:
         raise ProxyPolicyError("invalid CONNECT hostname")
     try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        pass
+    else:
+        raise ProxyPolicyError("IP literals are not accepted as CONNECT hostnames")
+    try:
         parsed = urlsplit("https://" + value)
         if parsed.hostname != value or parsed.port is not None or parsed.username is not None:
             raise ValueError
