@@ -568,6 +568,8 @@ def main() -> int:
                 "--headless=new",
                 "--disable-gpu",
                 "--disable-quic",
+                "--disable-setuid-sandbox",
+                "--disable-breakpad",
                 "--disable-http2",
                 "--host-resolver-rules=MAP * ~NOTFOUND",
                 "--disable-background-networking",
@@ -630,6 +632,8 @@ def main() -> int:
             outage = _probe_proxy_outage([
                 "podman", "exec", "--user", "65532:65532", container_id,
                 chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
+                "--disable-setuid-sandbox",
+                "--disable-breakpad",
                 "--disable-http2",
                 "--host-resolver-rules=MAP * ~NOTFOUND",
                 "--disable-background-networking", "--disable-component-update",
