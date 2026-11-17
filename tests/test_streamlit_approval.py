@@ -4,6 +4,7 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 from core.personal_runtime import PERSONAL_OWNER_TENANT
+from core.personal_auth import LocalOwnerAuthStore
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -13,7 +14,13 @@ def _app(tmp_path, monkeypatch):
     tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("APAA_PERSONAL_DATA_DIR", str(tmp_path / ".apaa_personal"))
-    return AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+    auth = LocalOwnerAuthStore(tmp_path / ".apaa_personal" / "owner-auth.sqlite3")
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
+    app = AppTest.from_file(str(APP_PATH), default_timeout=15).run()
+    assert not app.exception
+    app.text_input[0].set_value("test-only owner passphrase")
+    _click(app, "Unlock APAA")
+    return app
 
 
 def _click(app, label):
