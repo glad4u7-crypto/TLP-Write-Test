@@ -47,6 +47,7 @@ class Context:
     def __init__(self):
         self.routes = {}
         self.ws_handler = None
+        self.events = {}
         self.closed = False
 
     def route(self, pattern, handler):
@@ -58,6 +59,9 @@ class Context:
 
     def route_web_socket(self, pattern, handler):
         self.ws_handler = handler
+
+    def on(self, event, handler):
+        self.events[event] = handler
 
     def close(self):
         self.closed = True
@@ -163,6 +167,10 @@ def test_adapter_installs_persistent_context_route_and_closes_session():
     assert "**/*" in session.context.routes
     assert session.context.ws_handler is not None
     assert "filechooser" in session.page.handlers
+    assert "page" in session.context.events
+    popup = Page(session.context)
+    session.context.events["page"](popup)
+    assert "filechooser" in popup.handlers
 
     assert adapter.navigate("https://example.com/") == "response"
     # Route remains active after navigation, so later subresources are covered.
