@@ -79,15 +79,13 @@ class PinnedDestination:
             raise ValueError("Pinned hostname/port must be canonical.")
         if not self.addresses:
             raise ValueError("At least one pinned address is required.")
-        normalized = []
-        for value in self.addresses:
-            address = ipaddress.ip_address(value)
-            if not address.is_global or address.is_multicast or address.is_reserved:
-                raise ValueError("Pinned destinations must be public unicast IPs.")
-            normalized.append(address.compressed)
-        if len(set(normalized)) != len(normalized):
+        try:
+            normalized = validate_dns_answers(self.hostname, self.addresses)
+        except BrowserPolicyError as exc:
+            raise ValueError("Pinned destinations must contain only public unicast IPs.") from exc
+        if len(normalized) != len(self.addresses):
             raise ValueError("Duplicate pinned addresses are not permitted.")
-        object.__setattr__(self, "addresses", tuple(normalized))
+        object.__setattr__(self, "addresses", normalized)
 
 
 class PinnedHTTPSConnection(http.client.HTTPSConnection):
