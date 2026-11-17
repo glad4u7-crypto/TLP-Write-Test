@@ -75,6 +75,18 @@ class PodmanWorkerObserver:
             raise WorkerObservationError("unified cgroup path is unsafe")
         return value
 
+    def _normalize_cgroup_mount_path(self, value: str) -> str:
+        """Normalize procfs paths that include the cgroup-v2 mount prefix."""
+        try:
+            mount = str(self.cgroup_root.resolve(strict=True)).rstrip("/")
+        except OSError as exc:
+            raise WorkerObservationError("cgroup-v2 mount root is unavailable") from exc
+        if value == mount:
+            return "/"
+        if value.startswith(mount + "/"):
+            return value[len(mount):]
+        return value
+
     @staticmethod
     def _read(path: Path) -> str:
         try:
@@ -121,7 +133,9 @@ class PodmanWorkerObserver:
             start_before = self._start_time(self._read(proc / "stat"))
             net_inode = (proc / "ns" / "net").stat().st_ino
             namespace_inode = (self.namespace_root / Path(spec.network_namespace).name).stat().st_ino
-            cgroup_path = self._unified_cgroup(self._read(proc / "cgroup"))
+            cgroup_path = self._normalize_cgroup_mount_path(
+                self._unified_cgroup(self._read(proc / "cgroup"))
+            )
             status = self._read(proc / "status")
             start_after = self._start_time(self._read(proc / "stat"))
         except OSError as exc:
