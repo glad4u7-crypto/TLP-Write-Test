@@ -119,6 +119,6 @@ def test_rejects_malformed_rule_or_unknown_match_fields(bad_rule):
 def test_requires_explicit_conntrack_new_match_for_new_proxy_connections():
     data=fixture()
     # The live nft JSON represents "ct state new" as a scalar equality.
-    assert data["nftables"][13]["rule"]["expr"][2] == m("ct.state","new")
+    assert data["nftables"][13]["rule"]["expr"][2] == m("ct.state","new","in")
     result=attest_nftables_json(json.dumps(data),policy())
     assert result.accept_rule_count == 13
