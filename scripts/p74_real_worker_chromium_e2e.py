@@ -262,22 +262,47 @@ def _chromium_binary_build_id(container_id: str) -> str | None:
 
 
 def _chromium_dynamic_symbols(container_id: str) -> dict:
-    """Read only exported symbol addresses needed to classify the fatal wrapper."""
-    result = subprocess.run(
-        ["podman", "exec", "--user", "65532:65532", container_id,
-         "nm", "-D", "-n", "--defined-only", "/usr/lib/chromium/chromium"],
-        check=False, capture_output=True, text=True, timeout=12, shell=False,
-    )
-    close_address = None
-    for line in (result.stdout or "").splitlines():
-        match = re.match(r"^\s*([0-9a-fA-F]+)\s+[A-Za-z]\s+close(?:@.*)?$", line)
-        if match:
-            close_address = "0x" + match.group(1).lower()
-            break
+    """Read exported/full symbol-table names needed to classify the fatal wrapper."""
+    outputs = []
+    for args in (
+        ["nm", "-n", "-C", "--defined-only", "/usr/lib/chromium/chromium"],
+        ["nm", "-D", "-n", "--defined-only", "/usr/lib/chromium/chromium"],
+    ):
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id, *args],
+            check=False, capture_output=True, text=True, timeout=12, shell=False,
+        )
+        outputs.append(result)
+        if result.returncode != 0:
+            continue
+        found = {}
+        for line in (result.stdout or "").splitlines():
+            match = re.match(r"^\\s*([0-9a-fA-F]+)\\s+[A-Za-z]\\s+(.+?)\\s*$", line)
+            if not match:
+                continue
+            address, name = match.group(1).lower(), match.group(2)
+            if name == "close":
+                found["close"] = "0x" + address
+            elif "CrashOnFD" in name or "CrashOnFd" in name:
+                found["crash"] = "0x" + address
+            elif "UpdateAndCheckFdOwnership" in name:
+                found["ownership_check"] = "0x" + address
+            elif "ScopedFDCloseTraits" in name:
+                found.setdefault("scoped_fd_traits", []).append({"name": name, "address": "0x" + address})
+        if found:
+            return {
+                "exit_code": result.returncode,
+                "close_symbol_offset": found.get("close"),
+                "symbols_of_interest": found,
+                "nm_available": True,
+                "symbol_table_source": "full" if args[1] != "-D" else "dynamic",
+            }
     return {
-        "exit_code": result.returncode,
-        "close_symbol_offset": close_address,
-        "nm_available": result.returncode == 0,
+        "exit_code": outputs[-1].returncode if outputs else None,
+        "close_symbol_offset": None,
+        "symbols_of_interest": {},
+        "nm_available": any(item.returncode == 0 for item in outputs),
+        "symbol_table_source": "no-matching-symbols",
     }
 
 
