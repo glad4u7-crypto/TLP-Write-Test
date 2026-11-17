@@ -3,6 +3,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+import time
 from pathlib import Path
 import streamlit as st
 from core.mobile_ui import apply_mobile_ui
@@ -27,6 +28,7 @@ from core.personal_runtime import (
     load_or_create_approval_signing_key,
     personal_runtime_paths,
 )
+from core.personal_auth import LocalOwnerAuthStore
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
@@ -101,6 +103,107 @@ else:
     if server_address not in {"", "localhost", "127.0.0.1", "::1"}:
         st.error("Personal local mode requires a loopback-only Streamlit server address.")
         st.stop()
+
+    # Local Owner authentication is mandatory before any Principal, approval
+    # authority, gateway, project, memory or task capability is initialized.
+    personal_data_dir = os.environ.get(
+        "APAA_PERSONAL_DATA_DIR", str(Path.home() / ".apaa_personal")
+    )
+    personal_paths = personal_runtime_paths(personal_data_dir)
+    try:
+        local_owner_auth = LocalOwnerAuthStore(
+            personal_paths.data_dir / "owner-auth.sqlite3"
+        )
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Owner authentication storage is not safe: {exc}")
+        st.stop()
+
+    now = time.time()
+    authenticated_at = st.session_state.get("apaa_local_authenticated_at")
+    last_activity = st.session_state.get("apaa_local_last_activity")
+    session_expired = (
+        authenticated_at is not None
+        and last_activity is not None
+        and (
+            now - float(last_activity) >= 15 * 60
+            or now - float(authenticated_at) >= 12 * 60 * 60
+        )
+    )
+    if session_expired:
+        clear_session_identity(st.session_state)
+        for key in (
+            "apaa_local_authenticated_at", "apaa_local_last_activity",
+            "approval_session_scope", "approval_authority",
+            "execution_gateway", "execution_gateway_owner",
+            "pending_project", "structured_task_plan", "structured_task_source",
+            "structured_task_clarification", "selected_project_id",
+            "project_registry", "project_registry_tenant",
+        ):
+            st.session_state.pop(key, None)
+        st.warning("Your APAA Owner session expired. Sign in again to continue.")
+
+    if not local_owner_auth.is_configured():
+        st.warning("First-time Owner setup. Create your private APAA passphrase.")
+        with st.form("apaa_owner_first_run_setup"):
+            new_owner_passphrase = st.text_input(
+                "Create Owner passphrase", type="password", max_chars=1024
+            )
+            confirm_owner_passphrase = st.text_input(
+                "Confirm Owner passphrase", type="password", max_chars=1024
+            )
+            setup_owner = st.form_submit_button("Create Owner protection")
+        if setup_owner:
+            try:
+                local_owner_auth.configure(
+                    new_owner_passphrase, confirm_owner_passphrase
+                )
+                st.success("Owner protection created. Sign in to open APAA.")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        st.stop()
+
+    if (
+        authenticated_at is None
+        or last_activity is None
+        or session_expired
+    ):
+        st.warning("APAA is locked. Only the configured Owner can unlock this session.")
+        with st.form("apaa_owner_login"):
+            owner_passphrase = st.text_input(
+                "Owner passphrase", type="password", max_chars=1024
+            )
+            unlock_owner = st.form_submit_button("Unlock APAA", type="primary")
+        if unlock_owner:
+            try:
+                if local_owner_auth.authenticate(owner_passphrase):
+                    st.session_state["apaa_local_authenticated_at"] = now
+                    st.session_state["apaa_local_last_activity"] = now
+                    st.session_state["approval_session_scope"] = secrets.token_urlsafe(32)
+                    st.rerun()
+                st.error("Owner authentication failed or is temporarily locked.")
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                st.error(f"Owner authentication could not be completed safely: {exc}")
+        st.stop()
+
+    # Refresh idle time only after a request reaches this authenticated gate.
+    st.session_state["apaa_local_last_activity"] = now
+
+    def _logout_local_owner():
+        clear_session_identity(st.session_state)
+        for key in (
+            "apaa_local_authenticated_at", "apaa_local_last_activity",
+            "approval_session_scope", "approval_authority",
+            "execution_gateway", "execution_gateway_owner",
+            "pending_project", "structured_task_plan", "structured_task_source",
+            "structured_task_clarification", "selected_project_id",
+            "project_registry", "project_registry_tenant",
+        ):
+            st.session_state.pop(key, None)
+
+    st.sidebar.success("Owner session active · local device")
+    st.sidebar.button("Log out", on_click=_logout_local_owner)
 
 
 # Clear identity-bound drafts, approval authority and gateway if a different
