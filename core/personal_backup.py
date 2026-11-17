@@ -241,6 +241,8 @@ def restore_personal_backup(
             if not isinstance(manifest, dict) or manifest.get("format") != _FORMAT:
                 raise PersonalBackupError("Backup manifest format is unsupported.")
             version = manifest.get("version")
+            if type(version) is not int:
+                raise PersonalBackupError("Backup manifest version is unsupported.")
             if version == 1:
                 restore_databases = _DATABASES_V1
             elif version == _VERSION:
