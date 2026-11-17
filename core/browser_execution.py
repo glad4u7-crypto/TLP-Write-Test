@@ -336,6 +336,7 @@ class BrowserExecutionCoordinator:
             if "error" in outcome:
                 raise outcome["error"]
             result = outcome.get("result")
+            cleanup_mode = "browser_context_destroyed"  # run() returned after context/profile teardown.
             if self._clock() > deadline:
                 token.cancel()
                 if self._worker.terminate(session_id) is not True:
@@ -357,7 +358,6 @@ class BrowserExecutionCoordinator:
                 raise BrowserExecutionError("Worker result is not a valid JSON envelope.") from exc
             if len(encoded_result) > job.max_response_bytes:
                 raise BrowserExecutionError("Worker result exceeded the approved response byte limit.")
-            cleanup_mode = "browser_context_destroyed"  # run() contract: context/profile teardown completed.
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return result_dict
         except BrowserCancelled:
