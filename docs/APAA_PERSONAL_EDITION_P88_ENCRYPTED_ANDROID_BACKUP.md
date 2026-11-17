@@ -1,6 +1,6 @@
 # APAA Personal Edition P88 — Encrypted Android Backup & Restore
 
-**Status:** Implementation committed; exact-head CI pending.
+**Status:** Implementation and exact-head CI PASS on `3e397a2f501a3d5d6a57c1f19bf69e912ef73ed8` (run #? see verification link below).
 **Scope:** Protect portable Personal Edition backups before they leave the Android device.
 
 ## Implemented
@@ -22,7 +22,7 @@
 
 ## Verification
 
-New tests cover multi-chunk round-trip, wrong passphrase, ciphertext tampering, truncation, weak passphrases, source file permissions and destination directory privacy. Exact-head GitHub Actions must pass before P88 is marked verified. Physical Android performance and restore testing remain pending.
+New tests cover multi-chunk round-trip, wrong passphrase, ciphertext tampering, truncation (including truncation at a complete authenticated-chunk boundary), weak passphrases, source file permissions and destination directory privacy. Exact-head GitHub Actions run [#44044293281](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44044293281) passed: **1,590 Python tests passed, 9 skipped; compile PASS; dependency audit PASS (no known vulnerabilities); Android-sized Chromium browser smoke 10 passed.** This is browser emulation, not physical Android qualification. Physical Android performance and restore testing remain pending.
 
 ## Unchanged safety boundary
 
