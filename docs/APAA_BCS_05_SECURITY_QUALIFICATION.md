@@ -1,6 +1,6 @@
 # APAA BCS-05 — Security Qualification
 
-Status: IN PROGRESS. This document is a qualification plan, not a claim that qualification has passed.
+Status: IN PROGRESS — NOT QUALIFIED. This document tracks implementation and evidence; no release gate is marked complete.
 
 ## Safety boundary
 
@@ -26,6 +26,15 @@ Run a pinned Playwright/Chromium build against loopback-only fixtures with no ex
 | Iframe | Approved same-origin frame is constrained to the same policy | Cross-origin frame cannot access or escape the policy boundary |
 | WebSocket | Explicitly approved endpoint can connect in fixture | Unapproved host/port and direct socket path are denied |
 | TLS | Trusted test CA succeeds; hostname mismatch and expired certificate fail | No ignore-certificate-errors or insecure TLS fallback |
+
+Initial implementation added on the BCS-05 branch:
+
+- `tests/test_chromium_browser_surfaces.py` launches real Playwright Chromium against an HTTP fixture bound only to 127.0.0.1.
+- Positive coverage: same-origin redirect, image subresource, popup, iframe, and WebSocket echo.
+- Negative browser-harness coverage: cross-origin image, iframe, popup, and WebSocket attempts are intercepted and aborted/closed by Playwright routing.
+- The CI workflow now runs this test on the BCS-05 branch and pull requests targeting the P74 branch.
+
+**Qualification status: PARTIAL / CI PENDING.** The new test has not yet been observed passing on the exact BCS-05 head. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Cross-origin redirect enforcement and production controller integration still require dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
 
 These tests establish Chromium behavior only. They do NOT establish OCI isolation or host network enforcement.
 
