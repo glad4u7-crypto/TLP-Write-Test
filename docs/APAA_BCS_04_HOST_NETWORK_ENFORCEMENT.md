@@ -568,3 +568,14 @@ All dedicated Chromium TLS, restricted-proxy Chromium, worker-adapter and
 Linux host-inspector stages passed. The latest branch subsequently added a
 user-namespace/chroot fail-closed regression test; exact-head CI for the
 newer commit must also pass before BCS-04 is declared fully CI-verified.
+
+
+### CI naming correction
+
+The separate Chromium TLS integration test uses a local-only loopback CONNECT
+proxy and a fake runtime callback; it also disables Chromium's internal sandbox
+for that test fixture. It validates certificate handling and controller
+request policy only. Its CI step and test name now explicitly say
+test-only/local and do not claim OCI isolation or production sandbox proof.
+Only the disposable P74 real-host workflow can qualify the OCI network boundary
+and in-worker Chromium sandbox.
