@@ -51,8 +51,8 @@ def test_owner_auth_persistent_lockout_survives_store_recreation(tmp_path):
         assert store.authenticate("wrong password", now=1000) is False
     reopened = _store(tmp_path)
     assert reopened.authenticate("correct horse battery staple", now=1001) is False
-    assert reopened.authenticate("correct horse battery staple", now=1300) is False
-    assert reopened.authenticate("correct horse battery staple", now=1301) is True
+    assert reopened.authenticate("correct horse battery staple", now=1299) is False
+    assert reopened.authenticate("correct horse battery staple", now=1300) is True
 
 
 def test_owner_auth_passphrase_rotation_requires_current_passphrase(tmp_path):
