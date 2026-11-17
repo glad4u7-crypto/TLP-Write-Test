@@ -23,6 +23,7 @@ def fake_cgroupfs(tmp_path, monkeypatch, *, root_available="cpu memory pids",
 
     original_mkdir = Path.mkdir
     original_write_text = Path.write_text
+    original_rmdir = Path.rmdir
 
     def mkdir(path, *args, **kwargs):
         result = original_mkdir(path, *args, **kwargs)
@@ -38,8 +39,16 @@ def fake_cgroupfs(tmp_path, monkeypatch, *, root_available="cpu memory pids",
             data = str(data).replace("+", "")
         return original_write_text(path, data, *args, **kwargs)
 
+    def rmdir(path):
+        for child in path.iterdir():
+            if child.is_dir():
+                raise OSError("directory is not empty")
+            child.unlink()
+        return original_rmdir(path)
+
     monkeypatch.setattr(Path, "mkdir", mkdir)
     monkeypatch.setattr(Path, "write_text", write_text)
+    monkeypatch.setattr(Path, "rmdir", rmdir)
     return mount, delegated
 
 
