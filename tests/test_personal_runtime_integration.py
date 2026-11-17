@@ -97,6 +97,7 @@ def test_personal_runtime_paths_keep_all_durable_state_under_private_root(tmp_pa
     paths, *_ = _personal_runtime(tmp_path)
     assert paths.projects_db.exists()
     assert paths.security_db.exists()
+    assert paths.owner_auth_db.parent == paths.data_dir
     assert paths.signing_key.exists()
     assert paths.projects_db.parent == paths.data_dir
     assert paths.audit_log.parent == paths.data_dir
