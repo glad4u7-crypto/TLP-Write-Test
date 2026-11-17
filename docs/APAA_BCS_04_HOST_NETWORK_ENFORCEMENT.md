@@ -695,3 +695,8 @@ This is a targeted hypothesis from the observed zero-connection telemetry; a new
 Explicitly exempting the numeric proxy IP from host-resolver rules did not change the observed result: Chromium still made zero connections to the proxy. The qualification therefore removes the unnecessary host-resolver override and now passes a single explicit `http://<numeric-proxy-IP>:<port>` proxy URI for each address family. Chromium's HTTP proxy mode defers target hostname resolution to the proxy and uses CONNECT for HTTPS; the independent nftables default-DROP boundary continues to block direct DNS and direct TCP/UDP. The proxy outage test uses the same HTTP proxy URI with the listener stopped, so it tests actual proxy failure rather than a local resolver failure. IPv4/IPv6 URI formatting is covered by tests.
 
 A fresh disposable-host qualification is required to verify this configuration; no real Chromium pass is claimed yet.
+
+
+## Chromium proxy reachability preflight
+
+The explicit HTTP proxy URI still resulted in zero browser connections to the listener, so the qualification now adds two isolated diagnostics before the network request: a numeric-IP TCP preflight from the unprivileged worker to the mandatory proxy, and a local `data:` URL `--dump-dom` smoke test. The first proves the namespace route/firewall can reach the proxy; the second proves the Chromium binary and stdout capture can render DOM without network access. Browser proxy connection counters are measured before/after the real HTTPS request. These checks separate container/network reachability from Chromium proxy configuration and page rendering. No sandbox or firewall relaxation is made.
