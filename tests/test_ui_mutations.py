@@ -120,3 +120,47 @@ def test_ui_mutation_rejects_non_boolean_approval_argument():
     with pytest.raises(ValueError, match="boolean"):
         execute_audited_ui_mutation(audit, "memory.add", "yes", lambda: None)
     assert audit.events == []
+
+
+def test_action_history_is_tenant_scoped_payload_free_and_hash_verified(tmp_path):
+    import sqlite3
+
+    from core.personal_runtime import PERSONAL_OWNER_TENANT
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    database = tmp_path / "security.sqlite3"
+    store = SQLiteSecurityStore(database)
+    audit = SQLiteExecutionAuditLog(store, PERSONAL_OWNER_TENANT)
+    execute_audited_ui_mutation(
+        audit, "memory.add", True,
+        lambda: {"private_content": "must never enter audit history"},
+    )
+
+    events = audit.list_recent_events(limit=10)
+    assert [event["reason_code"] for event in events] == [
+        "ui_mutation_completed", "ui_mutation_pending"
+    ]
+    assert all(event["action"] == "memory.add" for event in events)
+    assert all(event["result"] in {"pending", "success"} for event in events)
+    assert "private_content" not in repr(events)
+    assert all("entry_hash" in event for event in events)
+
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE durable_audit_events SET reason_code = ? WHERE sequence = 1",
+            ("tampered",),
+        )
+        db.commit()
+    with pytest.raises(ValueError, match="hash"):
+        audit.list_recent_events(limit=10)
+
+
+def test_action_history_rejects_invalid_limit_and_fingerprint(tmp_path):
+    from core.personal_runtime import PERSONAL_OWNER_TENANT
+    from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
+
+    audit = SQLiteExecutionAuditLog(
+        SQLiteSecurityStore(tmp_path / "security.sqlite3"), PERSONAL_OWNER_TENANT
+    )
+    with pytest.raises(ValueError, match="limit"):
+        audit.list_recent_events(limit=0)
