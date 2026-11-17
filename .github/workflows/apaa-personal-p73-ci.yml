@@ -2,8 +2,6 @@ name: APAA Personal Edition P73 Verification
 on:
   pull_request:
     branches: ["apaa-s09-c01-action-audit-remediation-01"]
-  push:
-    branches: ["apaa-personal-edition-foundation"]
 permissions:
   contents: read
 concurrency:
