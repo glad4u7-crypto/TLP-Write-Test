@@ -213,7 +213,6 @@ def test_cancel_terminates_the_unique_worker_session():
             terminated.append(session_id)
             release.set()
             return True
-            return True
 
     events = []
     coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=events.append)
