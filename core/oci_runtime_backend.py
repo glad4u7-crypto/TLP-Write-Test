@@ -21,7 +21,7 @@ _CONTAINER_ID = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_DIGEST = re.compile(r"^(?:sha256:[0-9a-f]{64}|[a-z0-9][a-z0-9._/:+-]*@sha256:[0-9a-f]{64})$")
 _WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _NAMESPACE_PATH = re.compile(r"^/run/netns/[a-z][a-z0-9_-]{0,9}$")
-_CGROUP_PARENT = re.compile(r"^/sys/fs/cgroup/apaa/[a-z][a-z0-9_-]{0,31}$")
+_CGROUP_PARENT = re.compile(r"^/apaa/[a-z][a-z0-9_-]{0,31}$")
 
 
 @dataclass(frozen=True)
