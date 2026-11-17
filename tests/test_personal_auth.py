@@ -99,10 +99,10 @@ def test_owner_auth_security_events_are_payload_free_and_persisted(tmp_path):
     reopened = _store(tmp_path)
     events = reopened.list_events()
     assert [event for event, _ in events] == [
-        "owner_setup", "login_failed", "login_success",
-        "passphrase_change_failed", "passphrase_changed",
+        "passphrase_changed", "passphrase_change_failed",
+        "login_success", "login_failed", "owner_setup",
     ]
-    assert [timestamp for _, timestamp in events[1:]] == [1000, 1001, 1002, 1003]
+    assert [timestamp for _, timestamp in events[:4]] == [1003, 1002, 1001, 1000]
     raw = reopened.path.read_bytes()
     assert b"correct horse battery staple" not in raw
     assert b"wrong password" not in raw
