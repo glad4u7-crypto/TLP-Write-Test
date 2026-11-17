@@ -386,7 +386,7 @@ def test_chromium_build_id_probe_embedded_python_is_valid(monkeypatch):
 def test_symbolication_fails_closed_when_debug_tools_are_missing(monkeypatch):
     monkeypatch.setattr(qualification.shutil, "which", lambda _name: None)
     result = qualification._symbolize_failure_frames({"process_mapping": {}}, "0123456789abcdef")
-    assert result == {"status": "debug-tools-unavailable", "frames": []}
+    assert result == {"status": "addr2line-unavailable", "build_id": "0123456789abcdef", "frames": []}
 
 
 
