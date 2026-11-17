@@ -136,7 +136,7 @@ def _parse_status(raw: str) -> dict:
 
 def _process_role(cmdline: bytes) -> str:
     """Classify Chromium process role without retaining command-line values."""
-    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\\0") if part]
+    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\0") if part]
     if "--type=zygote" in tokens:
         return "zygote"
     if "--type=renderer" in tokens:
