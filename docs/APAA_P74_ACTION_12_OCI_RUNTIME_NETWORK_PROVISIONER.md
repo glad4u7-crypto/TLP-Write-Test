@@ -70,7 +70,12 @@ interface bypass still require sink-side verification on the real host.
    page with marker `Example Domain`; the owner may override these inputs.
    Before merge, its push-triggered job runs only when the commit message
    contains the explicit marker `[run-p74-real-worker]`. Ordinary pushes skip
-   the host qualification. It creates a disposable
+   the host qualification. The automated repository-file commits used during
+   this work did not dispatch that new workflow; a user-authored push to this
+   branch is required for pre-merge execution (example commit message:
+   `run(APAA P74): execute isolated worker [run-p74-real-worker]`). The
+   `workflow_dispatch` path becomes available after this workflow exists on
+   the default branch. It creates a disposable
    GitHub-hosted Linux VM, installs Podman/iproute2/nftables, builds the
    Chromium worker image and requires a dedicated delegated cgroup subtree.
 2. Provision namespace and veth; prove the worker has no route outside the
