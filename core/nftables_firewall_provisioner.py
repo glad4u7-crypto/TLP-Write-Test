@@ -18,10 +18,12 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def _proxy_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if type(value) is not str:
+        raise ValueError("proxy address must be text")
     address = ipaddress.ip_address(value)
     if (address.is_unspecified or address.is_multicast or address.is_loopback
             or address.is_link_local or address.is_reserved):
-        raise ValueError("proxy address must be a globally routable unicast address")
+        raise ValueError("proxy address must be a usable unicast address")
     return address
 
 
