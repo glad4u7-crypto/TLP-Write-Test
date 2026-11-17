@@ -3,6 +3,7 @@ name: APAA P74 real OCI Chromium worker
 # The gated disposable-host run is opt-in and uses only this ephemeral runner.
 # Optional stack symbolication resolves the pinned Debian Chromium build-id.
 # Debug symbol fetch and address translation are time-bounded and non-fatal.
+# Snapshots span the full crash window and PID matching checks executable stack ranges.
 
 on:
   push:
