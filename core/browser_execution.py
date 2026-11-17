@@ -415,6 +415,8 @@ class BrowserExecutionCoordinator:
             try:
                 if self._recovery_ledger.dispatch_blocked():
                     raise BrowserDispatchBlocked("durable dispatch block is active")
+            except BrowserDispatchBlocked as exc:
+                raise BrowserExecutionError("Browser dispatch is blocked by the durable audit/recovery latch.") from exc
             except RecoveryLedgerError as exc:
                 self._audit_failed = True
                 raise BrowserExecutionError("Recovery/audit state unavailable; dispatch refused.") from exc
