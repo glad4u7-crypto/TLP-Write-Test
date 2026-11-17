@@ -377,7 +377,7 @@ def test_chromium_build_id_probe_embedded_python_is_valid(monkeypatch):
 
     def fake_run(command, **kwargs):
         compile(command[-1], "<chromium-build-id-probe>", "exec")
-        return CompletedProcess(command, 0, "0123456789abcdef0123456789abcdef01234567\\n", "")
+        return CompletedProcess(command, 0, "0123456789abcdef0123456789abcdef01234567\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     assert qualification._chromium_binary_build_id("worker-container") == "0123456789abcdef0123456789abcdef01234567"
