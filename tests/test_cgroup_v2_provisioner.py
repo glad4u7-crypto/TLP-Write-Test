@@ -86,7 +86,7 @@ def test_remove_refuses_nested_cgroup_with_live_process(tmp_path, monkeypatch):
     path = provisioner.create("worker-live")
     child = path / "libpod-test"
     child.mkdir()
-    (child / "cgroup.procs").write_text("4321\\n")
+    (child / "cgroup.procs").write_text("4321\n")
     with pytest.raises(IsolationEnforcementError, match="subtree still contains processes"):
         provisioner.remove(path)
     assert path.is_dir()
