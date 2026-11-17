@@ -25,6 +25,34 @@ def _proxy_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     return address
 
 
+def _chain_blocks(ruleset: str) -> dict[str, str]:
+    blocks: dict[str, str] = {}
+    current_name = None
+    current_lines: list[str] = []
+    depth = 0
+    for raw in ruleset.splitlines():
+        line = raw.strip()
+        if current_name is None:
+            match = re.match(r"^chain\s+([A-Za-z0-9_-]+)\s*\{", line)
+            if not match:
+                continue
+            current_name = match.group(1)
+            current_lines = [line]
+            depth = line.count("{") - line.count("}")
+        else:
+            current_lines.append(line)
+            depth += line.count("{") - line.count("}")
+        if current_name is not None and depth == 0:
+            if current_name in blocks:
+                raise FirewallProvisionError("firewall contains a duplicate chain")
+            blocks[current_name] = "\n".join(current_lines)
+            current_name = None
+            current_lines = []
+    if current_name is not None:
+        raise FirewallProvisionError("firewall contains an unterminated chain")
+    return blocks
+
+
 def _accept_rules(ruleset: str) -> Counter[str]:
     found: Counter[str] = Counter()
     for raw in ruleset.splitlines():
@@ -114,10 +142,6 @@ class NftablesFirewallProvisioner:
             if proxy_ips is None or proxy_port is None:
                 raise ValueError("both proxy_ips and proxy_port are required for strict verification")
             expected_script = self.render_ruleset(proxy_ips, proxy_port)
-            expected_accepts = Counter(
-                line.split(" add rule ", 1)[1].removesuffix(" accept") + " accept"
-                for line in expected_script.splitlines() if " add rule " in f" {line} "
-            )
             # render_ruleset lines begin with 'add rule'; retain the exact rule body.
             expected_accepts = Counter(
                 line.removeprefix("add rule inet apaa input ").removeprefix("add rule inet apaa output ")
@@ -132,7 +156,7 @@ class NftablesFirewallProvisioner:
                 raise FirewallProvisionError("firewall chain inventory is unexpected")
             for name, hook in (("input", "input"), ("output", "output")):
                 if not re.search(
-                    rf"type filter hook {hook} priority [^;]+;\\s*policy drop;",
+                    rf"type filter hook {hook} priority [^;]+;\s*policy drop;",
                     blocks[name],
                 ):
                     raise FirewallProvisionError("firewall chain hook or policy is unexpected")
