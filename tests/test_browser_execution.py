@@ -255,6 +255,7 @@ def test_hard_deadline_terminates_worker_and_audits_timeout():
         def terminate(self, session_id):
             terminated.append(session_id)
             release.set()
+            return True
 
     events = []
     coordinator = BrowserExecutionCoordinator(SlowWorker(), audit=events.append)
@@ -304,6 +305,7 @@ def test_cancel_terminates_worker_even_if_audit_storage_fails():
         def terminate(self, session_id):
             terminated.append(session_id)
             release.set()
+            return True
 
     events = []
 
