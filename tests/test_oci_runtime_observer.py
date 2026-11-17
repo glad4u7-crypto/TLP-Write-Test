@@ -51,7 +51,7 @@ def payload():
 
 def spec():
     return OCIWorkerSpec(IMAGE,"/run/netns/w1","/profiles/chromium.json","worker1",
-                         WorkerLimits(),"/sys/fs/cgroup/apaa/worker1")
+                         WorkerLimits(),"/apaa/worker1")
 
 def test_observer_requires_runtime_and_kernel_evidence(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
