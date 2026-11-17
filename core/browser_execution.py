@@ -208,7 +208,7 @@ class BrowserExecutionCoordinator:
         self._worker = worker
         self._audit = audit
         self._clock = clock
-        self._active: dict[str, tuple[CancellationToken, str, threading.Event]] = {}
+        self._active: dict[str, tuple[CancellationToken, str, threading.Event, threading.Event]] = {}
         self._lock = threading.RLock()
 
     @classmethod
@@ -248,13 +248,15 @@ class BrowserExecutionCoordinator:
             active = self._active.get(job_id)
             if active is None:
                 return False
-            token, session_id, termination_confirmed = active
+            token, session_id, termination_confirmed, completed = active
             changed = token.cancel()
         termination_error = None
         if self._worker is not None:
             try:
                 if self._worker.terminate(session_id) is not True:
                     raise BrowserExecutionError("Worker termination was not confirmed.")
+                if not completed.wait(timeout=2.0):
+                    raise BrowserExecutionError("Worker supervisor did not stop after process termination.")
                 termination_confirmed.set()
             except Exception as exc:
                 termination_error = exc
@@ -295,19 +297,18 @@ class BrowserExecutionCoordinator:
         session_id = uuid.uuid4().hex
         token = CancellationToken()
         termination_confirmed = threading.Event()
+        completed = threading.Event()
+        outcome: dict[str, Any] = {}
         with self._lock:
             if job.job_id in self._active:
                 raise BrowserExecutionError("Duplicate active browser job ID.")
-            self._active[job.job_id] = (token, session_id, termination_confirmed)
+            self._active[job.job_id] = (token, session_id, termination_confirmed, completed)
 
         deadline = self._clock() + job.max_runtime_seconds
         cleanup_mode: str | None = None
         try:
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
             token.raise_if_cancelled()
-            completed = threading.Event()
-            outcome: dict[str, Any] = {}
-
             def invoke_worker() -> None:
                 try:
                     outcome["result"] = self._worker.run(
@@ -342,6 +343,8 @@ class BrowserExecutionCoordinator:
                 try:
                     if self._worker.terminate(session_id) is not True:
                         raise BrowserExecutionError("Worker termination was not confirmed.")
+                    if not completed.wait(timeout=2.0):
+                        raise BrowserExecutionError("Worker supervisor did not stop after process termination.")
                     cleanup_mode = "worker_process_exit_confirmed"
                 except Exception as exc:
                     self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
@@ -354,10 +357,6 @@ class BrowserExecutionCoordinator:
             result = outcome.get("result")
             cleanup_mode = "browser_context_destroyed"  # run() returned after context/profile teardown.
             if self._clock() > deadline:
-                token.cancel()
-                if self._worker.terminate(session_id) is not True:
-                    raise BrowserExecutionError("Worker termination was not confirmed.")
-                cleanup_mode = "worker_process_exit_confirmed"
                 self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
