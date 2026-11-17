@@ -119,6 +119,7 @@ def test_proxy_outage_probe_records_failure_without_leaking_response(monkeypatch
     evidence = qualification._probe_proxy_outage(["chromium"], "Allowed Marker", "ipv4")
     assert evidence["allowed_marker_absent"] is True
     assert evidence["exit_code"] == 1
+    assert evidence["proxy_error"] == "ERR_PROXY_CONNECTION_FAILED"
     assert len(evidence["output_sha256"]) == 64
 
 
@@ -179,3 +180,15 @@ def test_udp_probe_records_seccomp_socket_creation_denial_separately(monkeypatch
         qualification._probe_blocked(
             ["podman", "exec", "id", "python3"], "direct TCP",
         )
+
+
+def test_proxy_outage_probe_rejects_container_or_chromium_setup_failure(monkeypatch):
+    from subprocess import CompletedProcess
+    import pytest
+
+    monkeypatch.setattr(
+        qualification.subprocess, "run",
+        lambda *args, **kwargs: CompletedProcess(args[0], 125, "", "Error: container is not running"),
+    )
+    with pytest.raises(RuntimeError, match="did not reach a Chromium proxy failure"):
+        qualification._probe_proxy_outage(["podman", "exec"], "Allowed Marker", "ipv4")
