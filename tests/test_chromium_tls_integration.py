@@ -146,7 +146,10 @@ def test_real_chromium_rejects_untrusted_certificate_through_proxy(tmp_path):
     try:
         browser = playwright.chromium.launch(
             headless=True,
-            chromium_sandbox=True,
+            # GitHub-hosted Ubuntu runners block Chromium user namespaces via AppArmor.
+            # This test isolates TLS behavior only; production launcher still requires
+            # chromium_sandbox=True and is not relaxed by this CI-only setting.
+            chromium_sandbox=False,
             proxy={"server": f"http://127.0.0.1:{proxy.port}"},
             args=["--proxy-bypass-list=<-loopback>", "--disable-background-networking",
                   "--disable-component-update", "--disable-sync"],
