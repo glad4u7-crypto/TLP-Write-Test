@@ -294,7 +294,12 @@ class PinnedConnectProxy:
                 self._respond(client, 403, "Forbidden")
                 return
 
-            pinned = resolve_and_pin(normalized, port, resolver=self.resolver)
+            try:
+                pinned = resolve_and_pin(normalized, port, resolver=self.resolver)
+            except PinnedEgressError:
+                with self._stats_lock:
+                    self._rejected_requests += 1
+                raise
             last_error = None
             for address in pinned.addresses:
                 try:
