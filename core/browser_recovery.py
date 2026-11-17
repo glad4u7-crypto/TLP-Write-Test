@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 from contextlib import contextmanager
 import os
+import re
 from pathlib import Path
 import sqlite3
 import stat
@@ -116,12 +117,8 @@ class SQLiteBrowserRecoveryLedger:
     def _validate_job(job_id: str, request_digest: str) -> None:
         if type(job_id) is not str or not 8 <= len(job_id) <= 128 or any(ord(c) < 33 for c in job_id):
             raise ValueError("job ID is invalid")
-        if type(request_digest) is not str or len(request_digest) != 64:
-            raise ValueError("request digest must be a SHA-256 hex digest")
-        try:
-            bytes.fromhex(request_digest)
-        except ValueError as exc:
-            raise ValueError("request digest must be hexadecimal") from exc
+        if type(request_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", request_digest):
+            raise ValueError("request digest must be a canonical lowercase SHA-256 hex digest")
 
     def dispatch_blocked(self) -> bool:
         try:

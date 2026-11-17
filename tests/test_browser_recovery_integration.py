@@ -85,3 +85,45 @@ def test_audit_records_do_not_contain_raw_job_or_session_identifiers(tmp_path):
     assert all("job_id" not in event and "session_id" not in event for event in events)
     assert all(job_id not in repr(event) for event in events)
     assert all(len(event["job_ref"]) == 24 and len(event["session_ref"]) == 24 for event in events)
+
+
+def test_unconfirmed_cancellation_marks_job_interrupted_and_blocks_dispatch(tmp_path):
+    import threading
+
+    ledger = private_ledger(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    class UnconfirmedWorker(Worker):
+        def run(self, job, **kwargs):
+            started.set()
+            release.wait(timeout=3)
+            kwargs["cancellation"].raise_if_cancelled()
+            return {"title": "unexpected"}
+
+        def terminate(self, session_id):
+            return False
+
+    worker = UnconfirmedWorker()
+    events = []
+    coordinator = BrowserExecutionCoordinator(worker, audit=events.append, recovery_ledger=ledger)
+    errors = []
+
+    def execute():
+        try:
+            coordinator.execute(raw_job("job_cancel_unconfirmed01"), resolver=lambda host: ["93.184.216.34"])
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert started.wait(timeout=2)
+    with pytest.raises(BrowserExecutionError, match="termination failed"):
+        coordinator.cancel("job_cancel_unconfirmed01")
+    release.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    assert ledger.get("job_cancel_unconfirmed01")["state"] == "interrupted"
+    assert ledger.dispatch_blocked() is True
+    assert any(event["event"] == "job_cancel_unconfirmed" for event in events)

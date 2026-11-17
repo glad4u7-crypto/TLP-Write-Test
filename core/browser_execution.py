@@ -397,6 +397,12 @@ class BrowserExecutionCoordinator:
             except Exception as exc:
                 termination_error = exc
         if termination_error is not None:
+            self._audit_failed = True
+            if self._recovery_ledger is not None:
+                try:
+                    self._recovery_ledger.latch_dispatch_block("worker_termination_unconfirmed")
+                except Exception:
+                    pass
             try:
                 self._record("worker_terminate_error", job_id=job_id, session_id=session_id, detail="adapter_error")
             except Exception as exc:
@@ -499,6 +505,19 @@ class BrowserExecutionCoordinator:
                         raise BrowserExecutionError("Worker supervisor did not stop after process termination.")
                     cleanup_mode = "worker_process_exit_confirmed"
                 except Exception as exc:
+                    self._audit_failed = True
+                    if self._recovery_ledger is not None and ledger_state in {"accepted", "running", "cancel_requested"}:
+                        try:
+                            self._recovery_ledger.transition(
+                                job.job_id, "interrupted", outcome_code="timeout_cleanup_unconfirmed"
+                            )
+                            ledger_state = "interrupted"
+                        except RecoveryLedgerError:
+                            pass
+                        try:
+                            self._recovery_ledger.latch_dispatch_block("worker_termination_unconfirmed")
+                        except Exception:
+                            pass
                     self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
                     raise BrowserExecutionError("Timed-out browser worker could not be terminated.") from exc
                 if self._recovery_ledger is not None:
@@ -536,17 +555,31 @@ class BrowserExecutionCoordinator:
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return result_dict
         except BrowserCancelled:
+            cancellation_confirmed = termination_confirmed.is_set() and completed.is_set()
             if self._recovery_ledger is not None and ledger_state in {"accepted", "running", "cancel_requested"}:
                 try:
-                    self._recovery_ledger.transition(job.job_id, "cancelled", outcome_code="owner_cancel")
-                    ledger_state = "cancelled"
+                    terminal_state = "cancelled" if cancellation_confirmed else "interrupted"
+                    outcome_code = "owner_cancel" if cancellation_confirmed else "cancel_cleanup_unconfirmed"
+                    self._recovery_ledger.transition(job.job_id, terminal_state, outcome_code=outcome_code)
+                    ledger_state = terminal_state
                 except RecoveryLedgerError:
                     self._audit_failed = True
                     try:
                         self._recovery_ledger.latch_dispatch_block("recovery_state_failure")
                     except Exception:
                         pass
-            self._record("job_cancelled", job_id=job.job_id, session_id=session_id, detail="cancelled")
+            if not cancellation_confirmed:
+                self._audit_failed = True
+                if self._recovery_ledger is not None:
+                    try:
+                        self._recovery_ledger.latch_dispatch_block("worker_termination_unconfirmed")
+                    except Exception:
+                        pass
+            self._record(
+                "job_cancelled" if cancellation_confirmed else "job_cancel_unconfirmed",
+                job_id=job.job_id, session_id=session_id,
+                detail="cancelled" if cancellation_confirmed else "termination_unconfirmed",
+            )
             raise
         except BrowserTimeout:
             raise
@@ -566,7 +599,7 @@ class BrowserExecutionCoordinator:
         finally:
             with self._lock:
                 self._active.pop(job.job_id, None)
-            if termination_confirmed.is_set():
+            if termination_confirmed.is_set() and completed.is_set():
                 cleanup_mode = "worker_process_exit_confirmed"
             elif token.cancelled:
                 # Give the cancelling controller a bounded opportunity to
