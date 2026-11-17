@@ -326,3 +326,39 @@ def test_chromium_exec_wrapper_closes_inherited_fds_and_preserves_stdio():
     assert "if fd>2: os.close(fd)" in wrapper
     assert "os.execvp(sys.argv[1], sys.argv[1:])" in wrapper
     assert command[8:] == ["chromium", "--headless=new", "--dump-dom", "data:text/html,ok"]
+
+
+
+def test_fd_ownership_crash_pid_and_stack_frames_are_extracted():
+    stderr = (
+        "[16:16:1117/183349.367321:ERROR:content/browser/network_service_instance_impl.cc:652] "
+        "Network service crashed or was terminated, restarting service.\\n"
+        "Crashing due to FD ownership violation:\\n"
+        "#0 0x55c81044543e <unknown>\\n"
+        "#1 0x55c81043c19c <unknown>\\n"
+    )
+    result = qualification._fd_ownership_crash_identity(stderr)
+    assert result["detected"] is True
+    assert result["log_pid"] == 16
+    assert result["log_tid"] == 16
+    assert result["stack_frames"] == [
+        {"frame": 0, "address": "0x55c81044543e"},
+        {"frame": 1, "address": "0x55c81043c19c"},
+    ]
+
+
+def test_fd_ownership_log_pid_maps_to_host_pid_snapshot():
+    failure = {"fd_ownership_log_pid": 16}
+    diagnostics = {
+        "snapshots": [
+            {"processes": [
+                {"pid": 8271, "ppid": 8268, "comm": "chromium", "executable": "chromium",
+                 "role": "other", "start_time_ticks": "11676", "fd_count_observed": 148,
+                 "status": {"nspid": "8271 16", "uid": "65532 65532 65532 65532", "seccomp": "2"}},
+            ]},
+        ],
+    }
+    mapped = qualification._map_failure_to_fd_snapshot(failure, diagnostics)
+    assert mapped["host_pid"] == 8271
+    assert mapped["container_pid"] == 16
+    assert mapped["fd_count_observed"] == 148
