@@ -182,7 +182,16 @@ class FileEd25519Keyring:
         if metadata["keys"][key_id]["status"] == "revoked":
             return
         metadata["keys"][key_id]["status"] = "revoked"
+        # Publish revocation before deleting the local private-key file. If
+        # deletion fails, the key is still excluded from the trust set.
         self._write(metadata)
+        private_path = self.directory / (key_id + ".ed25519")
+        if private_path.is_symlink():
+            raise AttestationKeyringError("revoked private key path unexpectedly became a symlink")
+        try:
+            private_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise AttestationKeyringError("key is revoked but its local private-key file could not be unlinked") from exc
 
     def signing_key(self, key_id: str | None = None) -> Ed25519PrivateKey:
         metadata = self._load()
