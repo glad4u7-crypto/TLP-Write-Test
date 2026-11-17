@@ -257,3 +257,21 @@ tests cover namespace-relative/unmapped proc paths, absent PID membership,
 and duplicate membership. This is stronger than accepting a procfs path and
 does not relax cgroup isolation. A new real-host run is required to establish
 whether the worker is actually accounted within the delegated subtree.
+
+
+### Run #90 — delegated cgroup hierarchy path correction
+
+The real-host evidence showed that the OCI process reported a namespace-visible
+path beginning with `/sys/fs/cgroup/apaa/...`, but the corresponding host
+cgroup leaf did not exist and the delegated parent had no worker PID. The
+provisioner had passed the filesystem mount path to Podman's
+`--cgroup-parent`. Podman expects a path in the cgroup hierarchy (for example
+`/apaa/worker-p74-01`), not the host filesystem mount prefix
+`/sys/fs/cgroup`. The OCI spec now carries only the validated hierarchy path;
+the observer resolves it beneath the configured cgroup-v2 mount and still
+requires exactly one host-PID match in real `cgroup.procs` files. This is a
+path-contract correction, not a relaxation of the kernel-membership gate.
+The observer unit fixtures were also corrected to model the kernel-provided
+`cgroup.procs` pseudo-file at each directory traversed. The real-host run must
+be repeated; no Chromium or network-bypass PASS is claimed until it reaches
+those steps.
