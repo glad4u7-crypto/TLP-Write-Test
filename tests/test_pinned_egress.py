@@ -67,3 +67,12 @@ def test_connect_pinned_never_accepts_unpinned_dial_target():
             pinned, "1.1.1.1", socket_factory=lambda *args: sock,
         )
     assert sock.closed is False
+
+
+def test_resolve_and_pin_rejects_mixed_public_and_private_dns_answers():
+    records = [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("8.8.8.8", 443)),
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443)),
+    ]
+    with pytest.raises(PinnedEgressError):
+        resolve_and_pin("example.com", 443, resolver=lambda *args: records)
