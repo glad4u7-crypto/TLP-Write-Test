@@ -320,3 +320,18 @@ def test_real_ed25519_and_nftables_evidence_gate_precedes_remote_browser_start()
     assert backend.verified_evidence.firewall.default_egress_policy == "drop"
     assert backend.verified_evidence.firewall.allowed_proxy_addresses == (PROXY_IP,)
     assert [call[0] for call in backend.calls] == ["provision", "snapshot", "start", "destroy"]
+
+
+def test_host_attestation_challenge_is_single_use_even_across_distinct_sessions(monkeypatch):
+    worker, backend, _ = make_adapter(monkeypatch, challenge="e" * 64)
+    assert execute(worker, session_id="session-first-12345") == {"ok": True}
+    before = [call[0] for call in backend.calls]
+    assert before == ["provision", "snapshot", "start", "destroy"]
+
+    with pytest.raises(BrowserWorkerBootstrapError, match="challenge cannot be reused"):
+        execute(worker, session_id="session-second-12345")
+    # The second disposable worker is reaped; evidence collection and browser
+    # start are never attempted with the replayed challenge.
+    assert [call[0] for call in backend.calls] == [
+        "provision", "snapshot", "start", "destroy", "provision", "snapshot", "destroy"
+    ]
