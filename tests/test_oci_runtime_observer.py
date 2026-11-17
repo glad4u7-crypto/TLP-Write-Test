@@ -28,7 +28,7 @@ def make_fs(tmp_path, *, cgroup="/apaa/worker1/container", net_inode=123, ns_ino
     (tmp_path/"netns"/"w1").rmdir()
     (tmp_path/"netns"/"w1").symlink_to(tmp_path/"netns-target")
     (proc/"cgroup").write_text(f"0::{cgroup}\n")
-    (proc/"status").write_text("Name:\tworker\nSeccomp:\t2\n")
+    (proc/"status").write_text("Name:\tworker\nSeccomp:\t2\nCapEff:\t0000000000000000\n")
     cg=tmp_path/"cgroup"/"apaa"/"worker1"/"container"
     cg.mkdir(parents=True)
     (cg/"memory.max").write_text("1073741824")
@@ -39,7 +39,7 @@ def make_fs(tmp_path, *, cgroup="/apaa/worker1/container", net_inode=123, ns_ino
 def payload():
     return {
       "Id":CID,"Image":IMAGE,
-      "HostConfig":{"ReadonlyRootfs":True,"CapDrop":["ALL"],
+      "HostConfig":{"ReadonlyRootfs":True,"CapDrop":["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_FSETID","CAP_KILL","CAP_NET_BIND_SERVICE","CAP_SETFCAP","CAP_SETGID","CAP_SETPCAP","CAP_SETUID","CAP_SYS_CHROOT"],"CapAdd":[],
        "SecurityOpt":["no-new-privileges","seccomp=/profiles/chromium.json"],
        "Memory":1073741824,"PidsLimit":128,"NanoCpus":1000000000,
        "NetworkMode":"ns:/run/netns/w1"},
@@ -102,4 +102,22 @@ def test_observer_rejects_missing_seccomp_or_wrong_effective_limits(tmp_path):
     (proc/"4321"/"status").write_text("Name:\tworker\nSeccomp:\t0\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="seccomp"):
+        observer.observe(CID,spec())
+
+
+def test_observer_rejects_runtime_capability_additions(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    p=payload(); p["HostConfig"]["CapAdd"]=["CAP_SYS_ADMIN"]
+    observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="security options"):
+        observer.observe(CID,spec())
+
+
+def test_observer_rejects_nonzero_kernel_effective_capabilities(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    (proc/"4321"/"status").write_text(
+        "Name:\tworker\nSeccomp:\t2\nCapEff:\t0000000000000001\n"
+    )
+    observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="effective Linux capabilities"):
         observer.observe(CID,spec())
