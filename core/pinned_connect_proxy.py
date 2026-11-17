@@ -15,7 +15,9 @@ class ProxyPolicyError(RuntimeError):
 
 
 def _canonical_host(value: str) -> str:
-    if type(value) is not str or not value or value.endswith(".") or "%" in value:
+    if (type(value) is not str or not value or value.endswith(".") or "%"
+            in value or any(char in value for char in "/?#@:")
+            or any(ord(char) <= 32 or ord(char) == 127 for char in value)):
         raise ProxyPolicyError("invalid CONNECT hostname")
     try:
         ipaddress.ip_address(value)
