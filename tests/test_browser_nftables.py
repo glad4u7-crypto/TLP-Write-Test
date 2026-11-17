@@ -183,7 +183,7 @@ class FakeHostSource:
         return copy.deepcopy(self.rules)
 
 
-def test_parser_accepts_exact_proxy_only_output_policy_and_digest():
+def test_parser_accepts_exact_dual_stack_input_output_policy_and_digest():
     parsed = parse_nftables_egress(
         json.dumps(nftables()), expected_proxy_addresses=PROXY_IPS,
         expected_proxy_port=PROXY_PORT,
@@ -233,13 +233,13 @@ def test_collector_emits_p06_compatible_signed_evidence():
     key = Ed25519PrivateKey.generate()
     envelope = collect_signed_inspector_evidence(
         source, spec, challenge="d" * 64, key_id="host-inspector-prod",
-        signing_key=key, expected_proxy_addresses=[PROXY_IP], now=NOW,
+        signing_key=key, expected_proxy_addresses=PROXY_IPS, now=NOW,
     )
     assert source.calls == ["runtime", "namespace", "nftables"]
     public = key.public_key().public_bytes_raw()
     verified = verify_signed_inspector_evidence(
         spec, envelope, trusted_public_keys={"host-inspector-prod": public},
-        expected_challenge="d" * 64, expected_proxy_addresses=[PROXY_IP], now=NOW,
+        expected_challenge="d" * 64, expected_proxy_addresses=PROXY_IPS, now=NOW,
     )
     assert verified.firewall.default_egress_policy == "drop"
     assert verified.firewall.ruleset_digest == envelope["payload"]["firewall"]["ruleset_digest"]
