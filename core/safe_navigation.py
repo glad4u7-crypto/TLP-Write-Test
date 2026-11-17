@@ -49,6 +49,9 @@ class SafeNavigationController:
         self._request_validator = request_validator
         self._navigating = False
         self._installed = False
+        # Bound-method objects are recreated on attribute access; retain the
+        # exact callback identity required by Playwright unroute().
+        self._route_handler = self._guard
 
     @property
     def context_wide(self) -> bool:
@@ -90,7 +93,7 @@ class SafeNavigationController:
         if not self.context_wide:
             raise SafeNavigationError("Persistent routing requires a BrowserContext.")
         try:
-            self._router.route("**/*", self._guard)
+            self._router.route("**/*", self._route_handler)
         except Exception as exc:
             raise SafeNavigationError("Could not install persistent request policy.") from exc
         self._installed = True
@@ -100,7 +103,7 @@ class SafeNavigationController:
         if not self._installed:
             return
         try:
-            self._router.unroute("**/*", self._guard)
+            self._router.unroute("**/*", self._route_handler)
         except Exception as exc:
             raise SafeNavigationError("Could not remove persistent request policy.") from exc
         finally:
