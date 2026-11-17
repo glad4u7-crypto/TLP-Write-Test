@@ -269,7 +269,14 @@ class LocalOwnerAuthStore:
                     """SELECT salt, verifier, failed_attempts, locked_until
                        FROM local_owner_auth WHERE singleton_id = 1"""
                 ).fetchone()
-                if row is None or current < int(row[3]):
+                if row is None:
+                    db.commit()
+                    return False
+                if current < int(row[3]):
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("passphrase_change_failed", current),
+                    )
                     db.commit()
                     return False
                 actual = self._derive(current_passphrase if isinstance(current_passphrase, str) else "", bytes(row[0]))
@@ -280,6 +287,10 @@ class LocalOwnerAuthStore:
                         """UPDATE local_owner_auth SET failed_attempts = ?, locked_until = ?
                            WHERE singleton_id = 1""",
                         (0 if locked_until else failures, locked_until),
+                    )
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("passphrase_change_failed", current),
                     )
                     db.commit()
                     return False
