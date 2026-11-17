@@ -36,12 +36,15 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Project file creation remains explicit-consent and fresh approval/audit gated; overwrite remains disabled.
 - The action history panel remains separate from task lifecycle/checkpoint history.
 
-## Remaining P85 work
+## Remaining P85 acceptance gates
 
-1. Run the exact-head Python suite, compilation, dependency audit and responsive Android/desktop browser tests; fix any regressions and record the exact tested SHA.
-2. Add further UI-level tests for public page and YouTube forms, including provider errors and no-call-before-submit behavior. The shared network provider's DNS/redirect/SSRF regression suite is already present.
-4. Finish Android-first browser layout and deployment/package documentation. The product direction remains a browser-based web platform; do not turn it into a mandatory Home Screen/native APK install.
-5. Complete integration/security regression review and document external gates separately.
+The scoped code implementation, UI regression coverage, Android browser packaging documentation, and exact-head CI verification are complete. The following require a real device, Owner-operated recovery drill, or independent reviewer and cannot be truthfully simulated by CI:
+
+1. Run the app on a physical Android device and complete the device acceptance checklist.
+2. Perform an Owner-operated backup → clean restore → project-file hash/content verification drill on a separate private destination.
+3. Obtain independent security review before any remote exposure or production deployment.
+
+The delivered Android path remains a Termux-launched loopback browser app, not a signed APK, Play Store release or native Android package.
 
 ## Verification status
 
@@ -50,7 +53,8 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Corrected restore directory creation to explicitly create and chmod both `project-files` and project directories to 0700.
 - CI #363 on commit `597f2933b6eac56eb0627c620b648f243fcb31cd`: **1,522 passed / 9 skipped / 0 failed**; Python compile, dependency audit and responsive browser smoke all PASS.
 - CI #369 on commit `d2b534f2e706ae7d3ab936e1247bca168bfd01ae`: **1,526 passed / 9 skipped / 0 failed**; Python compile, dependency audit and responsive browser smoke all PASS.
-- After #369 completed, additional AppTest coverage was added for explicit-submit Web/Page/YouTube UI behavior and provider-error display, plus a database-reopen persistence assertion for task step progress. These newest tests are not covered by #369; a fresh exact-head CI run is required before P85 can be called verified.
+- After #369, exact-head CI initially found one failing YouTube UI AppTest. The production validation correctly rejected the fixture's non-YouTube `example.org` locator for the `YOUTUBE_SEARCH` capability; the fixture was corrected to use a valid YouTube watch URL.
+- CI #388 on exact head `31794cb60a88c29b9d086348c7c98658d36c7252`: **1,530 passed / 9 skipped / 0 failed**; Python compilation PASS; dependency audit PASS (no known vulnerabilities); responsive Android/desktop browser smoke **9 passed**. Both CI jobs completed successfully.
 - Physical Android acceptance, owner-operated restore drill and independent security review remain separate external gates.
 - PR #13 remains Draft / Open / Unmerged. No merge or deployment is authorized by this checkpoint.
 - Browser/Worker dispatch remains disabled; Auto-Run OFF. No paid provider/API key/charge, payment, purchase, trading or money movement is enabled.
@@ -58,14 +62,11 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 
 ## P85 closeout decision
 
-Implementation work for the scoped P85 code changes is complete on the feature branch. The latest observed PR head when this report was updated is `07a252ce24d2d425ece419d40b732dc93b617845`.
+The scoped P85 implementation and software-level verification are complete on the feature branch. Exact tested PR head: `31794cb60a88c29b9d086348c7c98658d36c7252`. CI #388 completed successfully on this exact SHA: Python suite **1,530 passed / 9 skipped / 0 failed**, compile PASS, dependency audit PASS, responsive browser smoke **9 passed**.
 
-**Do not label P85 fully verified or release-ready yet.** The latest visible successful full CI run is #369 on the earlier commit `d2b534f2e706ae7d3ab936e1247bca168bfd01ae`. The workflow also triggers on branch pushes, but the available workflow-run lookup exposes only pull-request-triggered runs; no exact-head result for the latest branch push could be independently read through the current integration.
-
-Remaining external acceptance gates:
-- Confirm the latest exact-head push run in GitHub Actions and resolve any failures.
-- Run the app on a physical Android device and complete the device acceptance checklist; emulator/desktop browser smoke is not equivalent.
-- Perform an Owner-operated backup → clean restore → project-file hash/content verification drill on a separate private destination.
-- Obtain independent security review before any remote exposure or production deployment.
+**P85 code and CI verification are complete; physical/operational acceptance is not yet complete.** Do not label the app production-ready until the following external gates are completed:
+- Physical Android-device acceptance.
+- Owner-operated backup → clean restore → project-file hash/content verification on a separate private destination.
+- Independent security review before any remote exposure or production deployment.
 
 The Android path delivered in this checkpoint is a Termux-launched loopback browser app, not a signed APK, Play Store release or native Android package. PR #13 remains Draft/Open/Unmerged. No production deployment, remote worker activation, paid provider, payment or execution dispatch is authorized.
