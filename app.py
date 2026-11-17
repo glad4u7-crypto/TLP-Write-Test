@@ -638,7 +638,7 @@ with st.sidebar:
 
     with st.expander("Public Web Research · Read-only"):
         st.caption(
-            "Owner-session public research only. Uses direct HTTPS and bounded "
+            "Authenticated APAA-session public research only. Uses direct HTTPS and bounded "
             "text extraction. No login, cookies, browser automation, uploads, "
             "playlist changes, or website actions."
         )
