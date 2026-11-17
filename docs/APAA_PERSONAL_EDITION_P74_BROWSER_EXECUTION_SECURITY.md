@@ -19,6 +19,7 @@ attestation gate succeeds.
   - `CancellationToken` provides cooperative cancellation.
   - The coordinator enforces a hard wall-clock deadline and requires worker termination to return explicit `True` only after OS process exit and ephemeral storage cleanup are confirmed. A timeout/cancel is never audited as closed when termination is unconfirmed.
   - The worker `run()` contract requires per-job browser context/profile teardown before returning.
+  - Worker results are recursively restricted to JSON-safe values with string keys, finite JSON numbers, bounded nesting and the job's `max_response_bytes` limit.
   - `BrowserExecutionCoordinator.from_attested_runtime()` requires the concrete `AttestedBrowserRuntime` class, then launches through its signed runtime/firewall evidence verifier before accepting a production worker handle; duck-typed substitutes are rejected.
   - `BrowserExecutionCoordinator` requires a worker adapter, performs live
     DNS resolution for every hostname, validates every DNS answer, and passes
@@ -89,8 +90,8 @@ approved before C02 starts.
 
 ## Current checkpoint record
 
-- Latest implementation branch head: `64f2e2a027badcaa2afc0f354d17f9af114f7d9d`.
-- New P74 regression tests authored: 18.
+- Latest implementation branch head: `20e9f3e311ea85adc888aace4c0004932a0bcd61`.
+- New P74 regression tests authored: 20 in `test_browser_execution.py` and 15 in `test_attested_browser_runtime.py` (35 total).
 - Exact-head GitHub combined status and PR workflow lookup returned no check results. Therefore automated PASS is **not verified**.
 - No physical Android/device testing was performed.
 - Browser execution remains disabled until a real isolated worker, host-enforced egress boundary, durable audit adapter, and successful exact-head CI/security verification exist.
