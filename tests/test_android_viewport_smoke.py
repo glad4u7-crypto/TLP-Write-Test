@@ -210,7 +210,11 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
             ".stButton > button, .stFormSubmitButton > button"
           )).map(node => {
             const rect = node.getBoundingClientRect();
-            return {width: rect.width, height: rect.height};
+            return {
+              label: node.innerText || node.getAttribute("aria-label") || node.title || "",
+              width: rect.width,
+              height: rect.height
+            };
           }).filter(rect => rect.width > 0 && rect.height > 0)
         })""")
         assert metrics["documentWidth"] <= metrics["viewport"] + 2, metrics
