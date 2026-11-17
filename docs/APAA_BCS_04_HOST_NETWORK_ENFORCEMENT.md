@@ -168,3 +168,15 @@ The next evidence artifact now records only the relevant non-secret OCI
 inspect fields (read-only root, capability drop, security options, resource
 limits, user, cgroup parent, network mode and state) to identify whether the
 mismatch is a runtime representation issue or a real enforcement defect.
+
+
+### Run #66 — Podman capability-drop representation
+
+After nftables attestation passed, run #66 exposed a Podman representation
+difference: `--cap-drop=ALL` is expanded by Podman inspect into the list of
+capabilities available to that runtime (for this runner, 11 `CAP_*` entries),
+not the literal string `ALL`. The real-host preflight and read-only observer
+now validate a non-empty, unique `CAP_*` drop list, reject any `CapAdd`, and
+independently require kernel `/proc/<pid>/status` `CapEff` to be zero after
+worker start. Regression tests cover capability additions and non-zero
+effective capability masks. This avoids trusting the CLI flag alone.
