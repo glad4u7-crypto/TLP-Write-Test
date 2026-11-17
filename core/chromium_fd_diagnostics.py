@@ -101,7 +101,28 @@ def _parse_status(raw: str) -> dict:
     return out
 
 
-def _read_process(pid: int, proc_root: Path, max_fds_per_process: int) -> dict | None:
+def _process_role(cmdline: bytes) -> str:
+    """Classify Chromium process role without retaining command-line values."""
+    tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\\0") if part]
+    if "--type=zygote" in tokens:
+        return "zygote"
+    if "--type=renderer" in tokens:
+        return "renderer"
+    if "--type=gpu-process" in tokens:
+        return "gpu"
+    if "--utility-sub-type=network.mojom.NetworkService" in tokens:
+        return "network-service"
+    if "--type=utility" in tokens:
+        return "utility"
+    if any(token.endswith("/chromium") or token.endswith("/chrome") for token in tokens[:1]):
+        return "browser-or-launcher"
+    return "other"
+
+
+def _read_process(
+    pid: int, proc_root: Path, max_fds_per_process: int,
+    expected_cgroup_prefix: str | None = None,
+) -> dict | None:
     base = proc_root / str(pid)
     stat_raw = _read_text(base / "stat")
     if stat_raw is None:
@@ -110,6 +131,25 @@ def _read_process(pid: int, proc_root: Path, max_fds_per_process: int) -> dict |
     if identity is None:
         return None
     comm, state_code, ppid = identity
+    if expected_cgroup_prefix is not None:
+        membership = _read_text(base / "cgroup", 4096) or ""
+        unified = next((line.partition("::")[2].strip() for line in membership.splitlines()
+                        if line.startswith("0::")), None)
+        if unified is None or not (
+            unified == expected_cgroup_prefix
+            or unified.startswith(expected_cgroup_prefix.rstrip("/") + "/")
+        ):
+            return None
+    try:
+        executable = Path(os.readlink(base / "exe")).name[:128]
+    except OSError:
+        executable = None
+    cmdline = b""
+    try:
+        cmdline = (base / "cmdline").read_bytes()[:8192]
+    except OSError:
+        pass
+    role = _process_role(cmdline)
     status = _parse_status(_read_text(base / "status") or "")
     try:
         fd_names = sorted(
@@ -131,6 +171,8 @@ def _read_process(pid: int, proc_root: Path, max_fds_per_process: int) -> dict |
         "pid": pid,
         "ppid": ppid,
         "comm": comm,
+        "executable": executable,
+        "role": role,
         "state_code": state_code,
         "start_time_ticks": start_time,
         "status": status,
@@ -174,13 +216,20 @@ def snapshot_cgroup(
     if type(max_fds_per_process) is not int or not 1 <= max_fds_per_process <= 2048:
         raise ValueError("max_fds_per_process must be between 1 and 2048")
     root = Path(cgroup_dir)
-    if not root.is_absolute() or ".." in root.parts or not root.is_dir():
+    if not root.is_absolute() or ".." in root.parts or root.is_symlink() or not root.is_dir():
         raise ValueError("cgroup_dir must be an existing absolute directory")
     proc = Path(proc_root)
+    expected_cgroup_prefix = None
+    if proc == Path("/proc"):
+        mount = Path("/sys/fs/cgroup").resolve()
+        try:
+            expected_cgroup_prefix = "/" + root.resolve().relative_to(mount).as_posix().strip("/")
+        except ValueError:
+            raise ValueError("production cgroup must be beneath /sys/fs/cgroup")
     pids = _cgroup_pids(root, max_processes)
     processes = []
     for pid in pids:
-        process = _read_process(pid, proc, max_fds_per_process)
+        process = _read_process(pid, proc, max_fds_per_process, expected_cgroup_prefix)
         if process is not None:
             processes.append(process)
     return {
