@@ -85,6 +85,21 @@ def test_approval_correlation_is_one_per_job_and_append_only(tmp_path):
             )
 
 
+def test_same_approval_reference_cannot_be_correlated_to_two_jobs(tmp_path):
+    ledger = make_ledger(tmp_path)
+    ledger.claim("job_approval0006", "a" * 64, session_id="worker-session-123456")
+    ledger.claim("job_approval0007", "e" * 64, session_id="another-worker-session-123")
+    ledger.record_approval_correlation(
+        "job_approval0006", approval_ref="b" * 64, owner_ref="c" * 64,
+        session_ref="d" * 64, request_digest="a" * 64,
+    )
+    with pytest.raises(RecoveryLedgerError, match="already exists"):
+        ledger.record_approval_correlation(
+            "job_approval0007", approval_ref="b" * 64, owner_ref="c" * 64,
+            session_ref="d" * 64, request_digest="e" * 64,
+        )
+
+
 def test_approval_correlation_tampering_blocks_history_verification_and_dispatch(tmp_path):
     ledger = make_ledger(tmp_path)
     ledger.claim("job_approval0004", "a" * 64, session_id="worker-session-123456")
