@@ -12,19 +12,16 @@ if ! command -v python >/dev/null 2>&1; then
 fi
 
 PORT="${APAA_PORT:-8501}"
-if [[ ! "$PORT" =~ ^[0-9]{1,5}$ ]] || (( PORT < 1024 || PORT > 65535 )); then
-  echo "APAA_PORT must be a TCP port from 1024 to 65535." >&2
-  exit 1
-fi
+DATA_DIR="${APAA_PERSONAL_DATA_DIR:-${HOME:?HOME must be set}/.apaa_personal}"
 
-export APAA_PERSONAL_DATA_DIR="${APAA_PERSONAL_DATA_DIR:-$HOME/.apaa_personal}"
-mkdir -p "$APAA_PERSONAL_DATA_DIR"
-chmod 700 "$APAA_PERSONAL_DATA_DIR"
+# Fail closed before starting Streamlit if the local data path or runtime is unsafe.
+python scripts/apaa_android_preflight.py --data-dir "$DATA_DIR" --port "$PORT"
+export APAA_PERSONAL_DATA_DIR="$DATA_DIR"
 
 echo "Starting APAA on this Android device only."
 echo "Open http://127.0.0.1:$PORT in the Android browser."
 echo "Keep this terminal session running. Press Ctrl+C to stop APAA."
-exec python -m streamlit run app.py \
+exec python -m streamlit run "$ROOT_DIR/app.py" \
   --server.address 127.0.0.1 \
   --server.port "$PORT" \
   --server.headless true
