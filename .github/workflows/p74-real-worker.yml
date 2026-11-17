@@ -43,7 +43,7 @@ jobs:
       - name: Install disposable-host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y podman nftables iproute2 tcpdump uidmap slirp4netns fuse-overlayfs elfutils
+          sudo apt-get install -y podman nftables iproute2 tcpdump uidmap slirp4netns fuse-overlayfs elfutils debuginfod
           podman --version
           nft --version
           ip -Version
