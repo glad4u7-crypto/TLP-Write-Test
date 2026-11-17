@@ -413,4 +413,4 @@ def test_worker_result_must_be_json_safe_and_within_response_limit(result):
             valid_job(max_response_bytes=128),
             resolver=lambda host: ["93.184.216.34"],
         )
-    assert events[-1]["event"] == "session_cleanup_unconfirmed"
+    assert events[-1]["event"] == "session_closed"
