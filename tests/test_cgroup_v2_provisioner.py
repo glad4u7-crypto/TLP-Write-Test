@@ -103,7 +103,7 @@ def test_remove_refuses_nested_cgroup_with_live_thread(tmp_path, monkeypatch):
     child = path / "libpod-test"
     child.mkdir()
     (child / "cgroup.procs").write_text("")
-    (child / "cgroup.threads").write_text("4321\\n")
+    (child / "cgroup.threads").write_text("4321\n")
     with pytest.raises(IsolationEnforcementError, match="processes or threads"):
         provisioner.remove(path)
     assert path.is_dir()
