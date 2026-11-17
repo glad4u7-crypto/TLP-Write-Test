@@ -9,6 +9,9 @@ from core.personal_runtime import (
 )
 from core.persistent_projects import PersistentProjectRegistry
 from core.project_actions import build_project_gateway
+from core.identity import Principal
+from core.memory import SQLiteMemoryStore
+from core.project_checkpoint_access import OwnerProjectCheckpointAccess
 from core.sqlite_project_store import SQLiteProjectStore
 from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
 
@@ -97,3 +100,48 @@ def test_personal_runtime_paths_keep_all_durable_state_under_private_root(tmp_pa
     assert paths.signing_key.exists()
     assert paths.projects_db.parent == paths.data_dir
     assert paths.audit_log.parent == paths.data_dir
+
+
+
+def test_local_personal_runtime_memory_and_checkpoints_survive_restart(tmp_path):
+    paths, _, projects, authority, _, registry, gateway = _personal_runtime(tmp_path)
+    payload = {"name": "Checkpoint workspace", "description": ""}
+    receipt = authority.issue(
+        "create_project", payload, tenant=PERSONAL_OWNER_TENANT,
+        session_scope="local-ui-session",
+    )
+    result = gateway.execute(
+        "create_project", payload, approval_receipt=receipt,
+        tenant=PERSONAL_OWNER_TENANT,
+    )
+    assert result.executed is True
+    project_id = result.output.project_id
+
+    owner = Principal(
+        subject=PERSONAL_OWNER_TENANT.subject,
+        issuer=PERSONAL_OWNER_TENANT.issuer,
+        authenticated=True,
+        roles=("owner",),
+    )
+    memory = SQLiteMemoryStore(paths.memory_db)
+    checkpoints = OwnerProjectCheckpointAccess(memory, projects, owner)
+    saved = checkpoints.save_checkpoint(
+        project_id=project_id,
+        label="P73 persistence",
+        summary="Local task state is durable.",
+        next_action="Run Android acceptance.",
+        status="active",
+        consent=True,
+    )
+    assert saved.project_id == project_id
+
+    reopened_memory = SQLiteMemoryStore(paths.memory_db)
+    reopened_projects = SQLiteProjectStore(paths.projects_db)
+    reopened_checkpoints = OwnerProjectCheckpointAccess(
+        reopened_memory, reopened_projects, owner
+    )
+    recovered = reopened_checkpoints.latest_checkpoint(project_id)
+    assert recovered is not None
+    assert recovered.checkpoint_id == saved.checkpoint_id
+    assert recovered.summary == "Local task state is durable."
+    assert recovered.next_action == "Run Android acceptance."
