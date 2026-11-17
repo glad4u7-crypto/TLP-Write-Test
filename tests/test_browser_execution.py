@@ -268,21 +268,20 @@ def test_hard_deadline_terminates_worker_and_audits_timeout():
 
 
 
-def test_attested_runtime_factory_verifies_before_returning_coordinator():
-    worker = FakeWorker()
+def test_attested_runtime_factory_rejects_duck_typed_bypass():
     calls = []
 
-    class Gate:
+    class FakeGate:
         def launch(self, evidence, *, challenge, now):
-            calls.append((evidence, challenge, now))
-            return worker
+            calls.append(True)
+            return FakeWorker()
 
-    coordinator = BrowserExecutionCoordinator.from_attested_runtime(
-        Gate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
-        audit=lambda event: None,
-    )
-    assert isinstance(coordinator, BrowserExecutionCoordinator)
-    assert calls == [({"signed": "evidence"}, "a" * 64, 1234)]
+    with pytest.raises(TypeError, match="concrete AttestedBrowserRuntime"):
+        BrowserExecutionCoordinator.from_attested_runtime(
+            FakeGate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
+            audit=lambda event: None,
+        )
+    assert calls == []
 
 
 def test_attested_runtime_factory_fails_closed_on_invalid_worker():
