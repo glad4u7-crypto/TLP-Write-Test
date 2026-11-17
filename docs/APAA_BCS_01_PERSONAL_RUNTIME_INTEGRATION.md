@@ -17,7 +17,7 @@ BCS-01 connects the existing offline Browser Security policy to the Personal Edi
 
 ## BCS-01 integration
 1. The trusted app controller creates `BrowserControlBoundary` only after its authenticated Owner gate and tenant binding.
-2. Every approval request re-checks the active Owner session and requires an explicit Owner confirmation flag from trusted UI code.
+2. Every approval request re-checks the active Owner session and requires an explicit Owner confirmation flag from trusted UI code. Approval request, issuance and denied-confirmation events are appended to the durable Action Audit without recording the URL, origin list or page data.
 3. The request is validated by `validate_browser_job`; the receipt binds the canonical job, Owner tenant and current session.
 4. The receipt lifetime is at most 60 seconds and cannot exceed the job expiry.
 5. Dispatch revalidates the job and consumes the durable one-time receipt through the existing ExecutionGateway.
@@ -32,9 +32,12 @@ BCS-01 connects the existing offline Browser Security policy to the Personal Edi
 - Physical Android qualification and real isolated-worker egress qualification remain separate, deferred gates.
 
 ## Acceptance
-BCS-01 is not complete until exact-head CI passes, tests demonstrate owner/session/tenant binding, receipt expiry and replay rejection, payload tampering rejection, Action Audit persistence and the presence of the guarded disabled handler, explicit disabled outcome, one-time approval replay rejection, and durable denial audit. Browser execution must remain disabled after this checkpoint.
+BCS-01 is not complete until exact-head CI passes, tests demonstrate owner/session/tenant binding, receipt expiry and replay rejection, payload tampering rejection, Action Audit persistence and the presence of the guarded disabled handler, explicit disabled outcome, approval request/issuance audit, one-time approval replay rejection, and durable denial audit. Browser execution must remain disabled after this checkpoint.
 
 
 ## Handler registration correction
 
 The original empty handler registry caused an expected but ambiguous `No trusted handler is registered` result even after valid Owner approval. BCS-01 now registers a typed disabled handler. `ExecutionGateway` recognizes `ActionHandlerDisabled`, writes a durable denial event, returns `executed=False`, and does not classify this intentional pre-side-effect stop as an uncertain handler failure. This fixes the registry error without enabling browser execution. The actual host/container adapter and independently verified network egress boundary remain absent and are not simulated.
+
+
+Approval Audit: `browser_approval_requested`, `browser_approval_issued`, `browser_approval_missing_owner_confirmation`, `browser_approval_owner_session_denied` and `browser_approval_job_validation_denied` are metadata-only Action Audit reason codes. No URL, hostname, page content, credential, cookie, form value or file content is included.
