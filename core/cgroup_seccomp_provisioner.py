@@ -133,10 +133,11 @@ class CgroupV2Provisioner:
                         raise IsolationEnforcementError("worker cgroup subtree contains a symlink")
                 try:
                     members = (current_path / "cgroup.procs").read_text(encoding="ascii").split()
+                    threads = (current_path / "cgroup.threads").read_text(encoding="ascii").split()
                 except OSError as exc:
                     raise IsolationEnforcementError("worker descendant cgroup membership is unreadable") from exc
-                if members:
-                    raise IsolationEnforcementError("worker cgroup subtree still contains processes")
+                if members or threads:
+                    raise IsolationEnforcementError("worker cgroup subtree still contains processes or threads")
                 directories.append(current_path)
             for directory in sorted(directories[1:], key=lambda item: len(item.parts), reverse=True):
                 directory.rmdir()
