@@ -106,20 +106,18 @@ def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
 
 
 def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None:
-    container_pid = failure.get("fd_ownership_log_pid")
-    if type(container_pid) is not int:
-        return None
+    log_pid = failure.get("fd_ownership_log_pid")
     source_frames = failure.get("fd_ownership_stack_frames", [])
-    matches = []
+    pid_matches = []
+    pc_matches = []
+
     for snapshot_index, snapshot in enumerate(diagnostics.get("snapshots", [])):
         for process in snapshot.get("processes", []):
             namespace_pids = process.get("status", {}).get("nspid", "").split()
             matching_indices = [
                 index for index, value in enumerate(namespace_pids)
-                if value.isdigit() and int(value) == container_pid
+                if value.isdigit() and type(log_pid) is int and int(value) == log_pid
             ]
-            if not matching_indices:
-                continue
             frames = []
             mapped_count = 0
             for frame in source_frames:
@@ -142,19 +140,14 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
                     except (KeyError, TypeError, ValueError):
                         continue
                 frames.append(mapped_frame)
-            nspid_index = min(matching_indices)
-            if mapped_count == len(source_frames) and source_frames:
-                confidence = "all_stack_frames_match_executable"
-            elif mapped_count:
-                confidence = "partial_stack_frame_match"
-            else:
-                confidence = "pid_namespace_match_only"
-            matches.append({
+
+            candidate = {
                 "snapshot_index": snapshot_index,
                 "snapshot_wall_time_ns": snapshot.get("wall_time_ns"),
                 "host_pid": process["pid"],
-                "container_pid": container_pid,
-                "nspid_match_index": nspid_index,
+                "container_pid": namespace_pids[1] if len(namespace_pids) > 1 else None,
+                "log_pid_namespace_match": bool(matching_indices),
+                "nspid_match_index": min(matching_indices) if matching_indices else None,
                 "ppid": process["ppid"],
                 "comm": process["comm"],
                 "executable": process.get("executable"),
@@ -164,22 +157,42 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
                 "executable_mappings": process.get("executable_mappings", []),
                 "stack_frames_with_module_offsets": frames,
                 "stack_frame_match_count": mapped_count,
-                "mapping_confidence": confidence,
                 "status": process.get("status"),
-            })
-    if not matches:
+            }
+            if matching_indices:
+                pid_matches.append(candidate)
+            if mapped_count:
+                pc_matches.append(candidate)
+
+    def _best(candidates: list[dict]) -> dict | None:
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda item: (
+                item["stack_frame_match_count"],
+                item["nspid_match_index"] == 1 if item["nspid_match_index"] is not None else False,
+                item["snapshot_wall_time_ns"] or 0,
+                item["snapshot_index"],
+            ),
+        )
+
+    log_process = _best(pid_matches)
+    stack_process = _best(pc_matches)
+    primary = stack_process or log_process
+    if primary is None:
         return None
-    # Prefer the process whose executable mapping contains the crash PCs.
-    # Then prefer the outer container PID namespace, then the latest snapshot.
-    return max(
-        matches,
-        key=lambda item: (
-            item["stack_frame_match_count"],
-            item["nspid_match_index"] == 1,
-            item["snapshot_wall_time_ns"] or 0,
-            item["snapshot_index"],
-        ),
-    )
+    result = dict(primary)
+    result["log_pid"] = log_pid
+    result["log_process_mapping"] = log_process
+    result["stack_process_mapping"] = stack_process
+    if stack_process and stack_process["stack_frame_match_count"] == len(source_frames) and source_frames:
+        result["mapping_confidence"] = "all_stack_frames_match_candidate_process_image"
+    elif stack_process:
+        result["mapping_confidence"] = "partial_stack_frames_match_candidate_process_image"
+    else:
+        result["mapping_confidence"] = "log_pid_only_no_stack_mapping"
+    return result
 
 
 def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
