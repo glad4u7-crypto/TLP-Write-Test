@@ -227,3 +227,22 @@ def test_chromium_qualification_disables_crashpad_without_disabling_browser_sand
     source = inspect.getsource(qualification)
     assert '"--disable-crashpad-for-testing"' in source
     assert '"--no-sandbox"' not in source
+
+
+def test_chromium_failure_diagnostics_are_bounded_and_redacted():
+    from subprocess import CompletedProcess
+
+    page = CompletedProcess(
+        ["chromium"], 0,
+        "<html>ERR_TUNNEL_CONNECTION_FAILED https://example.com/private?token=hidden</html>",
+        "Authorization: Bearer secret-token user@example.com",
+    )
+    details = qualification._chromium_failure_details(page, "ipv4", "Example Domain")
+
+    assert details["family"] == "ipv4"
+    assert details["exit_code"] == 0
+    assert details["stdout_html_present"] is True
+    assert details["expected_marker_present"] is False
+    serialized = repr(details)
+    for secret in ("hidden", "secret-token", "user@example.com", "/private"):
+        assert secret not in serialized
