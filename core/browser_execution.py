@@ -250,6 +250,8 @@ class BrowserExecutionCoordinator:
                 return False
             token, session_id, termination_confirmed, completed = active
             changed = token.cancel()
+        if not changed:
+            return False
         termination_error = None
         if self._worker is not None:
             try:
