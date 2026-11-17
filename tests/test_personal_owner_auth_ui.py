@@ -102,3 +102,35 @@ def test_failed_owner_login_does_not_initialize_agent_capabilities(tmp_path, mon
     assert "approval_authority" not in app.session_state
     assert "execution_gateway" not in app.session_state
     assert any("authentication failed" in item.value.lower() for item in app.error)
+
+
+def test_owner_can_change_passphrase_from_sidebar_and_must_sign_in_again(tmp_path, monkeypatch):
+    app = _unlocked_app(tmp_path, monkeypatch)
+    new_passphrase = "new test-only owner passphrase"
+
+    for label, value in (
+        ("Current Owner passphrase", PASSPHRASE),
+        ("New Owner passphrase", new_passphrase),
+        ("Confirm new Owner passphrase", new_passphrase),
+    ):
+        matches = [item for item in app.text_input if item.label == label]
+        assert len(matches) == 1
+        matches[0].set_value(value)
+
+    _click(app, "Change passphrase")
+
+    auth = LocalOwnerAuthStore(tmp_path / ".apaa_personal" / "owner-auth.sqlite3")
+    assert auth.authenticate(PASSPHRASE) is False
+    assert auth.authenticate(new_passphrase) is True
+    assert "approval_authority" not in app.session_state
+    assert "execution_gateway" not in app.session_state
+    assert "apaa_local_authenticated_at" not in app.session_state
+    assert any("APAA is locked" in item.value for item in app.warning)
+    assert "passphrase_changed" in [event for event, _ in auth.list_events()]
+
+    owner_input = [item for item in app.text_input if item.label == "Owner passphrase"]
+    assert len(owner_input) == 1
+    owner_input[0].set_value(new_passphrase)
+    _click(app, "Unlock APAA")
+    assert "approval_authority" in app.session_state
+    assert "execution_gateway" in app.session_state
