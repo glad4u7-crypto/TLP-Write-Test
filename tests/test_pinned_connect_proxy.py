@@ -11,7 +11,7 @@ def test_proxy_canonicalizes_exact_idna_hostname():
 
 
 @pytest.mark.parametrize("host", [
-    "", "example.com.", "example.com:443", "user@example.com",
+    "", "example.com.", "example.com:443", "user@example.com", "127.0.0.1",
     "127.0.0.1", "[::1]", "example.com/path", "example.com%00",
 ])
 def test_proxy_rejects_non_hostname_authorities(host):
