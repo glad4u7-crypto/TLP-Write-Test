@@ -17,7 +17,8 @@ attestation gate succeeds.
   - Redirects are not followed by this transport. Every redirect must be
     re-authorized and resolved to a fresh pin set by its caller.
   - `CancellationToken` provides cooperative cancellation.
-  - The coordinator enforces a hard wall-clock deadline and calls worker termination on timeout; execution occurs behind a daemon supervisor thread so a stuck adapter does not block the caller after termination is requested.
+  - The coordinator enforces a hard wall-clock deadline and requires worker termination to return explicit `True` only after OS process exit and ephemeral storage cleanup are confirmed. A timeout/cancel is never audited as closed when termination is unconfirmed.
+  - The worker `run()` contract requires per-job browser context/profile teardown before returning.
   - `BrowserExecutionCoordinator.from_attested_runtime()` launches through the signed runtime/firewall attestation gate before accepting a production worker handle.
   - `BrowserExecutionCoordinator` requires a worker adapter, performs live
     DNS resolution for every hostname, validates every DNS answer, and passes
@@ -32,7 +33,7 @@ attestation gate succeeds.
 - `tests/test_browser_execution.py`
   - Covers TLS verification requirements, pinned IP validation, private/mixed
     DNS rejection, fail-closed worker configuration, audit failures, runtime
-    result validation, cancellation, hard timeout termination and session cleanup.
+    result validation, cancellation, hard timeout termination and cleanup confirmation.
 
 ## Required production adapter contract
 
