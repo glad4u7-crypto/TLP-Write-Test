@@ -67,7 +67,12 @@ def test_target_class_is_sanitized(target, expected):
 
 def test_snapshot_captures_process_and_sanitized_fd_metadata(tmp_path, monkeypatch):
     proc, cgroup = _proc_fixture(tmp_path)
-    real_stat = os.stat\n    def fake_stat(path, *args, **kwargs):\n        if str(path).endswith("/fd/1"):\n            return real_stat("/dev/null")\n        return real_stat(path, *args, **kwargs)\n    monkeypatch.setattr("core.chromium_fd_diagnostics.os.stat", fake_stat)\n    result = snapshot_cgroup(cgroup, proc_root=proc)\n    assert result["process_count_observed"] == 1
+    real_stat = os.stat
+    def fake_stat(path, *args, **kwargs):
+        if str(path).endswith("/fd/1"):
+            return real_stat("/dev/null")
+        return real_stat(path, *args, **kwargs)
+    monkeypatch.setattr("core.chromium_fd_diagnostics.os.stat", fake_stat)\n    result = snapshot_cgroup(cgroup, proc_root=proc)\n    assert result["process_count_observed"] == 1
     process = result["processes"][0]
     assert process["comm"] == "chrome (network)"
     assert process["ppid"] == 1
