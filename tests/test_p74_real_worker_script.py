@@ -219,3 +219,11 @@ def test_user_namespace_probe_fails_closed_when_mapping_or_chroot_fails(monkeypa
     evidence = qualification._probe_user_namespace("worker-container")
     assert evidence["user_namespace_chroot_available"] is False
     assert evidence["exit_code"] == 12
+
+
+def test_chromium_qualification_disables_crashpad_without_disabling_browser_sandbox():
+    import inspect
+
+    source = inspect.getsource(qualification)
+    assert '"--disable-crashpad-for-testing"' in source
+    assert '"--no-sandbox"' not in source
