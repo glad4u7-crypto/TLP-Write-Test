@@ -327,6 +327,20 @@ def main() -> int:
         state = inspected.get("State") or {}
         security = host.get("SecurityOpt") or []
         cap_drop = host.get("CapDrop") or []
+        # Keep only the small, non-secret fields needed to diagnose a failed
+        # runtime-policy assertion in the sanitized evidence artifact.
+        evidence["oci_inspect_security"] = {
+            "readonly_rootfs": host.get("ReadonlyRootfs"),
+            "cap_drop": cap_drop,
+            "security_options": security,
+            "memory": host.get("Memory"),
+            "pids_limit": host.get("PidsLimit"),
+            "nano_cpus": host.get("NanoCpus"),
+            "user": config.get("User"),
+            "cgroup_parent": host.get("CgroupParent"),
+            "network_mode": host.get("NetworkMode"),
+            "state_status": state.get("Status"),
+        }
         expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
         if not host.get("ReadonlyRootfs") or "ALL" not in cap_drop:
             raise RuntimeError("OCI inspect did not confirm read-only rootfs and all capabilities dropped")
