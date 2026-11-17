@@ -1203,6 +1203,14 @@ with st.expander("Read-only Web & YouTube Research", expanded=False):
         except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
             st.error(f"YouTube search was blocked or unavailable: {exc}")
 
+def _resume_task_from_checkpoint(next_action: str) -> None:
+    """Prefill the planner with an Owner-selected checkpoint next action only."""
+    st.session_state["structured_task_input"] = next_action
+    st.session_state.pop("structured_task_plan", None)
+    st.session_state.pop("structured_task_source", None)
+    st.session_state.pop("structured_task_clarification", None)
+
+
 st.header("Task Workspace")
 task = st.text_area(
     "Describe a task",
@@ -1553,11 +1561,24 @@ else:
                 format_func=lambda value: next(p.name for p in project_options if p.project_id == value),
                 key="recover_checkpoint_project",
             )
-            recovered = checkpoint_access.latest_checkpoint(selected_checkpoint_project)
-            if recovered:
-                st.write(f"**{recovered.label} · {recovered.status}**")
-                st.write(recovered.summary)
-                st.info("Next action: " + recovered.next_action)
+            checkpoint_history = memory_store.list_checkpoints(
+                tenant, selected_checkpoint_project, limit=50
+            )
+            if checkpoint_history:
+                st.caption(f"Task history · {len(checkpoint_history)} recent checkpoint(s)")
+                for history_item in checkpoint_history:
+                    with st.container(border=True):
+                        st.write(f"**{history_item.label} · {history_item.status.upper()}**")
+                        st.caption(f"Updated: {history_item.updated_at}")
+                        st.write(history_item.summary)
+                        st.caption("Next action: " + history_item.next_action)
+                        if history_item.status in {"active", "blocked"}:
+                            st.button(
+                                "Resume in Task Workspace",
+                                key=f"resume_checkpoint_{history_item.checkpoint_id}",
+                                on_click=_resume_task_from_checkpoint,
+                                args=(history_item.next_action,),
+                            )
             else:
                 st.caption("No checkpoint exists for this project yet.")
         else:
