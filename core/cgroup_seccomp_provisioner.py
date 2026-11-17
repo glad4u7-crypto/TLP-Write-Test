@@ -1,4 +1,4 @@
-"""Cgroup v2 limits and strict seccomp-profile preflight for APAA workers."""
+"""Cgroup v2 limits and deny-by-default seccomp preflight for APAA workers."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +13,7 @@ class IsolationEnforcementError(RuntimeError):
 
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 _ALLOWED_DEFAULT_ACTIONS = {"SCMP_ACT_ERRNO", "SCMP_ACT_KILL", "SCMP_ACT_KILL_PROCESS"}
+_CGROUP_ROOT = Path("/sys/fs/cgroup")
 
 
 @dataclass(frozen=True)
@@ -34,31 +35,39 @@ class CgroupLimits:
 
 
 class CgroupV2Provisioner:
-    """Writes only within an explicitly delegated cgroup-v2 subtree."""
+    """Creates a bounded parent cgroup for Podman below an explicitly delegated subtree."""
 
     def __init__(self, delegated_root: str = "/sys/fs/cgroup/apaa"):
         root = Path(delegated_root)
-        if not root.is_absolute() or ".." in root.parts or root == Path("/sys/fs/cgroup"):
+        if not root.is_absolute() or ".." in root.parts or root == _CGROUP_ROOT:
             raise ValueError("a dedicated delegated cgroup-v2 subtree is required")
         self.root = root
 
-    def create(self, worker_id: str, limits: CgroupLimits = CgroupLimits()) -> Path:
-        if not _NAME.fullmatch(worker_id):
-            raise ValueError("invalid worker_id")
-        unified_root = Path("/sys/fs/cgroup")
-        if not (unified_root / "cgroup.controllers").is_file():
-            raise IsolationEnforcementError("unified cgroup v2 is required")
-        if not self.root.is_dir():
-            raise IsolationEnforcementError("dedicated delegated cgroup subtree is unavailable")
+    def _verified_root(self) -> Path:
         try:
-            available = set((self.root / "cgroup.controllers").read_text(encoding="ascii").split())
-            enabled = set((self.root / "cgroup.subtree_control").read_text(encoding="ascii").split())
+            resolved_root = self.root.resolve(strict=True)
+            resolved_cgroup_root = _CGROUP_ROOT.resolve(strict=True)
+        except OSError as exc:
+            raise IsolationEnforcementError("delegated cgroup subtree is unavailable") from exc
+        if not resolved_root.is_relative_to(resolved_cgroup_root) or resolved_root == resolved_cgroup_root:
+            raise IsolationEnforcementError("delegated cgroup subtree escapes the cgroup v2 mount")
+        if not (_CGROUP_ROOT / "cgroup.controllers").is_file():
+            raise IsolationEnforcementError("unified cgroup v2 is required")
+        return resolved_root
+
+    def create(self, worker_id: str, limits: CgroupLimits = CgroupLimits()) -> Path:
+        if type(worker_id) is not str or not _NAME.fullmatch(worker_id):
+            raise ValueError("invalid worker_id")
+        root = self._verified_root()
+        try:
+            available = set((root / "cgroup.controllers").read_text(encoding="ascii").split())
+            enabled = set((root / "cgroup.subtree_control").read_text(encoding="ascii").split())
         except OSError as exc:
             raise IsolationEnforcementError("delegated cgroup controllers cannot be inspected") from exc
         required = {"cpu", "memory", "pids"}
         if not required.issubset(available) or not required.issubset(enabled):
             raise IsolationEnforcementError("cpu, memory and pids controllers must be delegated and enabled")
-        target = self.root / worker_id
+        target = root / worker_id
         try:
             target.mkdir(mode=0o700, parents=False, exist_ok=False)
             (target / "memory.max").write_text(str(limits.memory_max), encoding="ascii")
@@ -76,8 +85,9 @@ class CgroupV2Provisioner:
         return target
 
     def attach(self, cgroup_path: str | Path, pid: int) -> None:
+        root = self._verified_root()
         path = Path(cgroup_path)
-        if path.parent != self.root or not _NAME.fullmatch(path.name):
+        if not path.is_absolute() or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name):
             raise ValueError("cgroup path is outside the delegated worker subtree")
         if type(pid) is not int or pid <= 1:
             raise ValueError("worker PID is invalid")
@@ -85,6 +95,18 @@ class CgroupV2Provisioner:
             (path / "cgroup.procs").write_text(str(pid), encoding="ascii")
         except OSError as exc:
             raise IsolationEnforcementError("worker could not be attached to its cgroup") from exc
+
+    def remove(self, cgroup_path: str | Path) -> None:
+        root = self._verified_root()
+        path = Path(cgroup_path)
+        if not path.is_absolute() or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name):
+            raise ValueError("cgroup path is outside the delegated worker subtree")
+        try:
+            if (path / "cgroup.procs").read_text(encoding="ascii").strip():
+                raise IsolationEnforcementError("worker cgroup still contains processes")
+            path.rmdir()
+        except OSError as exc:
+            raise IsolationEnforcementError("worker cgroup cleanup failed or still has children") from exc
 
     @staticmethod
     def _verify(path: Path, limits: CgroupLimits) -> None:
