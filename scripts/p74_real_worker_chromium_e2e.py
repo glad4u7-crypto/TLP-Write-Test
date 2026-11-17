@@ -119,7 +119,7 @@ def _probe_proxy_outage(command: list[str], expected_marker: str, description: s
     ), None)
     if proxy_error is None:
         diagnostic = " ".join(output.split())
-        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)[:240]
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)[:240]
         digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
         raise RuntimeError(
             f"proxy outage probe did not reach a Chromium proxy failure: {description} "
