@@ -87,9 +87,12 @@ class SQLiteBrowserRecoveryLedger:
             raise RecoveryLedgerError("recovery ledger initialization failed") from exc
 
     def _connect(self):
-        db = sqlite3.connect(self.path, timeout=5.0, isolation_level="IMMEDIATE")
+        # Explicit transaction control makes SELECT-then-UPDATE transitions
+        # serializable across threads and independent processes.
+        db = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         db.execute("PRAGMA trusted_schema=OFF")
         db.execute("PRAGMA synchronous=FULL")
+        db.execute("PRAGMA busy_timeout=5000")
         return db
 
     @contextmanager
@@ -98,6 +101,7 @@ class SQLiteBrowserRecoveryLedger:
         db = self._connect()
         try:
             with db:
+                db.execute("BEGIN IMMEDIATE")
                 yield db
         finally:
             db.close()
@@ -121,7 +125,7 @@ class SQLiteBrowserRecoveryLedger:
 
     def dispatch_blocked(self) -> bool:
         try:
-            with self._connect() as db:
+            with self._database() as db:
                 row = db.execute("SELECT value FROM browser_control WHERE key='dispatch_blocked'").fetchone()
                 return bool(row and row[0] == "1")
         except sqlite3.Error as exc:
@@ -152,7 +156,7 @@ class SQLiteBrowserRecoveryLedger:
             raise ValueError("session ID is invalid")
         now = self._now()
         try:
-            with self._lock, self._connect() as db:
+            with self._lock, self._database() as db:
                 blocked = db.execute(
                     "SELECT value FROM browser_control WHERE key='dispatch_blocked'"
                 ).fetchone()
@@ -230,7 +234,7 @@ class SQLiteBrowserRecoveryLedger:
 
     def get(self, job_id: str) -> dict[str, object] | None:
         try:
-            with self._connect() as db:
+            with self._database() as db:
                 row = db.execute(
                     "SELECT job_id,request_digest,state,created_at,updated_at,session_id,outcome_code "
                     "FROM browser_jobs WHERE job_id=?", (job_id,)
