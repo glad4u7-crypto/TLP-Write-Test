@@ -503,3 +503,26 @@ def test_chromium_dynamic_close_symbol_is_parsed_and_stack_pc_annotated(monkeypa
         "symbol_offset": "0x9c63400",
         "interpretation": "near_exported_close_symbol_candidate",
     }]
+
+
+
+def test_disassembly_helper_is_bounded_and_uses_only_chromium_offsets(monkeypatch):
+    from subprocess import CompletedProcess
+
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return CompletedProcess(command, 0, "0000000009c5a100 <close>:\\n  9c5a100: 48 89 e5 mov %rsp,%rbp\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    failure = {"process_mapping": {"stack_frames_with_module_offsets": [
+        {"frame": 0, "module": "chromium", "module_offset": "0x9c6343e"},
+        {"frame": 1, "module": "chromium", "module_offset": "0x9c5a19c"},
+        {"frame": 2, "module": "libc.so.6", "module_offset": "0x1234"},
+    ]}}
+    windows = qualification._disassemble_chromium_stack("worker-container", failure)
+    assert len(windows) == 2
+    assert len(commands) == 2
+    assert all("objdump" in command for command in commands)
+    assert all("--start-address=" in " ".join(command) for command in commands)
