@@ -18,6 +18,7 @@ attestation gate succeeds.
     re-authorized and resolved to a fresh pin set by its caller.
   - `CancellationToken` provides cooperative cancellation.
   - The coordinator enforces a hard wall-clock deadline and calls worker termination on timeout; execution occurs behind a daemon supervisor thread so a stuck adapter does not block the caller after termination is requested.
+  - `BrowserExecutionCoordinator.from_attested_runtime()` launches through the signed runtime/firewall attestation gate before accepting a production worker handle.
   - `BrowserExecutionCoordinator` requires a worker adapter, performs live
     DNS resolution for every hostname, validates every DNS answer, and passes
     the complete pin set to the worker.
@@ -79,6 +80,7 @@ or deployment are enabled.
 
 Automated tests are added but must pass on the exact resulting branch head.
 Do not mark P74 complete until full Python CI and browser security smoke checks
-pass. Physical Android testing remains excluded from this checkpoint unless
+pass, and the production adapter has passed independent container, firewall,
+TLS, redirect and direct-egress-bypass verification. Physical Android testing remains excluded from this checkpoint unless
 the user separately authorizes it. C01 must be completed and explicitly
 approved before C02 starts.
