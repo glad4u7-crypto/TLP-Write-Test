@@ -40,7 +40,7 @@ def fixture():
       rules=[
        rule("input",m(src,ip),m("tcp.sport",3128),m("ct.state",{"set":["established","related"]},"in")),
        rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",{"set":["established","related"]},"in")),
-       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state","new")),
+       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state","new","in")),
       ]
       items.extend(rules)
     return {"nftables":items}
