@@ -253,3 +253,35 @@ def test_chromium_failure_diagnostics_are_bounded_and_redacted():
 def test_chromium_uses_explicit_plain_http_proxy_uri_for_both_address_families():
     assert qualification._http_proxy_uri("198.18.0.1", 3128) == "http://198.18.0.1:3128"
     assert qualification._http_proxy_uri("2001:db8:1::1", 3128) == "http://[2001:db8:1::1]:3128"
+
+
+def test_proxy_tcp_preflight_builds_valid_multiline_python(monkeypatch):
+    from subprocess import CompletedProcess
+
+    captured = {}
+    def successful(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(command, 0, "APAA_PROXY_TCP_CONNECTED\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", successful)
+    result = qualification._probe_proxy_tcp("worker-container", "198.18.0.1", 3128)
+
+    assert result["connected"] is True
+    code = captured["command"][-1]
+    assert "import socket,sys\n" in code
+    assert "\\n" not in code
+
+
+def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch):
+    from subprocess import CompletedProcess
+
+    captured = {}
+    def successful(command, timeout=90):
+        captured["command"] = command
+        return CompletedProcess(command, 0, "<html>APAA_LOCAL_DUMP_DOM_OK</html>", "")
+
+    monkeypatch.setattr(qualification, "_run", successful)
+    result = qualification._probe_chromium_local_dump_dom("worker-container", "chromium")
+
+    assert result["marker_present"] is True
+    assert "data:text/html," in captured["command"][-1]
