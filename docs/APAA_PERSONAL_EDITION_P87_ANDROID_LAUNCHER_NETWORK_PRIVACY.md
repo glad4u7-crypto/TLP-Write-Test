@@ -1,6 +1,6 @@
 # APAA Personal Edition P87 — Android Launcher Network & Privacy Defaults
 
-**Status:** Implementation committed; exact-head CI pending.
+**Status:** Implementation committed; exact-head CI PASS on `fdea40778744403e83500f950d99f4eae6b5be3a` (run [#494](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44039705644)). Follow-up P88 backup encryption is tracked separately.
 **Target:** Existing Android Termux + same-device browser runtime. This checkpoint does not create or claim a native APK.
 
 ## Changes
@@ -13,7 +13,7 @@
 
 ## Verification boundary
 
-The new commit must pass the repository's exact-head P73 GitHub Actions workflow before P87 is marked CI-verified. CI does not replace physical Android A01–A12 acceptance.
+P87 exact-head P73 Verification run #494 passed: Python suite, compilation, dependency audit and responsive browser smoke. CI does not replace physical Android A01–A12 acceptance.
 
 ## Not enabled / not claimed
 
@@ -27,5 +27,5 @@ The new commit must pass the repository's exact-head P73 GitHub Actions workflow
 1. Exact-head CI PASS.
 2. Owner-run Termux preflight and launch on the actual Android phone.
 3. Verify browser access only from the same phone, Owner setup/login, lockout, logout and session expiry.
-4. Verify private data directory and backup/restore on the device; do not share secrets or unencrypted backup archives.
+4. Verify private data directory and backup/restore on the device; do not share secrets or legacy unencrypted backup archives. New backups are encrypted under P88.
 5. Complete physical Android A01–A12 and record only redacted evidence.
