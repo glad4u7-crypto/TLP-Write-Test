@@ -69,3 +69,14 @@ def test_streamlit_dependency_check_fails_closed_when_missing(monkeypatch):
     monkeypatch.setattr("scripts.apaa_android_preflight.importlib.util.find_spec", lambda name: None)
     with pytest.raises(PreflightError, match="Streamlit is not installed"):
         check_streamlit()
+
+
+def test_android_launcher_pins_loopback_xsrf_cors_and_disables_usage_telemetry():
+    launcher = Path(__file__).parents[1] / "scripts" / "apaa_android_start.sh"
+    source = launcher.read_text(encoding="utf-8")
+
+    assert "--server.address 127.0.0.1" in source
+    assert "--server.enableCORS true" in source
+    assert "--server.enableXsrfProtection true" in source
+    assert "--browser.gatherUsageStats false" in source
+    assert "--server.address 0.0.0.0" not in source
