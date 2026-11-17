@@ -1,6 +1,9 @@
 name: APAA P74 real OCI Chromium worker
 
 on:
+  push:
+    branches:
+      - feature/apaa-p74-action-12-oci-runtime-network
   workflow_dispatch:
     inputs:
       test_url:
@@ -24,6 +27,7 @@ permissions:
 
 jobs:
   real-worker:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-p74-real-worker]'))
     name: Disposable Linux OCI + dual-stack Chromium qualification
     runs-on: ubuntu-24.04
     timeout-minutes: 35
