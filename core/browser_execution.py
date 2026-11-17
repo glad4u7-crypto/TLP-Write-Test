@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
+from core.attested_browser_runtime import AttestedBrowserRuntime
 from core.browser_security import (
     BrowserJob,
     BrowserPolicyError,
@@ -199,10 +200,9 @@ class BrowserExecutionCoordinator:
         clock: Callable[[], float] = time.monotonic,
     ) -> "BrowserExecutionCoordinator":
         """Create a coordinator only after the signed runtime/firewall gate passes."""
-        launch = getattr(runtime_gate, "launch", None)
-        if not callable(launch):
-            raise TypeError("runtime_gate must expose the attested launch() method.")
-        worker = launch(signed_evidence, challenge=challenge, now=now)
+        if type(runtime_gate) is not AttestedBrowserRuntime:
+            raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
+        worker = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
         if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
             raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
         return cls(worker, audit=audit, clock=clock)
