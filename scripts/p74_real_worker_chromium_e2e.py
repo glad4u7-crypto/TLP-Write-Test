@@ -54,18 +54,31 @@ def _safe_command_label(command: list[str]) -> str:
 
 
 def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, check=False, capture_output=True, text=True,
-                            timeout=timeout, shell=False)
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True,
+                                timeout=timeout, shell=False)
+    except subprocess.TimeoutExpired as exc:
+        def _as_text(value) -> str:
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return value if isinstance(value, str) else ""
+        stdout = _as_text(exc.stdout)
+        stderr = _as_text(exc.stderr)
+        raise RuntimeError(
+            f"qualification command timed out: {_safe_command_label(command)} "
+            f"(timeout={timeout}; stdout_bytes={len(stdout.encode('utf-8', errors='replace'))}; "
+            f"stdout_sha256={hashlib.sha256(stdout.encode('utf-8', errors='replace')).hexdigest()}; "
+            f"stderr={redact_sensitive_text(stderr[-1200:], limit=640)})"
+        ) from exc
     if result.returncode:
         diagnostic = " ".join((result.stderr or "").split())
-        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)
-        diagnostic = diagnostic[-320:]
+        diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)
+        diagnostic = redact_sensitive_text(diagnostic[-640:], limit=320)
         raise RuntimeError(
             f"qualification command failed: {_safe_command_label(command)} "
             f"(exit={result.returncode}; {diagnostic or 'no diagnostic output'})"
         )
     return result
-
 
 
 
