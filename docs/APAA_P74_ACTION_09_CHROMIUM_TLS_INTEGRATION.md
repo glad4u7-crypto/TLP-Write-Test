@@ -31,6 +31,7 @@ These are three independent browser-process tests. Each starts Playwright's Chro
 - [x] CI setup includes NSS certificate-store tooling.
 - [x] CI exposes the three Chromium acceptance cases as separate named steps.
 - [x] CI no longer cancels an active run merely because another commit is pushed to the same ref.
+- [x] Fixture teardown attempts to close Chromium, Playwright, proxy, HTTPS server, and server thread even when an earlier cleanup operation fails.
 - [ ] Latest GitHub Actions run completes with all three tests passing.
 - [ ] Review CI logs to confirm the browser process actually launched and the expected Chromium error codes were observed.
 
