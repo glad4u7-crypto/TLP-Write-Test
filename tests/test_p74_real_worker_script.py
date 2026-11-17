@@ -348,12 +348,17 @@ def test_fd_ownership_crash_pid_and_stack_frames_are_extracted():
 
 
 def test_fd_ownership_log_pid_maps_to_host_pid_snapshot():
-    failure = {"fd_ownership_log_pid": 16}
+    failure = {
+        "fd_ownership_log_pid": 16,
+        "fd_ownership_stack_frames": [{"frame": 0, "address": "0x1150"}],
+    }
     diagnostics = {
         "snapshots": [
             {"processes": [
                 {"pid": 8271, "ppid": 8268, "comm": "chromium", "executable": "chromium",
                  "role": "other", "start_time_ticks": "11676", "fd_count_observed": 148,
+                 "executable_mappings": [{"start": "0x1000", "end": "0x2000",
+                                           "file_offset": "0x100", "module": "chromium"}],
                  "status": {"nspid": "8271 16", "uid": "65532 65532 65532 65532", "seccomp": "2"}},
             ]},
         ],
@@ -362,3 +367,5 @@ def test_fd_ownership_log_pid_maps_to_host_pid_snapshot():
     assert mapped["host_pid"] == 8271
     assert mapped["container_pid"] == 16
     assert mapped["fd_count_observed"] == 148
+    assert mapped["stack_frames_with_module_offsets"][0]["module"] == "chromium"
+    assert mapped["stack_frames_with_module_offsets"][0]["module_offset"] == "0x250"
