@@ -325,3 +325,23 @@ def test_execution_coordinator_accepts_only_real_verified_attestation_gate():
     )
     assert isinstance(coordinator, BrowserExecutionCoordinator)
     assert coordinator._worker is worker
+
+
+
+def test_execution_coordinator_rejects_invalid_worker_from_verified_gate():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+    gate = AttestedBrowserRuntime(
+        spec,
+        trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP],
+        worker_start=lambda passed_spec, evidence: object(),
+    )
+    with pytest.raises(Exception, match="invalid worker handle"):
+        BrowserExecutionCoordinator.from_attested_runtime(
+            gate,
+            signed_evidence(spec, key),
+            challenge=CHALLENGE,
+            now=NOW,
+            audit=lambda event: None,
+        )
