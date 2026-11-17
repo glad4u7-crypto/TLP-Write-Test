@@ -84,6 +84,7 @@ class _WorkerState:
     process: RemoteBrowserProcess | None = None
     cleanup_ok: bool | None = None
     cleanup_error: Exception | None = None
+    process_stopped: bool = False
 
 
 class AttestedBrowserWorkerAdapter:
@@ -256,13 +257,19 @@ class AttestedBrowserWorkerAdapter:
         # Never destroy a handle from the cancellation thread while run() may
         # still be provisioning it. If a process already exists, ask that
         # process to stop; run() owns final resource teardown in its finally.
-        process = state.process
         process_stopped = True
-        if process is not None:
-            try:
-                process_stopped = process.terminate() is True
-            except Exception:
-                process_stopped = False
+        if not state.cleanup_lock.acquire(timeout=self._cleanup_wait):
+            return False
+        try:
+            process = state.process
+            if process is not None and not state.process_stopped:
+                try:
+                    state.process_stopped = process.terminate() is True
+                except Exception:
+                    state.process_stopped = False
+                process_stopped = state.process_stopped
+        finally:
+            state.cleanup_lock.release()
         if not state.closed.wait(timeout=self._cleanup_wait):
             return False
         return process_stopped and state.cleanup_ok is True
@@ -274,10 +281,11 @@ class AttestedBrowserWorkerAdapter:
             if state.closed.is_set():
                 return state.cleanup_ok is True
             errors: list[Exception] = []
-            if state.process is not None:
+            if state.process is not None and not state.process_stopped:
                 try:
                     if state.process.terminate() is not True:
                         raise RuntimeError("Remote browser process exit was not confirmed.")
+                    state.process_stopped = True
                 except Exception as exc:
                     errors.append(exc)
             if state.handle is not None:
