@@ -27,3 +27,14 @@ P78 adds a narrow read-only adapter boundary without enabling browser/worker exe
 
 ## Verification
 Exact-head CI is required. Physical Android acceptance, owner-operated backup/restore drill, independent security review and final Owner acceptance remain external gates.
+
+
+## Real network providers — 2026-11-17
+
+Concrete public read-only providers are now implemented in `core/safe_network_providers.py` and exposed behind an explicit Owner-session `Public Web Research · Read-only` form in the sidebar:
+
+- DuckDuckGo public HTML search
+- Public HTTPS HTML/XHTML/plain-text page reader
+- YouTube public search result reader (video discovery only)
+
+The providers use direct HTTPS, DNS resolution with globally-routable IP validation, pinned-IP TCP connections, TLS hostname verification, manual bounded redirects, response size/time limits, and no cookies/proxy/browser/JavaScript. The UI performs no request until the Owner explicitly submits the form. Results are displayed as text with explicit source-open links. See `docs/APAA_PERSONAL_EDITION_P78_NETWORK_PROVIDERS.md` for the security boundary and limitations.
