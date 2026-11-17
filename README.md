@@ -117,3 +117,6 @@ See [Android-primary, PC-optional architecture](docs/APAA_CROSS_PLATFORM_ANDROID
 - [P78 safe read-only adapters and Owner Recovery UI](docs/APAA_PERSONAL_EDITION_P78_SAFE_READ_ONLY_ADAPTERS.md)
 - [P79 approved mutation safety](docs/APAA_PERSONAL_EDITION_P79_APPROVED_MUTATION_SAFETY.md)
 - [P80 release readiness review](docs/APAA_PERSONAL_EDITION_P80_RELEASE_READINESS_REVIEW.md)
+
+
+- [P78 real read-only network providers and security boundaries](docs/APAA_PERSONAL_EDITION_P78_NETWORK_PROVIDERS.md)
