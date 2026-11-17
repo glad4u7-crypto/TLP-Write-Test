@@ -28,7 +28,7 @@ the only authorization boundary, and BrowserControlBoundary remains disabled.
   websocket and other) are denied by the default allowlist.
 - Adapter cleanup removes persistent routing and closes the isolated session.
 
-## Critical security boundary — not yet qualified
+## Implementation audit corrections\n\n- Fixed the initial pytest collection error caused by using pytest reserved parameter name `request`.\n- Fixed persistent-route cleanup by retaining the exact bound callback object required by Playwright `unroute()`.\n- Enforced redirect-chain hop limits and loop detection using the browser-reported redirect ancestry on every routed request.\n- Applied file chooser rejection to popups and every new page in the BrowserContext, not only the first page.\n- Tightened the default resource allowlist: XHR, fetch, manifest, beacon/ping, media, EventSource, WebSocket and unknown resource types are denied unless a trusted caller explicitly changes the allowlist.\n\n## Critical security boundary — not yet qualified
 
 Playwright routing is not an OS/network sandbox. It does not prove that browser
 process traffic, DNS, UDP/QUIC, WebRTC, browser update checks, proxy bypasses or
