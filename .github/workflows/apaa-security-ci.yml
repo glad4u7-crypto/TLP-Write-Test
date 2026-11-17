@@ -46,6 +46,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m playwright install --with-deps chromium
+      - name: Syntax-check Chromium and disposable-host qualification harnesses
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          for name in (
+              "tests/test_chromium_browser_surfaces.py",
+              "scripts/p74_real_worker_chromium_e2e.py",
+          ):
+              ast.parse(Path(name).read_text(encoding="utf-8"), filename=name)
+              print(f"syntax OK: {name}")
+          PY
       - name: Chromium TLS — trusted CA accepted
         env:
           PYTHONDONTWRITEBYTECODE: "1"
