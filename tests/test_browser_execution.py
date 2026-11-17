@@ -288,3 +288,42 @@ def test_attested_runtime_factory_fails_closed_on_invalid_worker():
             Gate(), {}, challenge="a" * 64, now=1234,
             audit=lambda event: None,
         )
+
+
+
+def test_cancel_terminates_worker_even_if_audit_storage_fails():
+    started = threading.Event()
+    release = threading.Event()
+    terminated = []
+
+    class BlockingWorker(FakeWorker):
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            started.set()
+            release.wait(timeout=3)
+            cancellation.raise_if_cancelled()
+            return {"text": "unexpected"}
+
+        def terminate(self, session_id):
+            terminated.append(session_id)
+            release.set()
+
+    def broken_audit(event):
+        raise OSError("audit unavailable")
+
+    coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=broken_audit)
+    errors = []
+
+    def execute():
+        try:
+            coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert started.wait(timeout=2)
+    with pytest.raises(BrowserExecutionError, match="audit write failed"):
+        coordinator.cancel("job_p74_123456")
+    thread.join(timeout=3)
+    assert not thread.is_alive()
+    assert len(terminated) == 1
