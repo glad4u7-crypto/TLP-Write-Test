@@ -229,3 +229,25 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
 
         context.close()
         browser.close()
+
+
+def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(**playwright.devices["Pixel 7"], accept_downloads=True)
+        page = context.new_page()
+        _open_owner_page(page, streamlit_server)
+        page.get_by_text("Personal Backup & Restore").click()
+        page.get_by_label("New backup encryption passphrase (12+ characters)").fill(
+            "test-only encrypted backup passphrase"
+        )
+        page.get_by_role("button", name="Create encrypted backup").click()
+        page.get_by_text(
+            "Encrypted backup created. Keep the passphrase separately; APAA cannot recover it."
+        ).wait_for(timeout=30000)
+        with page.expect_download(timeout=30000) as download_info:
+            page.get_by_role("button", name="Download encrypted APAA backup").click()
+        download = download_info.value
+        assert download.suggested_filename.endswith(".apaa.enc")
+        context.close()
+        browser.close()
