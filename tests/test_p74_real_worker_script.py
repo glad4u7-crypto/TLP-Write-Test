@@ -200,7 +200,7 @@ def test_user_namespace_probe_requires_mapping_and_chroot(monkeypatch):
     captured = {}
     def successful(command, **kwargs):
         captured["command"] = command
-        return CompletedProcess(command, 0, "USERNS_CHROOT_OK\\n", "")
+        return CompletedProcess(command, 0, "USERNS_CHROOT_OK\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", successful)
     evidence = qualification._probe_user_namespace("worker-container")
@@ -214,7 +214,7 @@ def test_user_namespace_probe_fails_closed_when_mapping_or_chroot_fails(monkeypa
 
     monkeypatch.setattr(
         qualification.subprocess, "run",
-        lambda command, **kwargs: CompletedProcess(command, 12, "USERNS_CHROOT_ERR 1\\n", ""),
+        lambda command, **kwargs: CompletedProcess(command, 12, "USERNS_CHROOT_ERR 1\n", ""),
     )
     evidence = qualification._probe_user_namespace("worker-container")
     assert evidence["user_namespace_chroot_available"] is False
