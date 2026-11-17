@@ -450,6 +450,30 @@ class SQLiteMemoryStore:
         return TaskCheckpoint(row["checkpoint_id"], row["project_id"], row["label"],
             row["summary"], row["next_action"], row["status"], row["created_at"], row["updated_at"])
 
+    def list_checkpoints(
+        self, tenant: TenantKey, project_id: str, *, limit: int = 50,
+    ) -> tuple[TaskCheckpoint, ...]:
+        """Return a bounded, newest-first history for one owner/project."""
+        issuer, subject = self._tenant(tenant)
+        project_id = _validate_text(project_id, "Project ID", 120)
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer from 1 to 200.")
+        with closing(self._connect()) as db:
+            rows = db.execute(
+                """SELECT * FROM task_checkpoints
+                   WHERE issuer=? AND subject=? AND project_id=?
+                   ORDER BY updated_at DESC, rowid DESC LIMIT ?""",
+                (issuer, subject, project_id, limit),
+            ).fetchall()
+        return tuple(
+            TaskCheckpoint(
+                row["checkpoint_id"], row["project_id"], row["label"],
+                row["summary"], row["next_action"], row["status"],
+                row["created_at"], row["updated_at"],
+            )
+            for row in rows
+        )
+
     def save_task_plan(
         self, tenant: TenantKey, *, project_id: str, plan_id: str,
         task_description: str, plan: dict[str, object], consent: bool = False,
