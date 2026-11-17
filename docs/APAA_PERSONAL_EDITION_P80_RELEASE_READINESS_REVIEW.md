@@ -71,3 +71,11 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 - Owner reconciliation now appends a payload-free hash-chain audit event in the same SQLite transaction as the state transition.
 - Added adapter, UI and reconciliation audit tests. Exact-head P73 CI for the latest P78 code head is pending.
 - P80 remains NO-GO until exact-head CI passes and the external acceptance gates (physical Android, owner-operated backup/restore, independent security review and explicit Owner acceptance) are completed. Web/YouTube network providers remain disabled pending separate transport/SSRF qualification.
+
+
+## Real read-only provider update — 2026-11-17
+
+- Added DuckDuckGo public search, public HTTPS page text reader, and YouTube public search adapters.
+- Added Owner-session UI; network access occurs only after explicit form submission.
+- Direct HTTPS uses DNS global-address validation, pinned-IP connection, TLS hostname verification, manual redirect revalidation, bounded response/time limits, and no cookies, proxy, browser, or JavaScript.
+- Automated tests are being verified against the exact latest commit. Live provider availability and changing public HTML formats remain operational dependencies; P80 is not a release approval.
