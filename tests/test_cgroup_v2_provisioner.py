@@ -67,3 +67,27 @@ def test_create_fails_closed_when_parent_cannot_delegate_child_controllers(tmp_p
     )
     with pytest.raises(IsolationEnforcementError, match="does not expose"):
         CgroupV2Provisioner(str(delegated)).create("worker-three")
+
+
+def test_remove_cleans_only_empty_nested_container_cgroups(tmp_path, monkeypatch):
+    _, delegated = fake_cgroupfs(tmp_path, monkeypatch)
+    provisioner = CgroupV2Provisioner(str(delegated))
+    path = provisioner.create("worker-cleanup")
+    child = path / "libpod-test"
+    child.mkdir()
+    (child / "cgroup.procs").write_text("")
+    provisioner.remove(path)
+    assert not path.exists()
+
+
+def test_remove_refuses_nested_cgroup_with_live_process(tmp_path, monkeypatch):
+    _, delegated = fake_cgroupfs(tmp_path, monkeypatch)
+    provisioner = CgroupV2Provisioner(str(delegated))
+    path = provisioner.create("worker-live")
+    child = path / "libpod-test"
+    child.mkdir()
+    (child / "cgroup.procs").write_text("4321\\n")
+    with pytest.raises(IsolationEnforcementError, match="subtree still contains processes"):
+        provisioner.remove(path)
+    assert path.is_dir()
+    assert child.is_dir()
