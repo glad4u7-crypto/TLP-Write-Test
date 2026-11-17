@@ -972,7 +972,7 @@ def test_pending_execution_after_crash_is_not_automatically_retried(security_sto
     },)
 
 
-@pytest.mark.parametrize("status", ["pending", "failed", "unknown"])
+@pytest.mark.parametrize("status", ["pending", "failed", "unknown", [], True])
 def test_execution_ledger_rejects_nonterminal_or_unsupported_status(security_store, status):
     tenant = TenantKey("https://issuer.example", "alice")
     key = "request-unique-0004"
@@ -1004,3 +1004,13 @@ def test_concurrent_execution_claim_has_exactly_one_winner(security_store):
         results = list(pool.map(claim, range(12)))
     assert results.count("claimed") == 1
     assert results.count("pending") == 11
+
+
+def test_uncertain_resolution_rejects_non_string_status(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0007"
+    assert security_store.claim_execution(tenant, key, "write_file", "8" * 64, now=60) == "claimed"
+    assert security_store.finish_execution(tenant, key, "uncertain", now=61) is True
+    assert security_store.resolve_uncertain_execution(
+        tenant, key, [], owner_confirmed=True, now=62
+    ) is False
