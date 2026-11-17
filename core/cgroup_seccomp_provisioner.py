@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import re
 
@@ -115,9 +116,33 @@ class CgroupV2Provisioner:
                 or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name)):
             raise ValueError("cgroup path is outside the delegated worker subtree")
         try:
-            if (path / "cgroup.procs").read_text(encoding="ascii").strip():
-                raise IsolationEnforcementError("worker cgroup still contains processes")
+            # Podman creates nested conmon/libpod cgroups below this dedicated
+            # worker parent. Never remove the parent while any descendant still
+            # contains a process. Once the runtime confirms container removal,
+            # empty descendants may be removed bottom-up inside this owned tree.
+            directories: list[Path] = []
+            visited = 0
+            for current, dirs, _files in os.walk(path, topdown=True, followlinks=False):
+                current_path = Path(current)
+                relative_depth = len(current_path.relative_to(path).parts)
+                visited += 1
+                if visited > 4096 or relative_depth > 8:
+                    raise IsolationEnforcementError("worker cgroup subtree exceeds safe cleanup bounds")
+                for name in dirs:
+                    if (current_path / name).is_symlink():
+                        raise IsolationEnforcementError("worker cgroup subtree contains a symlink")
+                try:
+                    members = (current_path / "cgroup.procs").read_text(encoding="ascii").split()
+                except OSError as exc:
+                    raise IsolationEnforcementError("worker descendant cgroup membership is unreadable") from exc
+                if members:
+                    raise IsolationEnforcementError("worker cgroup subtree still contains processes")
+                directories.append(current_path)
+            for directory in sorted(directories[1:], key=lambda item: len(item.parts), reverse=True):
+                directory.rmdir()
             path.rmdir()
+        except IsolationEnforcementError:
+            raise
         except OSError as exc:
             raise IsolationEnforcementError("worker cgroup cleanup failed or still has children") from exc
 
