@@ -110,4 +110,15 @@ Parked modules and tests must not be deleted blindly in this reset: some may be 
 
 This checkpoint does not modify production configuration, delete existing security modules, enable browser/worker execution, provision any host/provider, create credentials, or merge a PR. PR #12 remains Draft/Open/Unmerged. C01 enterprise qualification is no longer the critical path for the Personal Edition v1; its unfinished external hardware/anchor/host gates are parked unless a later feature genuinely needs them. Existing safeguards that protect current code remain until replacement personal-mode safeguards pass tests.
 
-**Checkpoint result:** Personal Edition product scope and repository dependency classification recorded. Runtime simplification has not yet been implemented. Next implementation checkpoint is P73.
+**Checkpoint result:** Personal Edition product scope and repository dependency classification recorded. The following implementation updates supersede the historical progress notes above.
+
+## 8. Later implementation status — 2026-11-17
+
+- P73 single-owner runtime and persistent SQLite owner workspace are implemented; Owner authentication, session expiry, passphrase rotation, payload-free security-event chain, durable action audit, and backup/restore code have automated coverage.
+- P79 now binds the existing memory, knowledge, conversation, preference and checkpoint UI mutations to fresh one-time approval receipts for the exact action + JSON payload + Owner tenant + session. Operations receive only the approved private payload snapshot.
+- The existing project-create UI is connected to the durable tenant-scoped idempotency ledger. Each reviewed draft has a fresh request key; duplicate dispatch with the same key is blocked.
+- P79 core implementation has an earlier exact-head PASS, but the latest UI integration changes still require a new exact-head CI run.
+- P78 read-only adapters are still not implemented. No browser, file, YouTube or external mutation handler has been enabled.
+- P80 remains **NO-GO** until P78, latest exact-head CI, Owner recovery UI for uncertain outcomes, physical Android acceptance, Owner-operated backup/restore drill, independent security review and explicit Owner acceptance are complete.
+
+**Current safety posture:** PR #13 remains Draft/Open/Unmerged. No merge/deploy; Browser/Worker DISABLED; Auto-Run OFF; no paid providers, payments, purchases, trading or money movement.
