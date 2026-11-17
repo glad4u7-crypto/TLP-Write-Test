@@ -1144,6 +1144,65 @@ if not auth_required and selected_file_project is not None:
     else:
         st.caption("No safe project text files are stored yet.")
 
+with st.expander("Read-only Web & YouTube Research", expanded=False):
+    st.caption(
+        "These controls perform a public, read-only HTTPS lookup only after you submit. "
+        "No login cookies, browser session, JavaScript, playlist edits or write actions are used."
+    )
+    with st.form("apaa_public_web_search_form"):
+        public_query = st.text_input("Search the public web", max_chars=1000)
+        public_search_submit = st.form_submit_button("Search web")
+    if public_search_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((DuckDuckGoSearchProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.WEB_SEARCH, query=public_query.strip(), max_results=10
+            ))
+            st.caption(read_result.source_label)
+            if not read_result.items:
+                st.info("No public web results were returned.")
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Open source]({item.locator})")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"Public web search was blocked or unavailable: {exc}")
+
+    with st.form("apaa_public_page_read_form"):
+        page_url = st.text_input("Read a public HTTPS page", max_chars=2048)
+        page_read_submit = st.form_submit_button("Read page")
+    if page_read_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((PublicWebPageReadProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.WEB_PAGE_READ, target=page_url.strip(), max_results=1
+            ))
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Open source]({item.locator})")
+                st.write(item.excerpt)
+            if read_result.truncated:
+                st.caption("The page excerpt was truncated to the safe display limit.")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"Page reading was blocked or unavailable: {exc}")
+
+    with st.form("apaa_youtube_public_search_form"):
+        youtube_query = st.text_input("Find public YouTube videos", max_chars=1000)
+        youtube_search_submit = st.form_submit_button("Search YouTube")
+    if youtube_search_submit:
+        try:
+            read_registry = ReadOnlyAdapterRegistry((YouTubePublicSearchProvider(),))
+            read_result = read_registry.read(ReadRequest(
+                ReadCapability.YOUTUBE_SEARCH, query=youtube_query.strip(), max_results=10
+            ))
+            st.caption(read_result.source_label)
+            if not read_result.items:
+                st.info("No public YouTube videos were returned.")
+            for item in read_result.items:
+                st.markdown(f"**{item.title}**")
+                st.markdown(f"[Watch on YouTube]({item.locator})")
+        except (SafeNetworkError, ReadOnlyAdapterError, ValueError) as exc:
+            st.error(f"YouTube search was blocked or unavailable: {exc}")
+
 st.header("Task Workspace")
 task = st.text_area(
     "Describe a task",
