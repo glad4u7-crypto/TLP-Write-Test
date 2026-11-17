@@ -112,3 +112,24 @@ Diagnostic phase is complete only when the evidence identifies (a) the first fai
 5. Preserve all sandbox, seccomp, namespace, cgroup and deny-by-default egress controls.
 
 **Qualification remains FAILED / NO-GO.** This run produced useful process-level evidence but did not pass Chromium startup or identify the exact descriptor/call site.
+
+
+## Evidence update — full-window process attribution (run #308)
+
+- Run #308 captured 40 bounded snapshots across the Chromium startup/crash window at approximately 1.15-second intervals, including host wall-clock timestamps and all file-backed executable mappings.
+- The prefixed Chromium log PID/TID was `17:17`, mapping to the browser-side host process PID `8632` / container PID `17`. This process emitted the `Network service crashed or was terminated` message.
+- The fatal stack itself is unprefixed. Its program counters mapped to the Chromium executable image of a separate direct child candidate: host PID `15027`, container PID `255`, PPID `8632`, with 12 FDs observed. Ten of eleven captured stack PCs mapped to this child process image; the remaining frame was outside the main Chromium executable mapping.
+- The child and browser parent shared two memfd kernel objects (child FDs 6 and 10; parent FDs 33 and 36). These may be intentional shared-memory/IPC hand-offs. This is not proof that either FD caused the ownership violation.
+- The process role remains unclassified from sanitized procfs command-line flags. The stack-to-image mapping is strong candidate evidence, not proof of the exact PID at the instant of `ImmediateCrash`; the matching snapshot was taken shortly after the fatal log and a replacement process could share the same zygote image layout.
+- The exact Debian Bookworm amd64 Chromium `156.0.8078.79-1~deb12u1` package has no matching `chromium-dbgsym` published in the Debian package index; the available Bookworm debug package is for `chromium-common`, not the Chromium executable. Therefore the exact binary's private function names/source lines could not be recovered through the public dbgsym route.
+- The collector now supports an owner-supplied exact build-id debug file if one becomes available, but symbolication remains best-effort and non-fatal.
+
+### Next diagnostic gate
+
+1. Preserve the parent log PID and stack-matched child candidate separately; never conflate them.
+2. Capture a final high-frequency FD snapshot for the stack-matched child and its parent around process creation/exit, emphasizing child FDs 6 and 10 and the corresponding parent memfd descriptors.
+3. Add a bounded process-lifecycle event stream (PID, PPID, NSpid, start-time, executable map identity) so PID reuse and zygote replacement are distinguishable.
+4. If no exact debug symbols can be obtained, prepare a dedicated diagnostic Chromium build with narrowly scoped logging in the Linux ScopedFD ownership Acquire/Release/close checks. Keep the production Chromium and all sandbox/network policies unchanged.
+5. Do not change or close FDs as a workaround until the exact ownership transition is identified and a deterministic regression test reproduces it.
+
+**Current result: process-level attribution improved; exact offending FD and source call site remain unproven. Release remains FAILED / NO-GO.**
