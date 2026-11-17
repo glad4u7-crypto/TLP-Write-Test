@@ -2,11 +2,14 @@
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
 import pytest
+
+from core.personal_auth import LocalOwnerAuthStore
 
 playwright_api = pytest.importorskip("playwright.sync_api")
 sync_playwright = playwright_api.sync_playwright
@@ -22,6 +25,10 @@ BASE_URL = f"http://{HOST}:{PORT}"
 def desktop_streamlit_server():
     env = os.environ.copy()
     env.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+    personal_data = tempfile.TemporaryDirectory(prefix="apaa-desktop-smoke-")
+    env["APAA_PERSONAL_DATA_DIR"] = personal_data.name
+    auth = LocalOwnerAuthStore(Path(personal_data.name) / "owner-auth.sqlite3")
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
     process = subprocess.Popen(
         [
             sys.executable, "-m", "streamlit", "run", "app.py",
@@ -54,6 +61,16 @@ def desktop_streamlit_server():
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        personal_data.cleanup()
+
+
+def _open_owner_page(page, url: str) -> None:
+    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    owner_passphrase = page.get_by_label("Owner passphrase")
+    owner_passphrase.wait_for(timeout=30000)
+    owner_passphrase.fill("test-only owner passphrase")
+    page.get_by_role("button", name="Unlock APAA").click()
+    page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
 
 
 def test_desktop_browser_has_no_horizontal_overflow_or_unapproved_execution_control(
@@ -66,8 +83,7 @@ def test_desktop_browser_has_no_horizontal_overflow_or_unapproved_execution_cont
             device_scale_factor=1,
         )
         page = context.new_page()
-        page.goto(desktop_streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, desktop_streamlit_server)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
 
         metrics = page.evaluate("""() => ({
