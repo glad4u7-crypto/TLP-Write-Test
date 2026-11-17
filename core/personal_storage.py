@@ -6,12 +6,13 @@ text, query parameters, or browser-controlled fields.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import os
 from pathlib import Path
-import secrets
 import sqlite3
 import stat
+from typing import Iterator
 from uuid import uuid4
 
 from core.personal_runtime import ensure_private_data_dir
@@ -73,13 +74,17 @@ class SQLitePersonalProjectStore:
         self.path = requested
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         _validate_database_file(self.path, create=False)
         connection = sqlite3.connect(self.path, timeout=10, isolation_level="IMMEDIATE")
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 10000")
+            yield connection
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
