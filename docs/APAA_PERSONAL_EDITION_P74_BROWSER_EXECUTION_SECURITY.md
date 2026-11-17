@@ -15,8 +15,10 @@ attestation gate succeeds.
     retains the original hostname for TLS SNI and certificate hostname checks,
     requires TLS 1.2 or newer, and uses the platform trust store with
     certificate verification required.
-  - Redirects are not followed by this transport. Every redirect must be
-    re-authorized and resolved to a fresh pin set by its caller.
+  - Redirects are not followed by this transport. `authorize_redirect_and_pin()`
+    combines exact-origin redirect re-authorization with a mandatory fresh DNS
+    resolution and returns a new `PinnedDestination`; callers must discard the
+    old connection/pin and construct a new pinned connection.
   - `CancellationToken` provides cooperative cancellation.
   - The coordinator enforces a hard wall-clock deadline and requires worker termination to return explicit `True` only after OS process exit and ephemeral storage cleanup are confirmed; it then waits up to two seconds for the supervisor callback to exit. A timeout/cancel is never audited as closed when termination is unconfirmed.
   - Active-session registration and worker-thread start are serialized under the coordinator lock, closing the cancel-before-start race. Repeated cancellation is idempotent.
@@ -35,9 +37,9 @@ attestation gate succeeds.
 
 - `tests/test_browser_execution.py`
   - Covers TLS 1.2+ enforcement, certificate verification requirements,
-    pinned IP validation, private/mixed
-    DNS rejection, fail-closed worker configuration, audit failures, runtime
-    result validation, cancellation, hard timeout termination and cleanup confirmation.
+    pinned IP validation, private/mixed DNS rejection, redirect allowlist and
+    fresh-pin enforcement, fail-closed worker configuration, audit failures,
+    runtime result validation, cancellation, hard timeout termination and cleanup confirmation.
 
 ## Required production adapter contract
 
@@ -98,3 +100,18 @@ approved before C02 starts.
 - Exact-head GitHub combined status and PR workflow lookup returned no check results. Therefore automated PASS is **not verified**.
 - No physical Android/device testing was performed.
 - Browser execution remains disabled until a real isolated worker, host-enforced egress boundary, durable audit adapter, and successful exact-head CI/security verification exist.
+
+
+## Action 8 — Redirect pinning correction
+
+- Previous audit found that `validate_redirect()` could validate an allowlist without a resolver,
+  while the transport documentation required a fresh DNS pin after every redirect.
+- Added `authorize_redirect_and_pin()` as the fail-closed caller API: it requires a
+  resolver, validates the redirect against the exact-origin allowlist, resolves
+  the target hostname again, validates the complete answer set, and returns a
+  new `PinnedDestination` for a new connection.
+- Added regression tests for fresh target-host resolution, private DNS rejection,
+  unapproved-origin rejection before DNS, and missing resolver rejection.
+- The caller/adapter must still enforce redirect count limits, discard the old
+  connection, and use only the returned new pin. The helper is not a browser
+  redirect engine and does not replace host-level egress enforcement.
