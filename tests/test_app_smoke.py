@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import os
 
 import streamlit as st
 from streamlit.testing.v1 import AppTest
@@ -47,8 +48,22 @@ def _authenticated_test_user(monkeypatch, *, configure_owner=True):
     )
 
 
-def test_streamlit_app_renders_in_safe_local_prototype_mode():
+def _local_owner_app():
+    from core.personal_auth import LocalOwnerAuthStore
+
+    auth_path = Path(os.environ["APAA_PERSONAL_DATA_DIR"]) / "owner-auth.sqlite3"
+    auth = LocalOwnerAuthStore(auth_path)
+    auth.configure("test-only owner passphrase", "test-only owner passphrase")
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    assert not app.exception
+    app.text_input[0].set_value("test-only owner passphrase")
+    _click_button_by_label(app, "Unlock APAA")
+    assert not app.exception
+    return app
+
+
+def test_streamlit_app_renders_in_safe_local_prototype_mode():
+    app = _local_owner_app()
     assert not app.exception
     assert any("Autonomous AI Agent" in item.value for item in app.title)
     assert any("Personal local mode" in item.value for item in app.warning)
@@ -231,7 +246,7 @@ def test_authenticated_app_fails_closed_for_unsafe_security_database_path(
 
 
 def test_project_creation_requires_review_then_explicit_confirmation():
-    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app = _local_owner_app()
     assert not app.exception
     app.text_input[0].set_value("UI approval test")
     app.text_area[0].set_value("Must not create before confirmation")
@@ -248,7 +263,7 @@ def test_project_creation_requires_review_then_explicit_confirmation():
 
 
 def test_project_review_can_be_cancelled_without_side_effect():
-    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app = _local_owner_app()
     assert not app.exception
     app.text_input[0].set_value("Cancelled project")
     app.text_area[0].set_value("Should not persist")
