@@ -24,9 +24,9 @@ def test_canonicalizes_https_host_port_path_and_fragment():
 
 
 def test_canonicalizes_idn_to_ascii():
-    result = canonicalize_https_url("https://bücher.example/guide")
-    assert result.hostname == "xn--bcher-kva.example"
-    assert result.origin == "https://xn--bcher-kva.example"
+    result = canonicalize_https_url("https://bücher.com/guide")
+    assert result.hostname == "xn--bcher-kva.com"
+    assert result.origin == "https://xn--bcher-kva.com"
 
 
 @pytest.mark.parametrize("url", [
