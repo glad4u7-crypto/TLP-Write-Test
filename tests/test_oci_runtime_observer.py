@@ -161,3 +161,12 @@ def test_observer_rejects_worker_pid_in_multiple_cgroups(tmp_path):
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="multiple"):
         observer.observe(CID,spec())
+
+
+def test_observer_normalizes_bare_podman_immutable_image_id(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    p=payload()
+    p["Image"]="b"*64
+    observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    result=observer.observe(CID,spec())
+    assert result.image_id == IMAGE
