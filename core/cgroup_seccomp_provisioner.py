@@ -71,6 +71,16 @@ class CgroupV2Provisioner:
         target = root / worker_id
         try:
             target.mkdir(mode=0o700, parents=False, exist_ok=False)
+            target_available = set((target / "cgroup.controllers").read_text(encoding="ascii").split())
+            if not required.issubset(target_available):
+                raise IsolationEnforcementError("worker parent does not expose cpu, memory and pids controllers")
+            # Delegate controllers to the OCI child cgroup. Without this,
+            # Podman can report a libpod child membership while no matching
+            # leaf cgroup exists and no effective per-container limits apply.
+            (target / "cgroup.subtree_control").write_text("+cpu +memory +pids", encoding="ascii")
+            target_enabled = set((target / "cgroup.subtree_control").read_text(encoding="ascii").split())
+            if not required.issubset(target_enabled):
+                raise IsolationEnforcementError("worker parent did not enable controllers for its OCI child")
             (target / "memory.max").write_text(str(limits.memory_max), encoding="ascii")
             (target / "cpu.max").write_text(f"{limits.cpu_quota} {limits.cpu_period}", encoding="ascii")
             (target / "pids.max").write_text(str(limits.pids_max), encoding="ascii")
@@ -121,6 +131,9 @@ class CgroupV2Provisioner:
         for filename, value in expected.items():
             if (path / filename).read_text(encoding="ascii").strip() != value:
                 raise IsolationEnforcementError("kernel did not retain the requested cgroup limit")
+        enabled = set((path / "cgroup.subtree_control").read_text(encoding="ascii").split())
+        if not {"cpu", "memory", "pids"}.issubset(enabled):
+            raise IsolationEnforcementError("worker parent has not delegated controllers to its OCI child")
 
 
 def validate_seccomp_profile(profile_path: str | Path) -> dict:
