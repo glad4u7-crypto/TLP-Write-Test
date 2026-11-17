@@ -1,6 +1,6 @@
 # APAA Personal Edition P86 — Android Launcher Preflight Hardening
 
-**Status:** Implementation committed; exact-head CI pending.
+**Status:** Implementation and exact-head CI PASS on `ce9d2e82849d33719d7e33749400d2a4d513d09f` (run #447).
 **Target:** Android-first Termux/browser launch path. This is a local launcher hardening checkpoint, not a native APK project.
 
 ## Implemented
@@ -16,7 +16,7 @@
 
 ## Verification
 
-Automated tests cover valid/invalid ports, relative paths, private directory creation and permissions, symlink/non-directory rejection and missing Streamlit dependency handling. Exact-head GitHub Actions is required before marking P86 verified.
+Automated tests cover valid/invalid ports, relative paths, private directory creation and permissions, symlink/non-directory rejection and missing Streamlit dependency handling. Exact-head P73 Verification run [#447](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44034637645) passed on the implementation head: **1,557 Python tests passed, 9 skipped; compile PASS; dependency audit PASS (no known vulnerabilities); responsive browser smoke 9 passed.**
 
 ## External acceptance still required
 
