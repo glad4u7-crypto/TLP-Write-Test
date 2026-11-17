@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -52,15 +51,11 @@ class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
             port = self.server.server_port
             body = f"""<!doctype html>
 <title>APAA Chromium surfaces</title>
+<body>landing-marker
 <img id="pixel" src="/pixel.png" alt="fixture">
 <iframe id="child" src="/frame"></iframe>
 <a id="popup-link" target="_blank" href="/popup">Open popup</a>
-<script>
-  const ws = new WebSocket("ws://127.0.0.1:{port}/ws");
-  ws.onmessage = event => document.body.dataset.websocket = event.data;
-  ws.onerror = () => document.body.dataset.websocket = "error";
-</script>
-<body>landing-marker</body>"""
+</body>"""
             self._html(body)
             return
         if path == "/ws":
@@ -154,8 +149,9 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
                 observed_requests.append(url)
                 route.continue_()
 
-            page.route("**/*", guard_loopback)
-            page.on("websocket", lambda ws: ws.on("framesent", lambda _payload: None))
+            context.route("**/*", guard_loopback)
+            websocket_urls: list[str] = []
+            page.on("websocket", lambda ws: websocket_urls.append(ws.url))
             response = page.goto(loopback_site + "/redirect", wait_until="domcontentloaded")
             assert response is not None and response.status == 200
             assert page.url == loopback_site + "/landing"
@@ -184,5 +180,6 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             paths = {urlsplit(url).path for url in observed_requests}
             assert {"/redirect", "/landing", "/pixel.png", "/frame", "/popup"}.issubset(paths)
             assert not blocked_requests
+            assert websocket_urls == [f"ws://127.0.0.1:{urlsplit(loopback_site).port}/ws"]
         finally:
             browser.close()
