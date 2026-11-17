@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from core.audit import create_audit_event
+from core.safety import authorize_action
 
 
 class UIActionAuditError(RuntimeError):
@@ -23,6 +24,9 @@ def execute_audited_ui_mutation(
     """
     if not isinstance(action, str) or not action.strip() or not callable(operation):
         raise ValueError("A fixed action identifier and operation are required.")
+    decision = authorize_action(action, approved_action=action)
+    if not decision.allowed:
+        raise UIActionAuditError(decision.reason)
     try:
         audit_log.append(create_audit_event(action, False, "ui_mutation_pending"))
     except Exception as exc:
