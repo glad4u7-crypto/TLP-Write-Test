@@ -16,7 +16,7 @@ from core.oci_runtime_backend import (
 
 IMAGE = "registry.invalid/apaa/chromium@sha256:" + "a" * 64
 NS = "/run/netns/apaa-test"
-SECCOMP = "/etc/apaa/seccomp-chromium.json"
+SECCOMP = str(Path(__file__).parent / "fixtures" / "seccomp-test.json")
 
 
 class FakeRunner:
@@ -83,6 +83,19 @@ def test_spec_rejects_cgroup_parent_outside_delegated_subtree():
 
 def test_local_immutable_image_id_is_accepted():
     spec(image="sha256:" + "b" * 64)
+
+
+def test_create_rejects_permissive_seccomp_before_runtime_call(tmp_path):
+    profile = tmp_path / "allow-all.json"
+    profile.write_text(json.dumps({
+        "defaultAction": "SCMP_ACT_ALLOW",
+        "syscalls": [{"names": ["read"], "action": "SCMP_ACT_ALLOW"}],
+    }))
+    runner = FakeRunner([])
+    runtime = PodmanOCIRuntime(runner=runner)
+    with pytest.raises(Exception, match="deny unknown system calls"):
+        runtime.create(spec(seccomp_profile=str(profile)))
+    assert runner.calls == []
 
 
 def test_create_rejects_noncanonical_runtime_id():
