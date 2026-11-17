@@ -81,6 +81,7 @@ jobs:
             APAA_P74_WORKER_ID=worker-p74-01 \
             APAA_P74_TEST_URL="$APAA_P74_TEST_URL" \
             APAA_P74_ALLOWED_ORIGIN="$APAA_P74_ALLOWED_ORIGIN" \
+            APAA_P74_EXPECTED_MARKER="$APAA_P74_EXPECTED_MARKER" \
             APAA_P74_EVIDENCE_PATH="$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" \
             PYTHONPATH="$GITHUB_WORKSPACE" \
             python3 scripts/p74_real_worker_chromium_e2e.py
