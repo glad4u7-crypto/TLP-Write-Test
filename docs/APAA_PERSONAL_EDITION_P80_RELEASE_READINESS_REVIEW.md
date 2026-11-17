@@ -79,3 +79,26 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 - Added Owner-session UI; network access occurs only after explicit form submission.
 - Direct HTTPS uses DNS global-address validation, pinned-IP connection, TLS hostname verification, manual redirect revalidation, bounded response/time limits, and no cookies, proxy, browser, or JavaScript.
 - Automated tests are being verified against the exact latest commit. Live provider availability and changing public HTML formats remain operational dependencies; P80 is not a release approval.
+
+
+## Authoritative status reconciliation — 2026-11-17 (supersedes earlier pending implementation notes)
+
+The earlier P80 sections above are historical snapshots. The following is the current branch state and must be used for status decisions:
+
+- **P78 read-only adapters: IMPLEMENTED.** The branch contains bounded project-file inspection, an explicit read-only adapter registry, DuckDuckGo public search, HTTPS page reading, and YouTube public search. These are read-only capabilities; they do not register mutation handlers.
+- **Owner Recovery UI: IMPLEMENTED.** The authenticated Owner UI lists tenant-scoped unresolved execution records. Pending and uncertain outcomes are not automatically retried. Explicit Owner reconciliation is required, and the reconciliation state transition is recorded in the local hash-chain audit within the same SQLite transaction.
+- **Network safety boundary: CODE/TEST IMPLEMENTED, LIVE QUALIFICATION NOT COMPLETE.** The direct HTTPS transport validates public DNS answers, pins the selected IP for the connection, verifies TLS host identity, revalidates redirects, bounds response/time, and does not use cookies, browser execution or proxy environment. These tests do not qualify a live browser worker, host firewall, or all egress paths. Browser/Worker dispatch remains DISABLED.
+- **Exact-head verification:** branch head `70ede93d20e7ff2780c7d4d1dbd68e2803a96a06`, P73 Verification run [#235](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44023947699) — **SUCCESS**. Python suite: **1,491 passed, 9 skipped**; compile PASS; dependency audit PASS (no known vulnerabilities); Android/Desktop Chromium responsive smoke **9 passed**.
+- CI Android viewport emulation is not physical Android device acceptance.
+
+### Remaining external / Owner-operated C01 gates
+
+1. Physical Android A01–A12 on the Owner's actual phone: **NOT RUN**. This requires Owner-operated testing; remote CI cannot substitute.
+2. Owner-operated backup/restore drill on the intended local Android runtime: **NOT RUN**. Automated tests are not a substitute.
+3. Independent security review of the exact tested code and security boundaries: **NOT RECEIVED**.
+4. Final Owner acceptance: **PENDING**.
+5. Real isolated browser-worker transport and egress qualification (redirects, subresources, WebSocket, DNS rebinding, proxy outage, and direct TCP/DNS/UDP/QUIC bypass): **NOT QUALIFIED**; live Browser/Worker stays disabled.
+
+### Release decision
+
+P78 and the Owner Recovery implementation are no longer software implementation blockers. C01 nevertheless remains **OPEN / NOT COMPLETE** because the external gates above are outstanding. PR #13 remains Draft/Open/Unmerged. Do not merge, deploy, enable Browser/Worker, start C02, or claim Personal Edition release acceptance until the applicable gates have real evidence and the Owner explicitly accepts.
