@@ -35,3 +35,24 @@ def test_audit_redaction_bounds_output_and_rejects_non_string():
     assert len(redact_sensitive_text("x" * 1000)) == 256
     with pytest.raises(TypeError):
         redact_sensitive_text({"token": "secret"})
+
+
+def test_jsonl_persistence_redacts_even_directly_constructed_events(tmp_path):
+    import json
+    from core.audit import ExecutionAuditEvent, JsonlAuditLog
+
+    directory = tmp_path / "private-audit"
+    directory.mkdir(mode=0o700)
+    directory.chmod(0o700)
+    path = directory / "events.jsonl"
+    log = JsonlAuditLog(path)
+    log.append(ExecutionAuditEvent(
+        timestamp="2026-11-17T00:00:00+00:00",
+        action="browser.run",
+        executed=False,
+        reason="Authorization: Bearer direct-secret https://example.com/private?token=hidden",
+    ))
+    stored = json.loads(path.read_text(encoding="utf-8"))["event"]
+    assert "direct-secret" not in repr(stored)
+    assert "private?token=hidden" not in repr(stored)
+    assert "[REDACTED]" in stored["reason"]
