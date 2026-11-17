@@ -77,3 +77,8 @@ Regression tests were added for reserved suffixes, mandatory live DNS resolution
 
 
 A strict live-entry helper, `validate_live_browser_job`, now combines the closed-schema job validator with mandatory DNS pinning and returns both the immutable job and `PinnedDestination`. A future live adapter should accept this return type rather than the offline-only `BrowserJob` result. Tests cover missing resolver and private DNS answers at this entry point.
+
+
+## CI feedback and fixture correction
+
+The first full-suite run after reserved-suffix hardening exposed one outdated IDN test fixture: it used the reserved `.example` suffix while expecting acceptance. The policy correctly rejected that suffix. The fixture was corrected to use `bücher.com`; reserved-suffix rejection remains covered by dedicated negative tests. The corrected latest head must still pass a fresh exact-head CI run before verification is claimed.
