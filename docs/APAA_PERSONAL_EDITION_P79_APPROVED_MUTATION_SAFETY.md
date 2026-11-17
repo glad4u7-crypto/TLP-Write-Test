@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-PERSONAL-P79  
 **Date:** 2026-11-17  
 **Branch:** `apaa-personal-edition-foundation`  
-**Status:** Core safety implementation and first Personal Edition Owner UI integration committed; latest exact-head CI pending. External adapter workflows remain gated on P78.  
+**Status:** Core safety implementation and first Personal Edition Owner UI integration committed; exact-head CI PASS on `afd733421064bbc2bafefa75d514f7ce456b38ac`. External adapter workflows remain gated on P78.  
 **PR:** #13 — Draft / Open / Unmerged.
 
 ## Scope
@@ -36,7 +36,7 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 
 ## Verification
 
-- Exact-head GitHub Actions run [#160](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44019306207) passed for its tested head `1429ee69aa637b0927e0ef234ab0e6432e4d8b5d` (Python, compile, dependency audit and responsive browser smoke). The subsequent Owner UI receipt and project idempotency integration commits are newer and require a fresh exact-head run.
+- Exact-head GitHub Actions run [#184](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44020636288) passed for head `afd733421064bbc2bafefa75d514f7ce456b38ac`: Python **1,473 passed, 9 skipped**; compilation PASS; dependency audit PASS; responsive browser smoke **9 passed**.
 - P78 remains a prerequisite for end-to-end mutation workflows.
 
 ## Safety
