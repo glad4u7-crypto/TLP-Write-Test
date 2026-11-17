@@ -167,7 +167,7 @@ def test_worker_failure_is_audited_and_session_closed():
     with pytest.raises(RuntimeError, match="worker crash"):
         coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_failed", "session_closed"
+        "job_accepted", "job_failed", "session_cleanup_unconfirmed"
     ]
 
 
