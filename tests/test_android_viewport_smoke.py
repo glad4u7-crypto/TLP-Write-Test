@@ -241,6 +241,9 @@ def test_android_owner_can_create_encrypted_backup_download(streamlit_server):
         page.get_by_label("New backup encryption passphrase (12+ characters)").fill(
             "test-only encrypted backup passphrase"
         )
+        page.get_by_label("Confirm backup encryption passphrase").fill(
+            "test-only encrypted backup passphrase"
+        )
         page.get_by_role("button", name="Create encrypted backup").click()
         page.get_by_text(
             "Encrypted backup created. Keep the passphrase separately; APAA cannot recover it."
