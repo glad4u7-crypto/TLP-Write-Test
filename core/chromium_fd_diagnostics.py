@@ -119,7 +119,7 @@ def _executable_mappings(base: Path, executable: str | None) -> list[dict]:
             "inode": inode,
             "module": Path(path).name,
         })
-        if len(mappings) >= 64:
+        if len(mappings) >= 48:
             break
     return mappings
 
