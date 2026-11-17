@@ -34,13 +34,19 @@ Initial implementation added on the BCS-05 branch:
 - Negative browser-harness coverage: cross-origin redirect, image, iframe, popup, and WebSocket attempts are intercepted and aborted/closed by Playwright routing.
 - The CI workflow now runs this test on the BCS-05 branch and pull requests targeting the P74 branch.
 
-**Qualification status: PARTIAL / CI PENDING.** The new test has not yet been observed passing on the exact BCS-05 head. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Production controller integration still requires dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
+**Qualification status: PARTIAL / EXACT-HEAD CI RETEST PENDING.** CI run #810 failed at the final request-observation assertion: Playwright's route hook did not report the redirect target request even though the browser reached and rendered the expected final URL. The assertion was corrected to verify the final navigation through `page.url` and page content, while keeping request-hook assertions for the remaining fixture resources. The correction is committed at the current BCS-05 branch head; its exact-head CI run must pass before Q1 can be accepted. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Production controller integration still requires dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
 
 These tests establish Chromium behavior only. They do NOT establish OCI isolation or host network enforcement.
 
 ### Q2 — OCI and host network boundary
 
 Use only the existing explicitly gated real-host qualification harness on a disposable Linux runner. Verify the actual container, namespaces, cgroup, seccomp, nftables, proxy pinning, and host packet capture.
+
+Existing code coverage inspected on the P74 base:
+- The disposable-host harness has direct UDP/TCP DNS, IPv4/IPv6 TCP, IPv4/IPv6 UDP/443 probes, dual-stack proxy preflight, packet capture, and proxy-outage/no-direct-fallback checks.
+- Unit tests cover mixed public/private DNS answers, DNS rebinding to a private answer, and connected-peer mismatch against the pinned address.
+- Explicit disposable-host probes for private, link-local, loopback, and metadata destinations are still missing from the host harness.
+- The harness has NOT been run for this BCS-05 head. It requires an Owner-approved HTTPS test origin; the workflow's example.com default is not treated as authorization.
 
 Required negative probes:
 - direct IPv4 TCP and UDP;
@@ -55,6 +61,10 @@ Required negative probes:
 Every negative probe must demonstrate denial at the intended enforcement boundary and include evidence artifacts. A test that merely observes a browser error is insufficient.
 
 ### Q3 — Lifecycle and evidence
+
+Existing automated tests cover cancellation, hard deadline timeout, unconfirmed worker termination (must not claim session closed), audit-write failure, and redaction of URL/page data. The durable recovery ledger records interrupted jobs and blocks automatic replay after restart.
+
+Still required on the real disposable host: forced OS worker crash/orphan cleanup, verification of process exit and ephemeral-storage removal, and sanitized evidence bound to the exact head SHA.
 
 - Worker crash, timeout, cancellation, orphan detection, cleanup, and restart recovery.
 - Verify no worker is reported closed until OS process exit and ephemeral-storage cleanup are confirmed.
