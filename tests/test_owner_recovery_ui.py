@@ -20,7 +20,7 @@ def _app_with_uncertain_execution(tmp_path, monkeypatch):
     store = SQLiteSecurityStore(paths.security_db)
     key = "owner-recovery-request-0001"
     assert store.claim_execution(
-        PERSONAL_OWNER_TENANT, key, "project.create", "a" * 64
+        PERSONAL_OWNER_TENANT, key, "project_create", "a" * 64
     ) == "claimed"
     assert store.finish_execution(PERSONAL_OWNER_TENANT, key, "uncertain")
     app = AppTest.from_file(str(APP_PATH), default_timeout=20).run()
