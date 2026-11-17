@@ -671,3 +671,10 @@ baseline seccomp path before it had been located. The workflow is corrected:
 it now locates the Podman baseline, derives the private Chromium profile, then
 provisions cgroup/image and passes the derived profile to the OCI runtime.
 The failed attempt skipped all destructive provisioning steps.
+
+
+## Chromium proxy-path diagnostic follow-up
+
+The next real OCI run passed the user-namespace and `chroot` probe, retained all default-DROP and direct-egress negative checks, and no longer crashed in the zygote. Chromium itself exited successfully but did not return the expected `Example Domain` marker over the IPv4 proxy. The sanitized evidence confirmed both user-namespace checks true; container cleanup was confirmed with no cleanup errors.
+
+Added bounded, redacted Chromium stdout/stderr diagnostics to the qualification evidence so the next run distinguishes proxy CONNECT failure, TLS failure, browser error page, and controlled-page content mismatch without recording credentials, email addresses or URL paths/query values. A regression test checks this redaction. A fresh disposable-host run is requested for this diagnostic revision.
