@@ -57,7 +57,15 @@ Early P73 runs exposed real regressions and were not treated as passes:
 - the Android viewport test counted hidden zero-size controls as touch targets;
 - the checkpoint picker and same-owner multi-session expectations needed to reflect the fixed local owner model.
 
-Those defects/test assumptions were corrected. The P73 workflow now runs compilation, dependency vulnerability audit, the full Python suite and Android/desktop Chromium smoke tests on the stacked PR base. See the exact-head CI result linked from PR #13; never infer a pass from an earlier commit.
+Those defects/test assumptions were corrected. The P73 workflow now runs compilation, dependency vulnerability audit, the full Python suite and Android/desktop Chromium smoke tests on the stacked PR base.
+
+**Exact verified P73 head:** `5962d0a94fe26ab3eb9db4c56e3c6702039e9611` — [workflow run #43990846404](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43990846404) completed **PASS**:
+- Python suite: 1,381 passed, 9 skipped;
+- `pip-audit`: no known vulnerabilities found;
+- Chromium smoke: 9 passed;
+- compile and both workflow jobs succeeded.
+
+A later documentation-only commit triggers its own workflow; do not use this code-head result as a claim about any subsequent code change.
 
 ## 4. Remaining boundaries — do not promote to PASS
 
