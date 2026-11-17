@@ -154,9 +154,15 @@ class BrowserWorker(Protocol):
         cancellation: CancellationToken,
         deadline_monotonic: float,
         pinned_destination: PinnedDestination,
-    ) -> Mapping[str, Any]: ...
+    ) -> Mapping[str, Any]:
+        """Return only after the per-job browser context and profile are destroyed."""
 
-    def terminate(self, session_id: str) -> None: ...
+    def terminate(self, session_id: str) -> bool:
+        """Kill the isolated worker and block until OS confirms process exit.
+
+        Return True only after process exit and ephemeral storage cleanup are
+        confirmed. Returning None/False is a security failure.
+        """
 
 
 AuditWriter = Callable[[Mapping[str, Any]], None]
@@ -230,7 +236,8 @@ class BrowserExecutionCoordinator:
         termination_error = None
         if self._worker is not None:
             try:
-                self._worker.terminate(session_id)
+                if self._worker.terminate(session_id) is not True:
+                    raise BrowserExecutionError("Worker termination was not confirmed.")
             except Exception as exc:
                 termination_error = exc
         audit_error = None
@@ -275,6 +282,7 @@ class BrowserExecutionCoordinator:
             self._active[job.job_id] = (token, session_id)
 
         deadline = self._clock() + job.max_runtime_seconds
+        worker_exit_confirmed = False
         try:
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
             token.raise_if_cancelled()
@@ -305,7 +313,9 @@ class BrowserExecutionCoordinator:
             if not completed.wait(timeout=remaining):
                 token.cancel()
                 try:
-                    self._worker.terminate(session_id)
+                    if self._worker.terminate(session_id) is not True:
+                        raise BrowserExecutionError("Worker termination was not confirmed.")
+                    worker_exit_confirmed = True
                 except Exception as exc:
                     self._record("worker_terminate_error", job_id=job.job_id, session_id=session_id, detail="timeout_termination_error")
                     raise BrowserExecutionError("Timed-out browser worker could not be terminated.") from exc
@@ -317,11 +327,14 @@ class BrowserExecutionCoordinator:
             result = outcome.get("result")
             if self._clock() > deadline:
                 token.cancel()
-                self._worker.terminate(session_id)
+                if self._worker.terminate(session_id) is not True:
+                    raise BrowserExecutionError("Worker termination was not confirmed.")
+                worker_exit_confirmed = True
                 self._record("job_timed_out", job_id=job.job_id, session_id=session_id, detail="hard_deadline")
                 raise BrowserTimeout("Browser job exceeded its hard runtime deadline.")
             if not isinstance(result, Mapping):
                 raise BrowserExecutionError("Worker returned an invalid result envelope.")
+            worker_exit_confirmed = True  # run() contract: context/profile teardown completed.
             self._record("job_completed", job_id=job.job_id, session_id=session_id, detail="success")
             return dict(result)
         except BrowserCancelled:
@@ -336,7 +349,11 @@ class BrowserExecutionCoordinator:
             with self._lock:
                 self._active.pop(job.job_id, None)
             try:
-                self._record("session_closed", job_id=job.job_id, session_id=session_id, detail="ephemeral")
+                self._record(
+                    "session_closed" if worker_exit_confirmed else "session_cleanup_unconfirmed",
+                    job_id=job.job_id, session_id=session_id,
+                    detail="worker_exit_confirmed" if worker_exit_confirmed else "termination_not_confirmed",
+                )
             except Exception as exc:
                 # Audit integrity is mandatory: never silently swallow it.
                 raise BrowserExecutionError("Final browser audit write failed.") from exc
