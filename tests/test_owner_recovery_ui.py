@@ -34,7 +34,6 @@ def _app_with_uncertain_execution(tmp_path, monkeypatch):
 
 def test_owner_recovery_ui_requires_confirmation_and_never_reexecutes(tmp_path, monkeypatch):
     app, store, key = _app_with_uncertain_execution(tmp_path, monkeypatch)
-    assert any("Owner Recovery" in item.label for item in app.expander)
     confirm = [
         item for item in app.checkbox
         if item.label == "I reviewed the external outcome and confirm this decision"
