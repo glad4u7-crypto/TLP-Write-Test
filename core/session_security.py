@@ -27,6 +27,8 @@ _IDENTITY_BOUND_KEYS = (
     "global_owner_admin_context",
     "global_owner_pending_action",
     "global_owner_approval_receipt",
+    "apaa_local_authenticated_at",
+    "apaa_local_last_activity",
 )
 
 
@@ -44,9 +46,18 @@ def bind_session_identity(
         raise ValueError("A non-empty authenticated identity subject is required.")
 
     previous = session_state.get("active_identity_subject")
+    # Local authentication timestamps are cleared at identity boundaries but
+    # are not, by themselves, orphaned owner capabilities before first bind.
+    local_session_markers = {
+        "apaa_local_authenticated_at", "apaa_local_last_activity"
+    }
     has_orphaned_identity_state = (
         previous is None
-        and any(key in session_state for key in _IDENTITY_BOUND_KEYS)
+        and any(
+            key in session_state
+            for key in _IDENTITY_BOUND_KEYS
+            if key not in local_session_markers
+        )
     )
     changed = (
         (previous is not None and previous != identity_subject)
