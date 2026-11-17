@@ -175,6 +175,8 @@ def decrypt_backup_file(source_path: str | Path, destination_path: str | Path, p
                     raise EncryptedBackupError("Encrypted backup contains data after its final chunk.")
             if total == 0:
                 raise EncryptedBackupError("Encrypted backup contains no data.")
+            if total != expected_size:
+                raise EncryptedBackupError("Encrypted backup is truncated.")
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, destination)
