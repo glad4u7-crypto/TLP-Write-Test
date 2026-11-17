@@ -105,7 +105,7 @@ def test_proxy_outage_probe_rejects_successful_direct_fallback(monkeypatch):
         qualification.subprocess, "run",
         lambda *args, **kwargs: CompletedProcess(args[0], 0, "<html>Allowed Marker</html>", ""),
     )
-    with pytest.raises(RuntimeError, match="direct fallback"):
+    with pytest.raises(RuntimeError, match="reached the allowed page"):
         qualification._probe_proxy_outage(["chromium"], "Allowed Marker", "ipv4")
 
 
