@@ -54,3 +54,44 @@ def test_packet_capture_rejects_direct_dns_egress(monkeypatch, tmp_path):
             proxy_ips={"198.18.0.1"},
             proxy_port=3128,
         )
+
+def test_packet_capture_rejects_unrelated_arp_and_non_link_local_ndp(monkeypatch, tmp_path):
+    from subprocess import CompletedProcess
+    import pytest
+
+    outputs = [
+        "ARP, Request who-has 198.18.0.99 tell 198.18.0.2",
+        "IP6 2001:db8:1::2 > ff02::1:ff00:1: ICMP6, neighbor solicitation",
+    ]
+    for output in outputs:
+        monkeypatch.setattr(
+            qualification, "_run",
+            lambda command, timeout=90, output=output: CompletedProcess(command, 0, output, ""),
+        )
+        with pytest.raises(RuntimeError, match="non-proxy worker traffic"):
+            qualification._audit_worker_capture(
+                tmp_path / "worker.pcap",
+                worker_ips={"198.18.0.2", "2001:db8:1::2"},
+                proxy_ips={"198.18.0.1", "2001:db8:1::1"},
+                proxy_port=3128,
+            )
+
+
+def test_packet_capture_accepts_only_link_local_ndp(monkeypatch, tmp_path):
+    from subprocess import CompletedProcess
+
+    output = "IP6 fe80::2 > ff02::1:ff00:1: ICMP6, neighbor solicitation"
+    monkeypatch.setattr(
+        qualification, "_run",
+        lambda command, timeout=90: CompletedProcess(command, 0, output, ""),
+    )
+    # The capture contains only permitted control traffic, so the parser
+    # correctly rejects it later because no approved proxy TCP flow exists.
+    import pytest
+    with pytest.raises(RuntimeError, match="did not observe the approved proxy TCP flow"):
+        qualification._audit_worker_capture(
+            tmp_path / "worker.pcap",
+            worker_ips={"198.18.0.2", "2001:db8:1::2"},
+            proxy_ips={"198.18.0.1", "2001:db8:1::1"},
+            proxy_port=3128,
+        )
