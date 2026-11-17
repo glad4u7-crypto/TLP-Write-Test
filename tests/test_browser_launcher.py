@@ -149,6 +149,7 @@ def test_launch_uses_signed_firewall_ip_pin_and_enforces_tls_verification():
     assert "--proxy-bypass-list=<-loopback>" in browser_type.launch_options["args"]
     assert "--disable-http2" in browser_type.launch_options["args"]
     assert "--disable-quic" in browser_type.launch_options["args"]
+    assert "--host-resolver-rules=MAP * ~NOTFOUND" in browser_type.launch_options["args"]
     assert browser_type.browser.context_options["ignore_https_errors"] is False
     assert browser_type.browser.context_options["accept_downloads"] is False
     assert browser_type.browser.context_options["service_workers"] == "block"
