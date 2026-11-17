@@ -193,3 +193,54 @@ def test_restore_rejects_backup_with_broken_history_without_replacing_live_state
         ledger.restore_from(backup)
     assert ledger.get("job_restoreguard1")["state"] == "accepted"
     assert ledger.verify_history() == ledger.list_history()[-1]["entry_hash"]
+
+
+def test_history_verification_detects_tail_truncation(tmp_path):
+    ledger = make_ledger(tmp_path)
+    ledger.claim("job_tailtruncate1", "a" * 64, session_id="private-session-123456")
+    ledger.transition("job_tailtruncate1", "running")
+
+    import sqlite3
+    with sqlite3.connect(ledger.path) as db:
+        db.execute("DROP TRIGGER browser_history_no_delete")
+        db.execute("DELETE FROM browser_job_history WHERE sequence=2")
+
+    with pytest.raises(RecoveryLedgerError, match="history"):
+        ledger.verify_history()
+    with pytest.raises(RecoveryLedgerError, match="history"):
+        ledger.claim("job_aftertruncate1", "b" * 64, session_id="another-session-123456")
+
+
+def test_existing_ledger_is_migrated_with_a_verifiable_snapshot(tmp_path):
+    import sqlite3
+
+    directory = tmp_path / "private"
+    directory.mkdir(mode=0o700)
+    directory.chmod(0o700)
+    path = directory / "legacy.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TABLE browser_jobs (
+            job_id TEXT PRIMARY KEY,
+            request_digest TEXT NOT NULL,
+            state TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            session_id TEXT,
+            outcome_code TEXT
+        )""")
+        db.execute("""CREATE TABLE browser_control (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )""")
+        db.execute(
+            "INSERT INTO browser_jobs VALUES(?,?,?,?,?,?,?)",
+            ("job_legacy0001", "c" * 64, "completed", 10.0, 12.0, "legacy-session-secret", "success"),
+        )
+
+    ledger = SQLiteBrowserRecoveryLedger(path)
+    history = ledger.list_history("job_legacy0001")
+    assert len(history) == 1
+    assert history[0]["state"] == "completed"
+    assert history[0]["occurred_at"] == 12.0
+    assert ledger.verify_history() == history[0]["entry_hash"]
