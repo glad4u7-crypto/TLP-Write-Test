@@ -7,6 +7,7 @@ name: APAA P74 real OCI Chromium worker
 # The unprefixed fatal stack is mapped across all worker Chromium processes.
 # Evidence distinguishes the prefixed browser log PID from the stack-matched child image.
 # This rerun skips unavailable dbgsym and keeps symbolication best-effort.
+# Exported close symbol addresses are inspected from the pinned worker ELF.
 
 on:
   push:
