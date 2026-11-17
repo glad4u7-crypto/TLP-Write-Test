@@ -106,3 +106,25 @@ def test_approval_correlation_tampering_blocks_history_verification_and_dispatch
         ledger.verify_history()
     with pytest.raises(RecoveryLedgerError, match="approval correlation integrity"):
         ledger.claim("job_aftertamper01", "f" * 64, session_id="another-worker-session-123")
+
+def test_approval_correlation_survives_verified_backup_and_restore(tmp_path):
+    ledger = make_ledger(tmp_path)
+    ledger.claim("job_approval0005", "a" * 64, session_id="worker-session-123456")
+    ledger.record_approval_correlation(
+        "job_approval0005",
+        approval_ref="b" * 64,
+        owner_ref="c" * 64,
+        session_ref="d" * 64,
+        request_digest="a" * 64,
+    )
+    backup = ledger.path.parent / "browser-backup.sqlite3"
+    ledger.backup_to(backup)
+
+    ledger.transition("job_approval0005", "failed", outcome_code="test_failure")
+    ledger.restore_from(backup)
+
+    rows = ledger.list_approval_correlations("job_approval0005")
+    assert len(rows) == 1
+    assert rows[0]["approval_ref"] == "b" * 64
+    assert ledger.get("job_approval0005")["state"] == "accepted"
+    assert ledger.verify_history() == ledger.list_history()[-1]["entry_hash"]
