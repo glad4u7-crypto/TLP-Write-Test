@@ -125,3 +125,15 @@ new `from_keyring` classmethod had been inserted before the adapter's runtime
 state initialization, leaving `_states` and `_lock` unset. The initialization
 was moved back into `__init__` before the factory method. The correction is
 committed; exact-head CI is still required.
+
+
+### Run #54 nftables JSON root cause and correction
+
+The retained exact nftables JSON showed that nft 1.0.9 serializes the
+firewall's explicit `ct state new` condition as a scalar equality match:
+`{"ct":{"key":"state"}} == "new"`. The strict policy inventory had expected
+the output-new rule without this condition, so it correctly rejected the
+live ruleset as different from its declared policy. The attestor now requires
+the exact `ct.state == "new"` condition, and its dual-stack fixture/regression
+test models the live JSON representation. The real-host test must be rerun;
+no Chromium or bypass tests ran in #54.
