@@ -277,7 +277,7 @@ def _chromium_dynamic_symbols(container_id: str) -> dict:
             continue
         found = {}
         for line in (result.stdout or "").splitlines():
-            match = re.match(r"^\\s*([0-9a-fA-F]+)\\s+[A-Za-z]\\s+(.+?)\\s*$", line)
+            match = re.match(r"^\s*([0-9a-fA-F]+)\s+[A-Za-z]\s+(.+?)\s*$", line)
             if not match:
                 continue
             address, name = match.group(1).lower(), match.group(2)
