@@ -171,10 +171,10 @@ def test_parent_child_shared_kernel_fd_is_reported_as_candidate_not_fact(tmp_pat
     (child / "fd").mkdir(parents=True)
     (child / "fdinfo").mkdir()
     (child / "stat").write_text(_stat("renderer", ppid=4242), encoding="ascii")
-    (child / "status").write_text("Uid:\\t65532\\nGid:\\t65532\\n", encoding="ascii")
+    (child / "status").write_text("Uid:\t65532\nGid:\t65532\n", encoding="ascii")
     (child / "fd" / "5").symlink_to("pipe:[12345]")
-    (child / "fdinfo" / "5").write_text("pos:\\t0\\nflags:\\t01\\n", encoding="ascii")
-    (cgroup / "cgroup.procs").write_text("4242\\n5252\\n", encoding="ascii")
+    (child / "fdinfo" / "5").write_text("pos:\t0\nflags:\t01\n", encoding="ascii")
+    (cgroup / "cgroup.procs").write_text("4242\n5252\n", encoding="ascii")
     real_stat = os.stat
 
     def fake_stat(path, *args, **kwargs):
