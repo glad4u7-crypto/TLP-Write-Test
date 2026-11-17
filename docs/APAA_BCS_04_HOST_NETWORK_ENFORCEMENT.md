@@ -180,3 +180,14 @@ now validate a non-empty, unique `CAP_*` drop list, reject any `CapAdd`, and
 independently require kernel `/proc/<pid>/status` `CapEff` to be zero after
 worker start. Regression tests cover capability additions and non-zero
 effective capability masks. This avoids trusting the CLI flag alone.
+
+
+### Run #70 — OCI hardening passed; cgroup membership gate blocked
+
+The revised preflight accepted Podman's expanded capability-drop list, and the
+observer progressed beyond the OCI security assertion. It then rejected the
+worker because the live process cgroup path did not fall beneath the declared
+dedicated parent. Cleanup was confirmed; no Chromium request or bypass test
+ran. The next run records the exact `/proc/<pid>/cgroup` value and includes
+the observed/expected paths in the observer error so the cgroup-v2 attachment
+can be corrected from evidence rather than weakened.
