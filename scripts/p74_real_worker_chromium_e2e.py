@@ -333,6 +333,36 @@ def _annotate_known_dynamic_symbols(failure: dict, symbols: dict) -> list[dict]:
     return matches
 
 
+def _disassemble_chromium_stack(container_id: str, failure: dict) -> list[dict]:
+    """Capture bounded read-only instruction windows around the first Chromium frames."""
+    process_mapping = failure.get("process_mapping") or {}
+    frames = process_mapping.get("stack_frames_with_module_offsets", [])
+    windows = []
+    for frame in frames[:3]:
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            address = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = max(0, address - 0x40)
+        stop = address + 0x80
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id,
+             "objdump", "-d", f"--start-address={start:#x}",
+             f"--stop-address={stop:#x}", "/usr/lib/chromium/chromium"],
+            check=False, capture_output=True, text=True, timeout=8, shell=False,
+        )
+        windows.append({
+            "frame": frame.get("frame"),
+            "module_offset": frame.get("module_offset"),
+            "exit_code": result.returncode,
+            "disassembly": redact_sensitive_text((result.stdout or "")[-6000:], limit=6000),
+            "stderr_preview": redact_sensitive_text((result.stderr or "")[:400], limit=400),
+        })
+    return windows
+
+
 def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
     """Best-effort Debian debuginfod symbolication; never changes worker execution."""
     if not build_id:
@@ -1013,6 +1043,9 @@ def main() -> int:
             local_smoke["failure"]["known_symbol_matches"] = _annotate_known_dynamic_symbols(
                 local_smoke["failure"], chromium_dynamic_symbols,
             )
+            local_smoke["failure"]["stack_disassembly"] = _disassemble_chromium_stack(
+                container_id, local_smoke["failure"],
+            )
             local_smoke["failure"]["symbolication"] = _symbolize_failure_frames(
                 local_smoke["failure"], chromium_build_id,
             )
@@ -1190,6 +1223,7 @@ target.url,
                 failure["known_symbol_matches"] = _annotate_known_dynamic_symbols(
                     failure, chromium_dynamic_symbols,
                 )
+                failure["stack_disassembly"] = _disassemble_chromium_stack(container_id, failure)
                 failure["symbolication"] = _symbolize_failure_frames(failure, chromium_build_id)
                 evidence["chromium_failure"] = failure
                 raise RuntimeError(
