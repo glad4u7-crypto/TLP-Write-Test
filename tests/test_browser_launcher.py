@@ -7,7 +7,6 @@ from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_launcher import (
     BrowserLaunchError,
-    BrowserSession,
     create_playwright_worker_start,
     launch_chromium,
 )
@@ -33,8 +32,6 @@ def make_spec():
         "pids_limit": 64, "job_timeout_seconds": 30,
     })
     return build_worker_launch_spec(profile)
-
-
 
 
 class FakeHost:
@@ -82,9 +79,14 @@ class FakeHost:
                     "expr": expression,
                 }})
 
-    def read_runtime_attestation(self): return self.runtime
-    def read_network_namespace_identity(self): return self.namespace
-    def read_nftables_json(self): return self.rules
+    def read_runtime_attestation(self):
+        return self.runtime
+
+    def read_network_namespace_identity(self):
+        return self.namespace
+
+    def read_nftables_json(self):
+        return self.rules
 
 
 def make_signed_evidence(spec, key):
@@ -94,35 +96,13 @@ def make_signed_evidence(spec, key):
     )
 
 
-class FakeContext:
-    def __init__(self): self.close_calls = 0
-    def close(self): self.close_calls += 1
-
-
-class FakeBrowser:
-    def __init__(self, fail_context=False):
-        self.context = FakeContext()
-        self.fail_context = fail_context
-        self.close_calls = 0
-        self.context_options = None
-    def new_context(self, **kwargs):
-        self.context_options = kwargs
-        if self.fail_context: raise RuntimeError("context creation failed")
-        return self.context
-    def close(self): self.close_calls += 1
-
-
 class FakeBrowserType:
-    def __init__(self, browser=None, fail_launch=False):
-        self.browser = browser or FakeBrowser()
-        self.fail_launch = fail_launch
-        self.launch_options = None
+    def __init__(self):
         self.calls = 0
+
     def launch(self, **kwargs):
         self.calls += 1
-        self.launch_options = kwargs
-        if self.fail_launch: raise RuntimeError("launch failed")
-        return self.browser
+        raise AssertionError("Host-local browser process must never be started.")
 
 
 def make_gate(browser_type, spec, key):
@@ -134,50 +114,41 @@ def make_gate(browser_type, spec, key):
     )
 
 
-def test_launch_uses_signed_firewall_ip_pin_and_enforces_tls_verification():
+def test_valid_signed_worker_evidence_does_not_authorize_host_local_chromium():
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
     browser_type = FakeBrowserType()
     gate = make_gate(browser_type, spec, key)
-    session = launch_chromium(gate, make_signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
 
-    assert isinstance(session, BrowserSession)
-    assert browser_type.calls == 1
-    assert browser_type.launch_options["proxy"] == {"server": "http://172.20.0.2:3128"}
-    assert browser_type.launch_options["headless"] is True
-    assert browser_type.launch_options["chromium_sandbox"] is True
-    assert "--proxy-bypass-list=<-loopback>" in browser_type.launch_options["args"]
-    assert "--disable-http2" in browser_type.launch_options["args"]
-    assert "--disable-quic" in browser_type.launch_options["args"]
-    assert "--host-resolver-rules=MAP * ~NOTFOUND" in browser_type.launch_options["args"]
-    assert browser_type.browser.context_options["ignore_https_errors"] is False
-    assert browser_type.browser.context_options["accept_downloads"] is False
-    assert browser_type.browser.context_options["service_workers"] == "block"
-    session.close()
-    session.close()
-    assert browser_type.browser.context.close_calls == 1
-    assert browser_type.browser.close_calls == 1
+    with pytest.raises(BrowserLaunchError, match="Host-local Playwright launch is forbidden"):
+        launch_chromium(gate, make_signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
+
+    assert browser_type.calls == 0
 
 
-def test_unsigned_or_tampered_evidence_never_starts_browser():
+def test_unsigned_or_tampered_evidence_never_reaches_local_launcher():
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
     browser_type = FakeBrowserType()
     gate = make_gate(browser_type, spec, key)
     envelope = make_signed_evidence(spec, key)
     envelope["signature"] = "A" * len(envelope["signature"])
+
     with pytest.raises(BrowserLaunchError, match="Signed runtime/firewall"):
         launch_chromium(gate, envelope, challenge=CHALLENGE, now=NOW)
+
     assert browser_type.calls == 0
 
 
-def test_wrong_challenge_never_starts_browser():
+def test_wrong_challenge_never_reaches_local_launcher():
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
     browser_type = FakeBrowserType()
     gate = make_gate(browser_type, spec, key)
+
     with pytest.raises(BrowserLaunchError):
         launch_chromium(gate, make_signed_evidence(spec, key), challenge="e" * 64, now=NOW)
+
     assert browser_type.calls == 0
 
 
@@ -186,23 +157,12 @@ def test_untrusted_gate_type_is_rejected():
         launch_chromium(object(), {}, challenge=CHALLENGE, now=NOW)
 
 
-def test_context_creation_failure_closes_browser_and_does_not_fallback():
+def test_legacy_worker_start_callback_is_always_fail_closed():
     spec = make_spec()
-    key = Ed25519PrivateKey.generate()
-    browser = FakeBrowser(fail_context=True)
-    browser_type = FakeBrowserType(browser=browser)
-    gate = make_gate(browser_type, spec, key)
-    with pytest.raises(BrowserLaunchError, match="no alternate or direct"):
-        launch_chromium(gate, make_signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
-    assert browser.close_calls == 1
-    assert browser_type.calls == 1
+    browser_type = FakeBrowserType()
+    callback = create_playwright_worker_start(browser_type)
 
+    with pytest.raises(BrowserLaunchError, match="Host-local Playwright launch is forbidden"):
+        callback(spec, object())
 
-def test_browser_launch_failure_does_not_attempt_direct_fallback():
-    spec = make_spec()
-    key = Ed25519PrivateKey.generate()
-    browser_type = FakeBrowserType(fail_launch=True)
-    gate = make_gate(browser_type, spec, key)
-    with pytest.raises(BrowserLaunchError, match="no alternate or direct"):
-        launch_chromium(gate, make_signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
-    assert browser_type.calls == 1
+    assert browser_type.calls == 0
