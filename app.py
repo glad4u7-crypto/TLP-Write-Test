@@ -26,6 +26,9 @@ from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
 from core.personal_diagnostics import inspect_personal_runtime, diagnostics_summary
+from core.personal_project_files import (
+    ProjectFileError, list_project_files, project_files_directory, save_project_file,
+)
 from core.personal_backup import create_personal_backup, restore_personal_backup, PersonalBackupError
 from core.personal_runtime import (
     PERSONAL_OWNER_TENANT,
@@ -33,7 +36,7 @@ from core.personal_runtime import (
     personal_runtime_paths,
 )
 from core.personal_auth import LocalOwnerAuthStore
-from core.read_only_adapters import ReadOnlyAdapterRegistry, ReadOnlyAdapterError
+from core.read_only_adapters import ReadOnlyAdapterRegistry, ReadOnlyAdapterError, ProjectFileReadAdapter
 from core.capabilities import ReadCapability, ReadRequest
 from core.safe_network_providers import (
     DuckDuckGoSearchProvider,
@@ -1048,6 +1051,91 @@ def execute_owner_ui_mutation(action, approved, payload, operation):
         session_scope=st.session_state["approval_session_scope"],
     )
 
+
+selected_file_project = visible_project(st.session_state.get("selected_project_id", ""))
+if not auth_required and selected_file_project is not None:
+    st.divider()
+    st.header("Project Files · Owner-only")
+    st.caption(
+        "Store small UTF-8 text files inside the selected project's private directory. "
+        "Uploads require explicit approval; inspection is read-only."
+    )
+    with st.form("apaa_project_file_upload_form", clear_on_submit=True):
+        project_file_upload = st.file_uploader(
+            "Choose a text file",
+            type=["txt", "md", "csv", "json", "yaml", "yml", "py", "log"],
+            key="apaa_project_file_upload",
+        )
+        project_file_consent = st.checkbox(
+            "I approve storing this exact file in the selected project"
+        )
+        upload_project_file = st.form_submit_button(
+            "Review and save project file",
+            disabled=project_file_upload is None,
+        )
+    if upload_project_file:
+        try:
+            if project_file_upload is None:
+                st.error("Choose a file first.")
+            else:
+                file_bytes = project_file_upload.getvalue()
+                file_digest = hashlib.sha256(file_bytes).hexdigest()
+                execute_owner_ui_mutation(
+                    "project_file.upload", project_file_consent,
+                    {
+                        "project_id": selected_file_project.project_id,
+                        "filename": project_file_upload.name,
+                        "size": len(file_bytes),
+                        "sha256": file_digest,
+                    },
+                    lambda payload: save_project_file(
+                        personal_data_dir, payload["project_id"],
+                        payload["filename"], file_bytes, consent=True,
+                    ),
+                )
+                st.success("Project file saved in the private project workspace.")
+                st.rerun()
+        except (ProjectFileError, PermissionError, OSError, ValueError, sqlite3.Error) as exc:
+            st.error(f"Project file was not saved: {exc}")
+
+    try:
+        project_file_entries = list_project_files(
+            personal_data_dir, selected_file_project.project_id
+        )
+    except ProjectFileError:
+        project_file_entries = []
+    if project_file_entries:
+        with st.form("apaa_project_file_inspect_form"):
+            selected_project_filename = st.selectbox(
+                "Inspect a stored text file",
+                options=[entry.name for entry in project_file_entries],
+                key="apaa_project_file_selector",
+            )
+            inspect_project_file = st.form_submit_button("Inspect file")
+        if inspect_project_file:
+            try:
+                file_adapter = ProjectFileReadAdapter(
+                    lambda project_id: project_files_directory(
+                        personal_data_dir, project_id, create=False
+                    )
+                )
+                file_registry = ReadOnlyAdapterRegistry((file_adapter,))
+                file_request = ReadRequest(
+                    ReadCapability.FILE_INSPECT,
+                    target=selected_project_filename,
+                    project_id=selected_file_project.project_id,
+                    max_results=1,
+                )
+                inspected = file_registry.read(file_request)
+                for item in inspected.items:
+                    st.caption(f"Read-only source: {item.locator}")
+                    st.code(item.excerpt, language="text")
+                if inspected.truncated:
+                    st.caption("Displayed text was bounded; the full file was not loaded into the UI.")
+            except (ProjectFileError, ReadOnlyAdapterError, ValueError, OSError) as exc:
+                st.error(f"Project file could not be inspected safely: {exc}")
+    else:
+        st.caption("No safe project text files are stored yet.")
 
 st.header("Task Workspace")
 task = st.text_area(
