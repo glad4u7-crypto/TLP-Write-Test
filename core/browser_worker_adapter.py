@@ -17,7 +17,7 @@ from typing import Any, Protocol
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.attested_browser_runtime import AttestedBrowserRuntime
-from core.browser_execution import BrowserExecutionError, BrowserWorker, CancellationToken
+from core.browser_execution import BrowserExecutionError, CancellationToken
 from core.browser_nftables import HostSnapshotSource, collect_signed_inspector_evidence
 from core.browser_runtime import WorkerLaunchSpec
 
@@ -84,7 +84,7 @@ class _WorkerState:
     cleanup_error: Exception | None = None
 
 
-class AttestedBrowserWorkerAdapter(BrowserWorker):
+class AttestedBrowserWorkerAdapter:
     """BrowserWorker implementation with one fresh attested worker per job.
 
     Provisioning happens before evidence collection; browser process startup
