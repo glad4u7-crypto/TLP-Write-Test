@@ -13,13 +13,14 @@ the only authorization boundary, and BrowserControlBoundary remains disabled.
 - BrowserSession exposes its owned context and closes context, browser and
   Playwright manager deterministically.
 - SafeNavigationController supports persistent BrowserContext-wide routing.
-  The route validates the initial URL, redirects and every routed subresource
-  for the full adapter session, not only during page.goto().
+  The route validates the initial URL, the browser-reported redirect chain
+  (including loop and hop limits), and every routed subresource for the full
+  adapter session, not only during page.goto().
 - SecureBrowserAdapter requires a trusted per-request egress guard. A request
   is continued only when the guard returns the literal boolean true.
 - Only GET and HEAD are accepted. Request bodies and multipart requests are
   rejected. Download acceptance is disabled and file chooser selections are
-  cleared.
+  cleared on the initial page and every popup/new page in the context.
 - WebSocket routing is mandatory; adapter startup fails closed if the runtime
   cannot install a WebSocket deny handler. Each WebSocket is closed with
   policy code 1008.
