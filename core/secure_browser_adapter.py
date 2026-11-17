@@ -18,7 +18,7 @@ from core.safe_navigation import SafeNavigationController
 EgressGuard = Callable[[str, str], bool]
 _ALLOWED_METHODS = frozenset({"GET", "HEAD"})
 _ALLOWED_RESOURCE_TYPES = frozenset({
-    "document", "stylesheet", "image", "font", "script", "xhr", "fetch", "manifest",
+    "document", "stylesheet", "image", "font", "script",
 })
 
 
