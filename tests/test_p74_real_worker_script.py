@@ -479,3 +479,27 @@ def test_symbolizer_prefers_exact_local_debian_dbgsym(monkeypatch, tmp_path):
     assert result["symbol_source"] == "exact-debian-dbgsym"
     assert result["frames"][0]["function"] == "base::ScopedFD::reset()"
     assert captured["command"][-1] == "0x9c6343e"
+
+
+
+def test_chromium_dynamic_close_symbol_is_parsed_and_stack_pc_annotated(monkeypatch):
+    from subprocess import CompletedProcess
+
+    def fake_run(command, **kwargs):
+        return CompletedProcess(command, 0, "0000000009c63400 T close\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    symbols = qualification._chromium_dynamic_symbols("worker-container")
+    assert symbols["close_symbol_offset"] == "0x9c63400"
+    failure = {"process_mapping": {"stack_frames_with_module_offsets": [
+        {"frame": 1, "module": "chromium", "module_offset": "0x9c6343e"},
+        {"frame": 2, "module": "chromium", "module_offset": "0x9c64000"},
+    ]}}
+    matches = qualification._annotate_known_dynamic_symbols(failure, symbols)
+    assert matches == [{
+        "frame": 1,
+        "module_offset": "0x9c6343e",
+        "candidate_symbol": "close",
+        "symbol_offset": "0x9c63400",
+        "interpretation": "near_exported_close_symbol_candidate",
+    }]
