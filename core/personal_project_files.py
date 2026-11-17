@@ -30,6 +30,15 @@ class ProjectFileEntry:
     sha256: str
 
 
+def _reject_symlink_components(path: Path) -> None:
+    for component in (path, *path.parents):
+        try:
+            if stat.S_ISLNK(component.lstat().st_mode):
+                raise ProjectFileError("Project file path must not contain symlinks.")
+        except FileNotFoundError:
+            continue
+
+
 def _validate_project_id(project_id: object) -> str:
     if not isinstance(project_id, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", project_id) is None:
         raise ProjectFileError("Project ID is invalid.")
@@ -62,6 +71,8 @@ def project_files_directory(
     root = Path(data_dir).expanduser().absolute()
     if create:
         ensure_private_data_dir(root)
+    else:
+        _reject_symlink_components(root)
     files_root = root / "project-files"
     if create:
         ensure_private_data_dir(files_root)
@@ -138,28 +149,40 @@ def list_project_files(
     data_dir: str | os.PathLike[str], project_id: str,
 ) -> list[ProjectFileEntry]:
     directory = project_files_directory(data_dir, project_id, create=False)
+    directory_fd = os.open(
+        directory,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+    )
     entries: list[ProjectFileEntry] = []
-    with os.scandir(directory) as iterator:
-        for item in iterator:
+    try:
+        with os.scandir(directory) as iterator:
+            names = sorted((item.name for item in iterator), key=str.casefold)
+        for name in names:
             try:
-                metadata = item.stat(follow_symlinks=False)
-            except OSError:
+                filename = _validate_filename(name)
+                descriptor = os.open(
+                    filename,
+                    os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+                    dir_fd=directory_fd,
+                )
+                with os.fdopen(descriptor, "rb") as stream:
+                    metadata = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_PROJECT_FILE_BYTES:
+                        continue
+                    content = stream.read(MAX_PROJECT_FILE_BYTES + 1)
+                if len(content) > MAX_PROJECT_FILE_BYTES:
+                    continue
+                try:
+                    decoded = content.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    continue
+                if "\\x00" in decoded or _SECRET_PATTERN.search(decoded):
+                    continue
+                entries.append(ProjectFileEntry(
+                    filename, len(content), hashlib.sha256(content).hexdigest()
+                ))
+            except (OSError, ProjectFileError):
                 continue
-            if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-                continue
-            if metadata.st_size > MAX_PROJECT_FILE_BYTES:
-                continue
-            if Path(item.name).suffix.lower() not in _ALLOWED_SUFFIXES:
-                continue
-            digest = hashlib.sha256()
-            try:
-                with open(item.path, "rb") as stream:
-                    while True:
-                        chunk = stream.read(8192)
-                        if not chunk:
-                            break
-                        digest.update(chunk)
-            except OSError:
-                continue
-            entries.append(ProjectFileEntry(item.name, metadata.st_size, digest.hexdigest()))
-    return sorted(entries, key=lambda item: item.name.casefold())
+    finally:
+        os.close(directory_fd)
+    return entries
