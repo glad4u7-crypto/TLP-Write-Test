@@ -75,6 +75,7 @@ def make_launcher():
     launcher = PlaywrightBrowserLauncher(
         BrowserLaunchPolicy(),
         playwright_factory=lambda: manager,
+        allow_local_test=True,
     )
     return launcher, manager, browser, playwright
 
@@ -136,7 +137,7 @@ def test_launch_failure_cleans_up_started_resources():
             raise RuntimeError("simulated launch failure")
 
     manager.playwright.chromium = BrokenChromium()
-    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager)
+    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager, allow_local_test=True)
 
     with pytest.raises(BrowserLaunchError, match="launch failed"):
         launcher.launch()
@@ -153,7 +154,7 @@ def test_context_creation_failure_closes_browser_and_manager():
 
     browser.new_context = broken_context
     manager = FakeManager(FakePlaywright(browser))
-    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager)
+    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager, allow_local_test=True)
 
     with pytest.raises(BrowserLaunchError):
         launcher.launch()
@@ -168,7 +169,7 @@ def test_manager_start_failure_is_reported_and_manager_is_stopped():
             raise RuntimeError("startup failure")
 
     manager = BrokenManager(FakePlaywright(FakeBrowser()))
-    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager)
+    launcher = PlaywrightBrowserLauncher(playwright_factory=lambda: manager, allow_local_test=True)
 
     with pytest.raises(BrowserLaunchError, match="launch failed"):
         launcher.launch()
@@ -205,9 +206,28 @@ def test_android_runtime_is_rejected_before_playwright_factory_is_called(monkeyp
         raise AssertionError("factory must not be called on Android")
 
     monkeypatch.setenv("ANDROID_ROOT", "/system")
-    launcher = PlaywrightBrowserLauncher(playwright_factory=factory)
+    launcher = PlaywrightBrowserLauncher(playwright_factory=factory, allow_local_test=True)
 
     with pytest.raises(BrowserLaunchError, match="Android"):
         launcher.launch()
 
     assert called is False
+
+
+def test_local_browser_launch_is_disabled_by_default():
+    called = False
+
+    def factory():
+        nonlocal called
+        called = True
+        raise AssertionError("default configuration must not launch a host browser")
+
+    launcher = PlaywrightBrowserLauncher(playwright_factory=factory)
+    with pytest.raises(BrowserLaunchError, match="Host-local browser launch is disabled"):
+        launcher.launch()
+    assert called is False
+
+
+def test_local_browser_launch_requires_explicit_boolean_opt_in():
+    with pytest.raises(TypeError, match="explicit boolean"):
+        PlaywrightBrowserLauncher(allow_local_test=1)
