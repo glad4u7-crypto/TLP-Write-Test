@@ -17,17 +17,27 @@ P85 starts the next Personal Edition integration pass. The first code slice clos
 - Existing v1 and v2 backups remain supported. The local approval signing key remains excluded and is freshly generated after restore, invalidating old approval receipts.
 - Added regression coverage for project-file backup/restore and archive-payload tampering.
 
+## Additional P85 integration added
+
+- Added an explicit-submit **Read-only Web & YouTube Research** panel. It supports public web search, reading one public HTTPS page, and public YouTube video discovery.
+- Network requests occur only after the Owner submits a form. The UI uses the existing bounded HTTPS providers: no cookies, browser session, JavaScript, playlist mutation, write action or execution-gateway registration.
+- Project file inspection remains local and read-only.
+- Added tenant/project-scoped, newest-first checkpoint history with a bounded listing API.
+- The Task Workspace can prefill the planner from an Owner-selected active/blocked checkpoint's next action. This is a draft-only resume: it does not execute a task or grant approval.
+- Existing saved task plans remain available for review and reloading. Checkpoint status is shown as active, blocked, completed or cancelled.
+- Android-first responsive CSS already enforces 44px minimum touch targets and 16px form text; this P85 pass preserves the browser-based product direction rather than creating a mandatory APK/Home Screen app.
+
 ## Existing capabilities carried forward
 
 - Owner-only Personal Backup & Restore UI already exists from P82 and now uses the extended archive implementation.
 - Project file creation remains explicit-consent and fresh approval/audit gated; overwrite remains disabled.
-- Saved task plans already persist with the memory database and can be loaded again; the action history panel remains separate from task lifecycle history.
+- The action history panel remains separate from task lifecycle/checkpoint history.
 
 ## Remaining P85 work
 
 1. Run the exact-head Python suite, compilation, dependency audit and responsive Android/desktop browser tests; fix any regressions and record the exact tested SHA.
-2. Integrate the existing tenant-scoped SQLite task-state/event store into the Owner Task Workspace for task history, visible step progress, and explicit resume/review after restart. Loading or resuming a plan must never execute it or grant approval.
-3. Improve the existing bounded read-only Web, project File and YouTube research surfaces while preserving no-cookie, no-script, no-write, SSRF/DNS/redirect controls and clear source attribution.
+2. Complete progress visualization across individual plan steps and reconcile it with the durable task-state/event store; current checkpoint status/history and planner-prefill resume are implemented, but they are not yet a full step-by-step execution progress engine.
+3. Add UI-level tests for the explicit-submit web/page/YouTube forms, including provider errors, redirect/SSRF rejection and no-call-before-submit behavior.
 4. Finish Android-first browser layout and deployment/package documentation. The product direction remains a browser-based web platform; do not turn it into a mandatory Home Screen/native APK install.
 5. Complete integration/security regression review and document external gates separately.
 
