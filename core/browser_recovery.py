@@ -409,10 +409,10 @@ class SQLiteBrowserRecoveryLedger:
         if state not in {"running", *_TERMINAL, "cancel_requested"}:
             raise ValueError("unsupported browser job state")
         if outcome_code is not None and (
-            type(outcome_code) is not str or len(outcome_code) > 64
-            or any(ord(c) < 33 for c in outcome_code)
+            type(outcome_code) is not str
+            or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", outcome_code)
         ):
-            raise ValueError("outcome code must be a short non-sensitive code")
+            raise ValueError("outcome code must use a short non-sensitive code token")
         now = self._now()
         try:
             with self._lock, self._database() as db:
