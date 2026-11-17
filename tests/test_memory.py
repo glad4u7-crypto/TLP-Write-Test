@@ -118,3 +118,22 @@ def test_database_file_is_private(store):
     if os.name == "posix":
         assert path.stat().st_mode & 0o777 == 0o600
         assert path.parent.stat().st_mode & 0o777 == 0o700
+
+
+
+def test_checkpoint_history_is_newest_first_and_bounded(store, alice, bob):
+    first = store.save_checkpoint(
+        alice, project_id="APAA", label="Start", summary="Initial work",
+        next_action="Read first file", status="active", consent=True,
+    )
+    second = store.save_checkpoint(
+        alice, project_id="APAA", label="Progress", summary="Reviewed two files",
+        next_action="Run tests", status="blocked", consent=True,
+    )
+    history = store.list_checkpoints(alice, "APAA")
+    assert [item.checkpoint_id for item in history] == [
+        second.checkpoint_id, first.checkpoint_id
+    ]
+    assert history[0].status == "blocked"
+    assert store.list_checkpoints(alice, "APAA", limit=1) == (history[0],)
+    assert store.list_checkpoints(bob, "APAA") == ()
