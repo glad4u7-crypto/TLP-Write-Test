@@ -118,6 +118,27 @@ def _http_proxy_uri(proxy_ip: str, port: int) -> str:
 
 
 
+
+
+_CHROMIUM_EXEC_WRAPPER = (
+    "import os,sys\\n"
+    "for n in os.listdir('/proc/self/fd'):\\n"
+    " try:\\n"
+    "  fd=int(n)\\n"
+    "  if fd>2: os.close(fd)\\n"
+    " except (ValueError,OSError): pass\\n"
+    "os.execvp(sys.argv[1], sys.argv[1:])\\n"
+)
+
+
+def _podman_chromium_command(container_id: str, chromium_bin: str, args: list[str]) -> list[str]:
+    # Close non-stdio descriptors inherited through conmon/podman exec before
+    # Chromium starts its own strict ScopedFD ownership accounting.
+    return [
+        "podman", "exec", "--user", "65532:65532", container_id,
+        "python3", "-c", _CHROMIUM_EXEC_WRAPPER, chromium_bin, *args,
+    ]
+
 def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[str, object]:
     code = (
         "import socket,sys\n"
@@ -146,15 +167,13 @@ def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[
 def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict[str, object]:
     marker = "APAA_LOCAL_DUMP_DOM_OK"
     data_url = "data:text/html,<html><body>" + marker + "</body></html>"
-    result = _run([
-        "podman", "exec", "--user", "65532:65532", container_id, chromium_bin,
+    result = _run(_podman_chromium_command(container_id, chromium_bin, [
         "--headless=new", "--disable-gpu", "--disable-quic",
         "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
         "--disable-crashpad-for-testing", "--disable-features=PassHistogramSharedMemoryOnLaunch",
-        "--disable-dev-shm-usage",
-        "--user-data-dir=/tmp/apaa-chromium-smoke", "--disable-background-networking",
-        "--no-first-run", "--dump-dom", data_url,
-    ], timeout=45)
+        "--disable-dev-shm-usage", "--user-data-dir=/tmp/apaa-chromium-smoke",
+        "--disable-background-networking", "--no-first-run", "--dump-dom", data_url,
+    ]), timeout=45)
     if "<html" not in result.stdout.lower() or marker not in result.stdout:
         details = _chromium_failure_details(result, "local-data-url", marker)
         raise RuntimeError(f"Chromium local dump-dom smoke test failed: {details}")
@@ -585,9 +604,10 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
-        evidence["chromium_version"] = _run([
-            "podman", "exec", "--user", "65532:65532", container_id, chromium_bin, "--version",
-        ], timeout=15).stdout.strip()[:160]
+        evidence["chromium_version"] = _run(
+            _podman_chromium_command(container_id, chromium_bin, ["--version"]),
+            timeout=15,
+        ).stdout.strip()[:160]
         evidence["chromium_local_dump_dom"] = _probe_chromium_local_dump_dom(container_id, chromium_bin)
         evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
@@ -719,34 +739,33 @@ def main() -> int:
             evidence[f"proxy_tcp_preflight_{family}"] = preflight
             accepted_before_browser = proxy.accepted_connections
             rejected_before_browser = proxy.rejected_requests
-            page = _run([
-                "podman", "exec", "--user", "65532:65532", container_id,
-                chromium_bin,
-                "--headless=new",
-                "--disable-gpu",
-                "--disable-quic",
-                "--disable-setuid-sandbox",
-                "--disable-breakpad",
-                "--disable-features=PassHistogramSharedMemoryOnLaunch",
-                "--disable-crash-reporter",
-                # Disable Crashpad initialization only; Chromium's renderer and
-                # namespace sandbox remain enabled for this disposable test.
-                "--disable-crashpad-for-testing",
-                "--disable-features=PassHistogramSharedMemoryOnLaunch",
-                "--disable-dev-shm-usage",
-                "--user-data-dir=/tmp/apaa-chromium-" + family,
-                "--enable-logging=stderr",
-                "--v=1",
-                "--disable-http2",
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--disable-sync",
-                "--no-first-run",
-                "--proxy-server=" + proxy_argument,
-                "--proxy-bypass-list=<-loopback>",
-                "--dump-dom",
-                target.url,
-            ], timeout=120)
+            page = _run(_podman_chromium_command(container_id, chromium_bin, [
+"--headless=new",
+"--disable-gpu",
+"--disable-quic",
+"--disable-setuid-sandbox",
+"--disable-breakpad",
+"--disable-features=PassHistogramSharedMemoryOnLaunch",
+"--disable-crash-reporter",
+# Disable Crashpad initialization only; Chromium's renderer and
+# namespace sandbox remain enabled for this disposable test.
+"--disable-crashpad-for-testing",
+"--disable-features=PassHistogramSharedMemoryOnLaunch",
+"--disable-dev-shm-usage",
+"--user-data-dir=/tmp/apaa-chromium-" + family,
+"--enable-logging=stderr",
+"--v=1",
+"--disable-http2",
+"--disable-background-networking",
+"--disable-component-update",
+"--disable-sync",
+"--no-first-run",
+"--proxy-server=" + proxy_argument,
+"--proxy-bypass-list=<-loopback>",
+"--dump-dom",
+target.url,
+
+            ]), timeout=120)
             evidence["proxy_progress"] = {
                 "family": family,
                 "accepted_before_browser": accepted_before_browser,
