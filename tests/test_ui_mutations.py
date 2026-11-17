@@ -159,8 +159,9 @@ def test_action_history_rejects_invalid_limit_and_fingerprint(tmp_path):
     from core.personal_runtime import PERSONAL_OWNER_TENANT
     from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecurityStore
 
-    audit = SQLiteExecutionAuditLog(
-        SQLiteSecurityStore(tmp_path / "security.sqlite3"), PERSONAL_OWNER_TENANT
-    )
+    store = SQLiteSecurityStore(tmp_path / "security.sqlite3")
+    audit = SQLiteExecutionAuditLog(store, PERSONAL_OWNER_TENANT)
     with pytest.raises(ValueError, match="limit"):
         audit.list_recent_events(limit=0)
+    with pytest.raises(ValueError, match="fingerprint"):
+        store.list_audit_events(principal_fingerprint="invalid", limit=10)
