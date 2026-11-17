@@ -71,6 +71,7 @@ class PinnedConnectProxy:
         self._dialed_addresses: list[str] = []
         self._accepted_connections = 0
         self._rejected_requests = 0
+        self._connection_slots = threading.BoundedSemaphore(32)
 
     @property
     def dialed_addresses(self) -> tuple[str, ...]:
@@ -94,10 +95,17 @@ class PinnedConnectProxy:
 
         class Handler(socketserver.BaseRequestHandler):
             def handle(self):
-                owner._handle_client(self.request)
+                if not owner._connection_slots.acquire(blocking=False):
+                    owner._respond(self.request, 503, "Proxy Capacity Exhausted")
+                    return
+                try:
+                    owner._handle_client(self.request)
+                finally:
+                    owner._connection_slots.release()
 
         class Server(socketserver.ThreadingTCPServer):
             address_family = socket.AF_INET6 if ipaddress.ip_address(owner.bind_address).version == 6 else socket.AF_INET
+            request_queue_size = 32
             allow_reuse_address = False
             daemon_threads = True
             block_on_close = True
