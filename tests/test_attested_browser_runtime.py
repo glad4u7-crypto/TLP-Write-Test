@@ -2,6 +2,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.attested_browser_runtime import AttestedBrowserRuntime, BrowserRuntimeGateError
+from core.browser_execution import BrowserExecutionCoordinator
 from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_nftables import collect_signed_inspector_evidence
@@ -294,3 +295,33 @@ def test_gate_blocks_empty_trust_store_before_worker_adapter():
     with pytest.raises(BrowserRuntimeGateError, match="evidence was rejected"):
         gate.launch(signed_evidence(spec, key), challenge=CHALLENGE, now=NOW)
     assert calls == []
+
+
+
+def test_execution_coordinator_accepts_only_real_verified_attestation_gate():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+
+    class Worker:
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            return {}
+
+        def terminate(self, session_id):
+            return True
+
+    worker = Worker()
+    gate = AttestedBrowserRuntime(
+        spec,
+        trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP],
+        worker_start=lambda passed_spec, evidence: worker,
+    )
+    coordinator = BrowserExecutionCoordinator.from_attested_runtime(
+        gate,
+        signed_evidence(spec, key),
+        challenge=CHALLENGE,
+        now=NOW,
+        audit=lambda event: None,
+    )
+    assert isinstance(coordinator, BrowserExecutionCoordinator)
+    assert coordinator._worker is worker
