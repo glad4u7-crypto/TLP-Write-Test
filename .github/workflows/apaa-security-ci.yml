@@ -11,6 +11,7 @@ on:
       - main
       - master
       - feature/apaa-s09-c01-p01-browser-launch
+      - feature/apaa-p74-action-12-oci-runtime-network
   workflow_dispatch:
 
 permissions:
