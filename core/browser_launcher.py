@@ -92,6 +92,7 @@ def create_playwright_worker_start(browser_type: Any):
                     "--disable-sync",
                     "--disable-http2",
                     "--disable-quic",
+                    "--host-resolver-rules=MAP * ~NOTFOUND",
                     "--proxy-bypass-list=<-loopback>",
                 ],
             )
