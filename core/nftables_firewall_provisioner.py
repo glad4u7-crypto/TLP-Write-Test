@@ -1,11 +1,7 @@
-"""Per-worker nftables policy: default DROP, one pinned TCP proxy endpoint.
-
-The table is installed inside the worker network namespace. Direct DNS, QUIC,
-other TCP/UDP ports, and arbitrary destinations are not permitted. The proxy
-must listen on the host-side veth address and enforce destination pinning.
-"""
+"""Per-worker nftables policy: default DROP, exact proxy-only TCP egress."""
 from __future__ import annotations
 
+from collections import Counter
 import ipaddress
 import os
 import re
@@ -23,9 +19,25 @@ Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 def _proxy_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     address = ipaddress.ip_address(value)
-    if address.is_unspecified or address.is_multicast or address.is_loopback or address.is_link_local or address.is_reserved:
-        raise ValueError("proxy address must be a usable unicast address")
+    if (not address.is_global or address.is_unspecified or address.is_multicast
+            or address.is_loopback or address.is_link_local or address.is_reserved):
+        raise ValueError("proxy address must be a globally routable unicast address")
     return address
+
+
+def _accept_rules(ruleset: str) -> Counter[str]:
+    found: Counter[str] = Counter()
+    for raw in ruleset.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("table ", "chain ", "type ", "hook ", "policy ")):
+            continue
+        if " accept" in line:
+            if not line.endswith(" accept"):
+                raise FirewallProvisionError("firewall ACCEPT rule has unsupported trailing expressions")
+            found[line] += 1
+        if re.search(r"\b(jump|goto|vmap)\b", line):
+            raise FirewallProvisionError("firewall contains an indirect rule path")
+    return found
 
 
 class NftablesFirewallProvisioner:
@@ -93,32 +105,29 @@ class NftablesFirewallProvisioner:
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise FirewallProvisionError("nftables inspection failed") from exc
         output = result.stdout if result.returncode == 0 else ""
-        if result.returncode or output.count("policy drop") != 2:
+        chain_names = re.findall(r"^\s*chain\s+([A-Za-z0-9_-]+)\s*\{", output, re.MULTILINE)
+        if result.returncode or Counter(chain_names) != Counter({"input": 1, "output": 1}):
+            raise FirewallProvisionError("worker firewall must contain exactly the input and output chains")
+        if output.count("policy drop") != 2:
             raise FirewallProvisionError("worker firewall is absent or not default DROP")
         if proxy_ips is not None or proxy_port is not None:
             if proxy_ips is None or proxy_port is None:
                 raise ValueError("both proxy_ips and proxy_port are required for strict verification")
-            expected = set()
-            for value in proxy_ips:
-                address = _proxy_address(value)
-                family = "ip" if address.version == 4 else "ip6"
-                expected.add(f"{family} daddr {address.compressed} tcp dport {proxy_port}")
-            accept_lines = [line.strip() for line in output.splitlines() if " accept" in line]
-            proxy_lines = [line for line in accept_lines if "tcp dport" in line]
-            if len(proxy_lines) != len(expected):
-                raise FirewallProvisionError("firewall has an unexpected number of proxy ACCEPT rules")
-            for rule in expected:
-                matches = [
-                    line for line in proxy_lines
-                    if line.startswith(rule) and line[len(rule):].strip() in {"accept", "ct state new accept"}
-                ]
-                if len(matches) != 1:
-                    raise FirewallProvisionError("firewall proxy allow rules do not exactly match approved endpoints")
-            allowed_fragments = (
-                'iifname "lo"', 'oifname "lo"', "ct state established,related",
-                "ip6 saddr fe80::/10 icmpv6 type", "ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type",
-                *expected,
+            expected_script = self.render_ruleset(proxy_ips, proxy_port)
+            expected_accepts = Counter(
+                line.split(" add rule ", 1)[1].removesuffix(" accept") + " accept"
+                for line in expected_script.splitlines() if " add rule " in f" {line} "
             )
-            if any(not any(fragment in line for fragment in allowed_fragments) for line in accept_lines):
-                raise FirewallProvisionError("firewall contains an unexpected ACCEPT rule")
+            # render_ruleset lines begin with 'add rule'; retain the exact rule body.
+            expected_accepts = Counter(
+                line[len("add rule inet apaa "):].removesuffix(" accept") + " accept"
+                for line in expected_script.splitlines() if line.startswith("add rule ")
+            )
+            actual_accepts = _accept_rules(output)
+            if actual_accepts != expected_accepts:
+                raise FirewallProvisionError("firewall ACCEPT rules differ from the exact approved policy")
+            # A second base chain, indirect jump, or unexpected hook must never hide in the table.
+            chain_headers = [line.strip() for line in output.splitlines() if line.lstrip().startswith("chain ")]
+            if any(not re.search(r"type filter hook (input|output) priority [^;]+; policy drop;", line) for line in chain_headers):
+                raise FirewallProvisionError("firewall chain hook or policy is unexpected")
         return output
