@@ -61,8 +61,16 @@ def test_observer_requires_runtime_and_kernel_evidence(tmp_path):
     assert result.seccomp_mode==2
     assert result.memory_max=="1073741824"
 
-def test_observer_rejects_pid_reuse_during_observation(tmp_path):
-    proc,cg,ns=make_fs(tmp_path,start1=777,start2=778)
+def test_observer_rejects_pid_reuse_during_observation(tmp_path,monkeypatch):
+    proc,cg,ns=make_fs(tmp_path)
+    original=PodmanWorkerObserver._read
+    calls={"stat":0}
+    def changing_read(path):
+        if path.name=="stat":
+            calls["stat"]+=1
+            return proc_stat(4321,777 if calls["stat"]==1 else 778)
+        return original(path)
+    monkeypatch.setattr(PodmanWorkerObserver,"_read",staticmethod(changing_read))
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="reused"):
         observer.observe(CID,spec())
