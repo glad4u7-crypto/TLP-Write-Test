@@ -471,3 +471,25 @@ def test_redirect_authorization_requires_live_resolver():
             "https://example.com/start", "/next", ["https://example.com"],
             resolver=None,
         )
+
+
+
+def test_redirect_authorization_fails_closed_when_dns_lookup_errors():
+    def broken(host):
+        raise OSError("DNS unavailable")
+
+    with pytest.raises(BrowserExecutionError, match="DNS resolution failed"):
+        authorize_redirect_and_pin(
+            "https://example.com/start", "/next", ["https://example.com"],
+            resolver=broken,
+        )
+
+
+def test_redirect_authorization_rejects_unapproved_current_origin():
+    calls = []
+    with pytest.raises(BrowserExecutionError, match="URL/origin policy"):
+        authorize_redirect_and_pin(
+            "https://evil.example/start", "/next", ["https://example.com"],
+            resolver=lambda host: calls.append(host) or ["93.184.216.34"],
+        )
+    assert calls == []
