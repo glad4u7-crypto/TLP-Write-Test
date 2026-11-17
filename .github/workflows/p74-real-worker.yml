@@ -9,6 +9,7 @@ name: APAA P74 real OCI Chromium worker
 # This rerun skips unavailable dbgsym and keeps symbolication best-effort.
 # Exported close symbol addresses are inspected from the pinned worker ELF.
 # Full local symbols are checked before falling back to dynamic symbols.
+# Procfs command-line parsing now uses true NUL boundaries for process roles.
 
 on:
   push:
