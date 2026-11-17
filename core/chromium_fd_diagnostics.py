@@ -301,6 +301,7 @@ def snapshot_cgroup(
                 })
     return {
         "monotonic_time_ns": time.monotonic_ns(),
+        "wall_time_ns": time.time_ns(),
         "process_count_observed": len(processes),
         "process_limit_reached": len(pids) >= max_processes,
         "fd_limit_per_process": max_fds_per_process,
