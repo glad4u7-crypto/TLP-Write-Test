@@ -45,10 +45,19 @@ class CgroupV2Provisioner:
     def create(self, worker_id: str, limits: CgroupLimits = CgroupLimits()) -> Path:
         if not _NAME.fullmatch(worker_id):
             raise ValueError("invalid worker_id")
-        if not (self.root / "cgroup.controllers").exists() and not self.root.exists():
-            raise IsolationEnforcementError("delegated cgroup-v2 subtree is unavailable")
-        if not Path("/sys/fs/cgroup/cgroup.controllers").exists():
+        unified_root = Path("/sys/fs/cgroup")
+        if not (unified_root / "cgroup.controllers").is_file():
             raise IsolationEnforcementError("unified cgroup v2 is required")
+        if not self.root.is_dir():
+            raise IsolationEnforcementError("dedicated delegated cgroup subtree is unavailable")
+        try:
+            available = set((self.root / "cgroup.controllers").read_text(encoding="ascii").split())
+            enabled = set((self.root / "cgroup.subtree_control").read_text(encoding="ascii").split())
+        except OSError as exc:
+            raise IsolationEnforcementError("delegated cgroup controllers cannot be inspected") from exc
+        required = {"cpu", "memory", "pids"}
+        if not required.issubset(available) or not required.issubset(enabled):
+            raise IsolationEnforcementError("cpu, memory and pids controllers must be delegated and enabled")
         target = self.root / worker_id
         try:
             target.mkdir(mode=0o700, parents=False, exist_ok=False)
