@@ -160,3 +160,24 @@ def test_legacy_owner_auth_events_are_migrated_to_hash_chain(tmp_path):
     store = LocalOwnerAuthStore(path)
     assert store.verify_events() != store._EVENT_GENESIS
     assert store.list_events() == (("login_success", 1234),)
+
+
+def test_partial_owner_auth_hash_schema_is_not_treated_as_legacy(tmp_path):
+    import sqlite3
+
+    path = tmp_path / ".apaa_personal" / "owner-auth.sqlite3"
+    path.parent.mkdir(mode=0o700)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE local_owner_auth_events ("
+            "event_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "event_type TEXT NOT NULL, occurred_at INTEGER NOT NULL, "
+            "previous_hash TEXT)"
+        )
+        db.execute(
+            "INSERT INTO local_owner_auth_events (event_type, occurred_at, previous_hash) "
+            "VALUES (?, ?, ?)",
+            ("login_success", 1234, "0" * 64),
+        )
+    with pytest.raises(ValueError, match="partially missing"):
+        LocalOwnerAuthStore(path)
