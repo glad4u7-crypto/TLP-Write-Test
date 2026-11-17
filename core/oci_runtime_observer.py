@@ -158,7 +158,9 @@ class PodmanWorkerObserver:
             if not cgroup_dir.resolve(strict=True).is_relative_to(self.cgroup_root.resolve(strict=True)):
                 raise WorkerObservationError("observed cgroup path escapes the cgroup-v2 mount")
         except OSError as exc:
-            raise WorkerObservationError("worker cgroup directory is unavailable") from exc
+            raise WorkerObservationError(
+                f"worker cgroup directory {str(cgroup_dir)!r} is unavailable ({type(exc).__name__})"
+            ) from exc
         memory = self._read(cgroup_dir / "memory.max")
         cpu = self._read(cgroup_dir / "cpu.max")
         pids = self._read(cgroup_dir / "pids.max")
