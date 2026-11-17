@@ -77,3 +77,16 @@ A later documentation-only commit triggers its own workflow; do not use this cod
 - Independent protected-key custody, external anti-rollback anchor, real-host network qualification and independent security review remain external gates.
 
 **Disposition:** Application action-audit repository work is implemented and under exact-head CI verification. S09 C01 remains OPEN / NOT COMPLETE. C02 remains NOT STARTED until every mandatory C01 gate passes and the owner explicitly approves C01. No merge or deployment is authorized by this report.
+
+
+## 5. Explicit Owner approval audit — follow-up
+
+A source review found that the shared UI mutation wrapper supplied the action name as its own approval value. Although call sites were behind explicit Streamlit controls, the wrapper itself did not fail closed when invoked without an Owner confirmation. This was corrected:
+
+- `execute_audited_ui_mutation` now requires an explicit boolean approval argument.
+- Save actions pass the corresponding Owner consent checkbox state (`memory.add`, `knowledge.add`, `conversation.append_turn`, `preference.save`, `checkpoint.save`).
+- Delete actions pass approval only from their clearly named Owner delete button event (`memory.delete`, `knowledge.delete`, `conversation.delete`, `preference.delete`).
+- Missing approval and non-boolean approval are rejected before audit intent is written or the mutation callback runs.
+- Tests cover missing approval, invalid approval type, intent-audit failure, operation failure, completion-audit failure, prohibited actions, and SQLite hash-chain integrity.
+
+This is an additional application-layer approval check, not a replacement for the cryptographic, payload/tenant/session-bound one-time receipts used by the project execution gateway. Owner authentication event history remains a separate local SQLite event table and is not independently tamper-proof.
