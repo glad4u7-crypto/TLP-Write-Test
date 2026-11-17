@@ -18,8 +18,7 @@ from core.safe_navigation import SafeNavigationController, SafeNavigationError
 EgressGuard = Callable[[str, str], bool]
 _ALLOWED_METHODS = frozenset({"GET", "HEAD"})
 _ALLOWED_RESOURCE_TYPES = frozenset({
-    "document", "stylesheet", "image", "media", "font", "script", "texttrack",
-    "xhr", "fetch", "manifest", "other",
+    "document", "stylesheet", "image", "font", "script", "xhr", "fetch", "manifest",
 })
 
 
@@ -104,7 +103,7 @@ class SecureBrowserAdapter:
             raise SecureBrowserAdapterError("Adapter is already started.")
         session = self._launcher.launch()
         try:
-            context = session._context
+            context = session.context
             page = session.page
             if not callable(getattr(context, "route_web_socket", None)):
                 raise SecureBrowserAdapterError(
