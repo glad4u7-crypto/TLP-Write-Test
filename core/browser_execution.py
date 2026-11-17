@@ -310,7 +310,18 @@ class BrowserExecutionCoordinator:
         clock: Callable[[], float] = time.monotonic,
         recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
     ) -> "BrowserExecutionCoordinator":
-        """Create a coordinator only after the signed runtime/firewall gate passes."""
+        """Fail closed until trusted Owner approval is consumed by this execution path.
+
+        BCS-01 currently keeps its browser handler disabled and the recovery
+        ledger does not yet persist a verified approval-to-job correlation.
+        A valid host attestation alone is therefore insufficient authority to
+        launch a browser worker. Keep this gate closed until that integration
+        is implemented and independently tested.
+        """
+        raise BrowserExecutionError(
+            "Browser dispatch is disabled: trusted Owner approval consumption "
+            "and durable approval correlation are not integrated."
+        )
         if type(runtime_gate) is not AttestedBrowserRuntime:
             raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
         if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
