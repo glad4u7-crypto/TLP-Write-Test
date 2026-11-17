@@ -27,11 +27,6 @@ from core.personal_runtime import (
     load_or_create_approval_signing_key,
     personal_runtime_paths,
 )
-from core.personal_runtime import (
-    PERSONAL_OWNER_TENANT,
-    load_or_create_approval_signing_key,
-    personal_runtime_paths,
-)
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
 from core.project_checkpoint_access import OwnerProjectCheckpointAccess
@@ -268,8 +263,22 @@ else:
         st.error(f"Personal runtime could not start safely: {exc}")
         st.stop()
     tenant = PERSONAL_OWNER_TENANT
-    memory_store = None
-    checkpoint_access = None
+    # This Principal is created only by trusted local server code after the
+    # loopback-only boundary check; it is not derived from browser/task input
+    # and must never be reused for a network-exposed deployment.
+    local_owner_principal = Principal(
+        subject=tenant.subject, issuer=tenant.issuer, authenticated=True,
+        roles=("owner",),
+    )
+    try:
+        memory_store = SQLiteMemoryStore(personal_paths.memory_db)
+        checkpoint_access = OwnerProjectCheckpointAccess(
+            memory_store, personal_project_store, local_owner_principal
+        )
+    except (ValueError, OSError, TypeError, sqlite3.Error, PermissionError) as exc:
+        clear_session_identity(st.session_state)
+        st.error(f"Personal memory storage could not start safely: {exc}")
+        st.stop()
     authority_config_material = (
         "apaa-personal-approval-authority-v1\\n"
         + os.path.abspath(os.fspath(personal_paths.security_db))
@@ -677,12 +686,12 @@ st.caption(
 )
 
 
-# Persistent memory is available only in authenticated mode. Every write has
-# a separate consent checkbox; signing in never opts a user into storage.
+# Persistent memory is available in the authenticated owner runtime and in
+# the loopback-only Personal Edition. Every write has a separate consent checkbox.
 st.divider()
 st.header("Memory & Knowledge")
-if principal is None:
-    st.info("Persistent memory is disabled in local prototype mode. Sign in to an authenticated deployment to use tenant-isolated memory.")
+if memory_store is None or checkpoint_access is None:
+    st.info("Persistent memory is unavailable because its private store did not initialize.")
 else:
     st.caption("Local SQLite storage · tenant-isolated · no external API · no automatic conversation capture")
     memory_tabs = st.tabs(["Memories", "Knowledge", "Conversation", "Preferences", "Checkpoints"])
