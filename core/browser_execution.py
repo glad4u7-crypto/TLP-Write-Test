@@ -13,6 +13,7 @@ import ipaddress
 import ssl
 import threading
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
@@ -173,7 +174,7 @@ class BrowserExecutionCoordinator:
         self._worker = worker
         self._audit = audit
         self._clock = clock
-        self._active: dict[str, CancellationToken] = {}
+        self._active: dict[str, tuple[CancellationToken, str]] = {}
         self._lock = threading.RLock()
 
     def _record(self, event: str, *, job_id: str, session_id: str, detail: str) -> None:
@@ -191,16 +192,17 @@ class BrowserExecutionCoordinator:
 
     def cancel(self, job_id: str) -> bool:
         with self._lock:
-            token = self._active.get(job_id)
-            if token is None:
+            active = self._active.get(job_id)
+            if active is None:
                 return False
+            token, session_id = active
             changed = token.cancel()
-        self._record("cancel_requested", job_id=job_id, session_id=job_id, detail="user_or_controller")
+        self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
         if self._worker is not None:
             try:
-                self._worker.terminate(job_id)
+                self._worker.terminate(session_id)
             except Exception:
-                self._record("worker_terminate_error", job_id=job_id, session_id=job_id, detail="adapter_error")
+                self._record("worker_terminate_error", job_id=job_id, session_id=session_id, detail="adapter_error")
                 raise BrowserExecutionError("Worker termination failed; job remains cancelled.")
         return changed
 
@@ -225,12 +227,12 @@ class BrowserExecutionCoordinator:
         except (BrowserPolicyError, TypeError, ValueError, OSError) as exc:
             raise BrowserExecutionError("Browser job failed live DNS/IP pin validation.") from exc
 
-        session_id = job.job_id
+        session_id = uuid.uuid4().hex
         token = CancellationToken()
         with self._lock:
-            if session_id in self._active:
+            if job.job_id in self._active:
                 raise BrowserExecutionError("Duplicate active browser job ID.")
-            self._active[session_id] = token
+            self._active[job.job_id] = (token, session_id)
 
         deadline = self._clock() + job.max_runtime_seconds
         try:
@@ -258,7 +260,7 @@ class BrowserExecutionCoordinator:
             raise
         finally:
             with self._lock:
-                self._active.pop(session_id, None)
+                self._active.pop(job.job_id, None)
             try:
                 self._record("session_closed", job_id=job.job_id, session_id=session_id, detail="ephemeral")
             except Exception as exc:
