@@ -23,6 +23,7 @@ from core.streamlit_auth import principal_from_oidc_claims
 from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
+from core.personal_diagnostics import inspect_personal_runtime, diagnostics_summary
 from core.personal_runtime import (
     PERSONAL_OWNER_TENANT,
     load_or_create_approval_signing_key,
@@ -541,6 +542,38 @@ with st.sidebar:
     st.subheader("Safety")
     st.success("No paid API requests")
     st.success("External execution disabled")
+
+    if not auth_required:
+        with st.expander("Personal Runtime Health", expanded=False):
+            st.caption(
+                "Read-only preflight for this device's private APAA data. "
+                "It never creates, repairs, or changes databases or keys."
+            )
+            if st.button("Run local health checks", key="apaa_run_local_diagnostics"):
+                st.session_state["apaa_run_local_diagnostics"] = True
+            if st.session_state.get("apaa_run_local_diagnostics"):
+                try:
+                    diagnostic_results = inspect_personal_runtime(personal_data_dir)
+                    passed, failed, info = diagnostics_summary(diagnostic_results)
+                    metric_cols = st.columns(3)
+                    metric_cols[0].metric("PASS", passed)
+                    metric_cols[1].metric("FAIL", failed)
+                    metric_cols[2].metric("INFO", info)
+                    for diagnostic in diagnostic_results:
+                        message = f"{diagnostic.code}: {diagnostic.detail}"
+                        if diagnostic.status == "PASS":
+                            st.success(message)
+                        elif diagnostic.status == "FAIL":
+                            st.error(message)
+                        else:
+                            st.info(message)
+                    if failed:
+                        st.warning(
+                            "One or more local runtime checks failed. APAA will not "
+                            "automatically repair protected data; investigate before continuing."
+                        )
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Local diagnostics could not complete safely: {exc}")
 
     with st.expander("Action history"):
         try:
