@@ -8,6 +8,7 @@ import pytest
 from core.audit import create_audit_event
 from core.identity import Principal
 from core.memory import SQLiteMemoryStore
+from core.personal_auth import LocalOwnerAuthStore
 from core.personal_backup import (
     PersonalBackupError,
     create_personal_backup,
@@ -25,6 +26,9 @@ from core.sqlite_security_store import SQLiteExecutionAuditLog, SQLiteSecuritySt
 
 def _seed_runtime(data_dir):
     paths = personal_runtime_paths(data_dir)
+    LocalOwnerAuthStore(paths.owner_auth_db).configure(
+        "test-only owner passphrase", "test-only owner passphrase"
+    )
     original_key = load_or_create_approval_signing_key(paths.data_dir)
     projects = SQLiteProjectStore(paths.projects_db)
     project = projects.create(
@@ -54,7 +58,7 @@ def test_backup_restore_recovers_projects_memory_checkpoints_and_audit(tmp_path)
 
     with zipfile.ZipFile(backup) as archive:
         assert set(archive.namelist()) == {
-            "projects.sqlite3", "security.sqlite3", "memory.sqlite3", "manifest.json"
+            "projects.sqlite3", "security.sqlite3", "owner-auth.sqlite3", "memory.sqlite3", "manifest.json"
         }
         assert "approval-signing.key" not in archive.namelist()
 
