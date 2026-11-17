@@ -323,6 +323,7 @@ if principal is not None:
             "project_db_path", ".apaa_projects/projects.sqlite3"
         )
         security_store = SQLiteSecurityStore(security_db_path)
+        active_security_store = security_store
         project_store = SQLiteProjectStore(project_db_path)
         project_access_control = ProjectAccessControl(project_store)
         project_access_controller = OwnerProjectAccessController(project_access_control)
@@ -404,6 +405,7 @@ else:
     try:
         signing_secret = load_or_create_approval_signing_key(personal_paths.data_dir)
         personal_security_store = SQLiteSecurityStore(personal_paths.security_db)
+        active_security_store = personal_security_store
         personal_project_store = SQLiteProjectStore(personal_paths.projects_db)
     except (ValueError, OSError, TypeError, sqlite3.Error) as exc:
         clear_session_identity(st.session_state)
@@ -472,6 +474,7 @@ if (
         audit_log=audit_log,
         principal=principal,
         session_scope=st.session_state["approval_session_scope"],
+        idempotency_store=active_security_store,
     )
     st.session_state["execution_gateway_owner"] = gateway_owner
 
@@ -717,6 +720,7 @@ if prepare_project:
         st.session_state["pending_project"] = {
             "name": project_name.strip(),
             "description": project_description.strip(),
+            "idempotency_key": secrets.token_urlsafe(24),
         }
 
 pending_project = st.session_state.get("pending_project")
@@ -739,6 +743,10 @@ if pending_project:
             "name": pending_project["name"],
             "description": pending_project["description"],
         }
+        idempotency_key = pending_project.get("idempotency_key")
+        if not isinstance(idempotency_key, str) or not idempotency_key:
+            st.error("This project review has no valid one-time request key. Review the details again.")
+            st.stop()
         receipt = st.session_state["approval_authority"].issue(
             "create_project", payload, tenant=tenant,
             session_scope=st.session_state["approval_session_scope"]
@@ -748,6 +756,7 @@ if pending_project:
             payload,
             approval_receipt=receipt,
             tenant=tenant,
+            idempotency_key=idempotency_key,
         )
         if result.executed:
             project = result.output
