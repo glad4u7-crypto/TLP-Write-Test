@@ -200,3 +200,14 @@ to the actual nft JSON `ct.state in "new"`. The assertion has now been
 corrected. All TLS, proxy, controller and worker-attestation contract steps
 completed successfully in that run; the remaining suite had only this one
 failure.
+
+
+Run #75 identified the cgroup discrepancy precisely: procfs reported
+`/sys/fs/cgroup/apaa/worker-p74-01/libpod-<container-id>`, while the
+observer compared it with the cgroup path relative to the mounted cgroup-v2
+root (`/apaa/worker-p74-01`). The process was in the correct dedicated
+subtree; the observer had failed to strip the mount prefix. It now normalizes
+only the exact configured cgroup-root prefix before subtree comparison and
+uses the normalized path for limit readback. A regression test covers this
+mount-prefixed procfs representation. This is a path normalization correction,
+not a relaxation of subtree isolation.
