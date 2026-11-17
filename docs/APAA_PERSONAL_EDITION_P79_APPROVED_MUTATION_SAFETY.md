@@ -55,3 +55,17 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 - Follow-up hardening after #148: handler dispatch now uses a private JSON snapshot of the approved payload; malformed ledger transition values are rejected; regression tests cover payload snapshot isolation and malformed state inputs.
 - Latest follow-up head `a9cf556de7f38a6bae876c9cd3fbe9d8e1526df4`, P73 Verification run #157: **IN PROGRESS** at the time of this update. Do not treat #148 as verification of the later snapshot/input-validation commits.
 - P79 remains implementation-pending-final-exact-head-verification and Owner UI integration.
+
+
+## Current branch verification reconciliation — 2026-11-17
+
+This update supersedes earlier pending-verification wording in this document:
+
+- Owner UI mutations for memory, knowledge, conversation, preferences and checkpoints use fresh one-time approval receipts bound to exact action, payload, Owner tenant and session.
+- Project creation uses the durable tenant-scoped idempotency ledger. Duplicate/replay claims are blocked; ambiguous outcomes are not automatically retried.
+- The dedicated Owner Recovery UI is now implemented. It lists only the authenticated Owner tenant's unresolved metadata. Pending outcomes remain blocked; uncertain outcomes require explicit Owner reconciliation. The original action is never re-dispatched.
+- Reconciliation appends a payload-free audit event in the same SQLite transaction as the ledger transition.
+- Exact branch head `70ede93d20e7ff2780c7d4d1dbd68e2803a96a06`, P73 Verification run [#235](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44023947699): **1,491 Python passed, 9 skipped; compile PASS; dependency audit PASS; 9 responsive browser smoke tests PASS.**
+- These are repository/CI results, not physical Android acceptance or live Browser/Worker egress qualification.
+
+**Disposition:** P79 software implementation and exact-head CI are PASS. Physical Android, owner-operated backup/restore, independent security review and final Owner acceptance remain external C01 gates. Auto-Run OFF; Browser/Worker DISABLED; no merge/deploy.
