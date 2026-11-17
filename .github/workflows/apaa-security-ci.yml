@@ -13,6 +13,7 @@ on:
       - master
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
+      - feature/apaa-s09-c01-action-history-clean
   workflow_dispatch:
 
 permissions:
