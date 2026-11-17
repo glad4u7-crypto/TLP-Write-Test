@@ -17,10 +17,7 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 
-_PIXEL_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/"
-    "lWQAAAAASUVORK5CYII="
-)
+_PIXEL_PNG = b'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'
 
 
 class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
@@ -36,7 +33,7 @@ class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
             return
         if path == "/pixel.png":
             self.send_response(200)
-            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Type", "image/svg+xml")
             self.send_header("Content-Length", str(len(_PIXEL_PNG)))
             self.end_headers()
             self.wfile.write(_PIXEL_PNG)
@@ -48,7 +45,6 @@ class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
             self._html("<!doctype html><title>popup</title><body>popup-marker</body>")
             return
         if path == "/landing":
-            port = self.server.server_port
             body = f"""<!doctype html>
 <title>APAA Chromium surfaces</title>
 <body>landing-marker
@@ -110,7 +106,7 @@ class _BrowserSurfaceHandler(BaseHTTPRequestHandler):
             if decoded != b"hello-apaa":
                 return
             response = b"ws-ok"
-            self.connection.sendall(bytes((0x81, len(response))) + response)
+            self.connection.sendall(bytes((0x81, len(response))) + response + bytes((0x88, 0x02, 0x03, 0xE8)))
         except (OSError, TimeoutError):
             return
 
