@@ -19,7 +19,7 @@ attestation gate succeeds.
   - `CancellationToken` provides cooperative cancellation.
   - The coordinator enforces a hard wall-clock deadline and requires worker termination to return explicit `True` only after OS process exit and ephemeral storage cleanup are confirmed. A timeout/cancel is never audited as closed when termination is unconfirmed.
   - The worker `run()` contract requires per-job browser context/profile teardown before returning.
-  - `BrowserExecutionCoordinator.from_attested_runtime()` launches through the signed runtime/firewall attestation gate before accepting a production worker handle.
+  - `BrowserExecutionCoordinator.from_attested_runtime()` requires the concrete `AttestedBrowserRuntime` class, then launches through its signed runtime/firewall evidence verifier before accepting a production worker handle; duck-typed substitutes are rejected.
   - `BrowserExecutionCoordinator` requires a worker adapter, performs live
     DNS resolution for every hostname, validates every DNS answer, and passes
     the complete pin set to the worker.
