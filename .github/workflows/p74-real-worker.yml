@@ -65,8 +65,12 @@ jobs:
             -f containers/chromium-worker/Containerfile \
             -t localhost/apaa-chromium-worker:ci .
           IMAGE_ID="$(sudo podman image inspect --format '{{.Id}}' localhost/apaa-chromium-worker:ci)"
-          echo "APAA_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
           test "$IMAGE_ID" != ""
+          case "$IMAGE_ID" in
+            sha256:*) ;;
+            *) IMAGE_ID="sha256:$IMAGE_ID" ;;
+          esac
+          echo "APAA_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
 
       - name: Locate deny-by-default OCI seccomp profile
         run: |
@@ -92,6 +96,12 @@ jobs:
             APAA_P74_EVIDENCE_PATH="$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" \
             PYTHONPATH="$GITHUB_WORKSPACE" \
             python3 scripts/p74_real_worker_chromium_e2e.py
+
+      - name: Make sanitized evidence readable to artifact uploader
+        if: always()
+        run: |
+          sudo chown "$USER":"$USER" "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
+          chmod 600 "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
 
       - name: Upload sanitized qualification evidence
         if: always()
