@@ -258,3 +258,33 @@ def test_hard_deadline_terminates_worker_and_audits_timeout():
     assert [event["event"] for event in events] == [
         "job_accepted", "job_timed_out", "session_closed"
     ]
+
+
+
+def test_attested_runtime_factory_verifies_before_returning_coordinator():
+    worker = FakeWorker()
+    calls = []
+
+    class Gate:
+        def launch(self, evidence, *, challenge, now):
+            calls.append((evidence, challenge, now))
+            return worker
+
+    coordinator = BrowserExecutionCoordinator.from_attested_runtime(
+        Gate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
+        audit=lambda event: None,
+    )
+    assert isinstance(coordinator, BrowserExecutionCoordinator)
+    assert calls == [({"signed": "evidence"}, "a" * 64, 1234)]
+
+
+def test_attested_runtime_factory_fails_closed_on_invalid_worker():
+    class Gate:
+        def launch(self, evidence, *, challenge, now):
+            return object()
+
+    with pytest.raises(BrowserExecutionError, match="invalid worker handle"):
+        BrowserExecutionCoordinator.from_attested_runtime(
+            Gate(), {}, challenge="a" * 64, now=1234,
+            audit=lambda event: None,
+        )
