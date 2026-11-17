@@ -162,9 +162,12 @@ def test_task_plan_step_progress_is_durable_consent_gated_and_tenant_scoped(stor
         step_id="step-1", title="Review files", completed=False, consent=True,
     )
     assert reset.status == "pending"
-    assert len(store.list_task_plan_step_progress(
+    reopened = SQLiteMemoryStore(store.database_path)
+    reopened_rows = reopened.list_task_plan_step_progress(
         alice, project_id="p1", plan_id="plan-0123456789abcdef"
-    )) == 1
+    )
+    assert len(reopened_rows) == 1
+    assert reopened_rows[0].status == "pending"
 
 
 @pytest.mark.parametrize("step_id", ["../escape", "", "a" * 65])
