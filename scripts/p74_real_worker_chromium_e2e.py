@@ -621,6 +621,9 @@ def main() -> int:
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
                 "--disable-crash-reporter",
+                # Disable Crashpad initialization only; Chromium's renderer and
+                # namespace sandbox remain enabled for this disposable test.
+                "--disable-crashpad-for-testing",
                 "--enable-logging=stderr",
                 "--v=1",
                 "--disable-http2",
