@@ -225,3 +225,95 @@ def test_cancel_terminates_remote_process_and_waits_for_cleanup(monkeypatch):
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert backend.calls[-1][0] == "destroy"
+
+
+
+class RealSignedHost:
+    def __init__(self, spec):
+        now = int(time.time())
+        self.runtime = {
+            "schema_version": 1, "launch_spec_digest": spec.digest,
+            "runtime_id": "runtime:real-test-01", "worker_id": "worker:real-test-01",
+            "image_digest": "sha256:" + "a" * 64,
+            "attestor_id": "inspector:real-test-01", "evidence_digest": "b" * 64,
+            "observed_at": now, "state": "created", "process_started": False,
+            "runtime_config_verified": True, "host_firewall_verified": True,
+            "uid": spec.uid, "gid": spec.gid, "privileged": False,
+            "read_only_root": True, "no_new_privileges": True,
+            "capabilities_effective": [], "namespaces": list(spec.namespaces),
+            "host_mounts": [], "secret_mounts": [],
+            "writable_mounts": list(spec.writable_mounts),
+            "browser_profile_persistence": False, "cdp_exposed": False,
+            "direct_egress": False, "proxy_only_egress": True,
+            "dns_via_proxy_only": True, "egress_proxy": spec.egress_proxy,
+            "memory_limit_bytes": spec.memory_limit_bytes,
+            "cpu_limit_millis": spec.cpu_limit_millis,
+            "pids_limit": spec.pids_limit, "job_timeout_seconds": spec.job_timeout_seconds,
+            "seccomp_enforced": True, "network_namespace_isolated": True,
+            "firewall_default_deny": True,
+            "egress_allowed": ["egress-proxy.internal:3128"],
+            "direct_dns_egress_blocked": True, "proxy_side_dns_only": True,
+        }
+        self.namespace = {
+            "runtime_id": "runtime:real-test-01", "worker_id": "worker:real-test-01",
+            "inode": 4026533001, "interface": "eth0",
+        }
+        self.rules = {"nftables": [
+            {"metainfo": {"version": "1.0.9", "release_name": "test"}},
+            {"table": {"family": "inet", "name": "filter"}},
+            {"chain": {"family": "inet", "table": "filter", "name": "egress",
+                       "type": "filter", "hook": "output", "prio": 0, "policy": "drop"}},
+            {"rule": {"family": "inet", "table": "filter", "chain": "egress", "expr": [
+                {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": "tcp"}},
+                {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "daddr"}}, "right": PROXY_IP}},
+                {"match": {"op": "==", "left": {"payload": {"protocol": "tcp", "field": "dport"}}, "right": 3128}},
+                {"accept": None},
+            ]}},
+        ]}
+
+    def read_runtime_attestation(self): return self.runtime
+    def read_network_namespace_identity(self): return self.namespace
+    def read_nftables_json(self): return self.rules
+
+
+class RealGateBackend(FakeBackend):
+    def __init__(self):
+        super().__init__()
+        self.verified_evidence = None
+
+    def snapshot_source(self, handle):
+        self.calls.append(("snapshot", handle))
+        return RealSignedHost(self._spec)
+
+    def provision(self, spec, *, session_id):
+        self._spec = spec
+        return super().provision(spec, session_id=session_id)
+
+    def start_worker(self, handle, spec, verified):
+        from core.browser_inspector import VerifiedInspectorEvidence
+        assert type(verified) is VerifiedInspectorEvidence
+        self.verified_evidence = verified
+        return super().start_worker(handle, spec, verified)
+
+
+def test_real_ed25519_and_nftables_evidence_gate_precedes_remote_browser_start():
+    spec = make_spec()
+    key = Ed25519PrivateKey.generate()
+    backend = RealGateBackend()
+    worker = AttestedBrowserWorkerAdapter(
+        spec,
+        backend=backend,
+        signing_key=key,
+        key_id="host-inspector-prod",
+        trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
+        expected_proxy_addresses=[PROXY_IP],
+        cleanup_wait_seconds=2,
+    )
+
+    result = execute(worker, session_id="session-real-gate-1234")
+
+    assert result == {"ok": True}
+    assert backend.verified_evidence is not None
+    assert backend.verified_evidence.firewall.default_egress_policy == "drop"
+    assert backend.verified_evidence.firewall.allowed_proxy_addresses == (PROXY_IP,)
+    assert [call[0] for call in backend.calls] == ["provision", "snapshot", "start", "destroy"]
