@@ -182,3 +182,23 @@ def test_approval_request_and_denial_are_recorded_without_job_payload(tmp_path):
     assert "browser_approval_requested" in reasons
     assert "browser_approval_issued" in reasons
     assert security.verify_audit_chain() is True
+
+
+
+def test_owner_session_is_rechecked_before_browser_dispatch_and_audited(tmp_path):
+    session = {"active": True}
+    boundary, security, audit = _boundary(tmp_path, active=lambda: session["active"])
+    job = _job()
+    receipt = boundary.request_approval(job, owner_confirmed=True, now=1000)
+    session["active"] = False
+
+    with pytest.raises(BrowserControlSecurityError):
+        boundary.dispatch(job, approval_receipt=receipt, now=1001)
+
+    events = audit.list_recent_events(limit=10)
+    assert any(
+        event["action"] == BROWSER_APPROVAL_ACTION
+        and event["reason_code"] == "browser_dispatch_owner_session_denied"
+        for event in events
+    )
+    assert security.verify_audit_chain() is True
