@@ -11,7 +11,7 @@ Keep owner protection, secret hygiene, fail-closed authorization, action-specifi
 
 The current app remains a Streamlit web prototype with deterministic offline planning. It is **not** yet a native Android APK, installable PWA, general browser automation agent, or YouTube/file automation product. Local unauthenticated mode is for loopback/private development only and must not be exposed publicly or to an untrusted LAN. Remote Android access requires a separately reviewed HTTPS and authentication boundary. No paid provider, API key, paid hosting, Auto-Run, payment, purchase, checkout, trading or money movement is enabled.
 
-See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_EDITION_P72_SCOPE_RESET_AND_DEPENDENCY_AUDIT.md) and [P73 runtime and persistence progress](docs/APAA_PERSONAL_EDITION_P73_PROGRESS_AND_ACCEPTANCE.md). P73 now wires the local Personal Edition startup to owner-private SQLite project storage, stable local approval signing, durable one-time approval nonces and SQLite execution audit. Integration tests have been added but not yet run; task/checkpoint migration, backup/restore, browser security and physical Android acceptance remain pending.
+See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_EDITION_P72_SCOPE_RESET_AND_DEPENDENCY_AUDIT.md), [P73 runtime and persistence progress](docs/APAA_PERSONAL_EDITION_P73_PROGRESS_AND_ACCEPTANCE.md), [P73 action audit and GitHub Actions reconciliation](docs/APAA_PERSONAL_EDITION_P73_ACTION_AUDIT_AND_GITHUB_ACTIONS_RECONCILIATION.md), and [P73 backup/restore guide](docs/APAA_PERSONAL_EDITION_P73_BACKUP_RESTORE.md). P73 local mode now uses owner-private persistent SQLite projects, security/approval nonces, audit events, memory and checkpoints. Owner UI mutations record metadata-only audit events; project creation additionally uses a payload-, tenant- and session-bound one-time approval receipt. Owner-private backup/restore scripts are included; restore rotates the local approval signing key. Browser and Worker execution remain disabled. Exact-head CI and external Android/host acceptance are separate release gates.
 
 ## Current application
 
@@ -20,12 +20,12 @@ See [Personal Edition P72 scope reset and dependency audit](docs/APAA_PERSONAL_E
 - Deterministic built-in `RuleBasedProvider`; no external AI model or network API is called by the current dashboard.
 - Optional OIDC authentication using Streamlit's verified identity claims. For any deployment exposed beyond a private local prototype, configure authentication as required with `[apaa].require_auth = true`.
 - Authenticated project records use SQLite persistence scoped by the OIDC issuer + subject pair.
-- Local unauthenticated prototype mode is explicitly warned as unsafe for public exposure; its project registry is session-only and its audit fallback is local JSONL.
+- Local unauthenticated Personal Edition mode is loopback-only and uses owner-private persistent SQLite project, security/audit and memory/checkpoint stores. It is not authentication for any network-exposed deployment.
 - Explicit two-step project creation: review details, then confirm. The trusted UI/controller issues a short-lived, payload-bound, single-use approval receipt.
 - Approval receipts are bound to the action, canonical payload, tenant and session scope; authenticated mode uses a configured stable signing secret and durable SQLite nonce storage.
 - Execution gateway dispatches only explicitly registered handlers. The current UI registers project creation only; it does not expose arbitrary shell, browser, email, network, filesystem or device actions.
-- Authenticated execution audit uses durable SQLite events; audit intent is persisted before handler dispatch and failure blocks dispatch. Local prototype mode uses a JSONL audit file.
-- Tenant-scoped project CRUD and identity/session cleanup are covered by automated tests.
+- Authenticated and local Personal Edition execution audit use durable SQLite events; audit intent is persisted before project dispatch and failure blocks dispatch. Memory, knowledge, conversation, preference and checkpoint mutations also use a fail-closed metadata-only audit wrapper.
+- Tenant-scoped project CRUD, local owner isolation, memory/checkpoint persistence, backup/restore integrity, approval replay rejection and identity/session cleanup are covered by automated tests.
 
 ## Zero-cost and safety boundaries
 
