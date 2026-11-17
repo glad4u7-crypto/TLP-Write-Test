@@ -16,8 +16,8 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 |---|---|---|
 | Single local Owner boundary | Fixed server-side local Owner tenant, local passphrase authentication, owner-private data directory | Repository implementation present; physical device acceptance pending |
 | Persistent workspace | SQLite projects, security, memory/checkpoints and backup/restore code | Automated tests previously passed; owner-operated backup/restore drill not run |
-| Explicit approvals | Project creation gateway receipts plus fresh action/payload/tenant/session-bound receipts for memory, knowledge, conversation, preference and checkpoint UI mutations | Repository integration present; latest exact-head CI pending |
-| Idempotency and recovery | Tenant-scoped durable ledger wired to project creation; duplicate blocking; uncertain-state storage API | Project-create integration present; dedicated Owner recovery/reconciliation UI still outstanding; latest exact-head CI pending |
+| Explicit approvals | Project creation gateway receipts plus fresh action/payload/tenant/session-bound receipts for memory, knowledge, conversation, preference and checkpoint UI mutations | Repository integration present; exact-head CI #184 PASS |
+| Idempotency and recovery | Tenant-scoped durable ledger wired to project creation; duplicate blocking; uncertain-state storage API | Project-create integration present; dedicated Owner recovery/reconciliation UI still outstanding; exact-head CI #184 PASS |
 | Read-only web/file/YouTube adapters | P76 request/result contracts only | **NOT IMPLEMENTED — P78 outstanding** |
 | Approved end-to-end mutations | Generic gateway and existing project/memory/checkpoint UI mutations; no new adapters | **NOT RELEASE-QUALIFIED — depends on P78 and P79 integration** |
 | Android usability/runtime | Responsive Chromium emulation only | **Physical Android A01–A12 NOT RUN** |
@@ -59,5 +59,5 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 ## Verification update
 
 - P79 predecessor head `63174c17cbb60958ca746aaf76886b7bb12eb355` passed P73 Verification #148 (1,463 Python passed, 9 skipped; compile and dependency audit PASS; 9 responsive browser smoke tests PASS).
-- Exact-head P73 Verification [#160](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44019306207) passed on `1429ee69aa637b0927e0ef234ab0e6432e4d8b5d` (Python, compile, dependency audit and responsive browser smoke). This predates the latest Owner UI receipt and project idempotency integration changes.
-- The NO-GO release decision remains unchanged; latest changes need exact-head CI and physical/external acceptance remains outstanding.
+- Exact-head P73 Verification [#184](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44020636288) passed on `afd733421064bbc2bafefa75d514f7ce456b38ac`: **1,473 Python passed, 9 skipped**, compile PASS, dependency audit PASS, **9 browser smoke tests passed**.
+- The NO-GO release decision remains unchanged because P78 adapters, Owner recovery UI, physical Android acceptance, owner-operated backup/restore, independent security review and final Owner acceptance remain outstanding.
