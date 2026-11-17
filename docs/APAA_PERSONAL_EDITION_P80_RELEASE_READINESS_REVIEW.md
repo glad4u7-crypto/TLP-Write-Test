@@ -61,3 +61,13 @@ Perform the Personal Edition v1 release review against the scope and safety requ
 - P79 predecessor head `63174c17cbb60958ca746aaf76886b7bb12eb355` passed P73 Verification #148 (1,463 Python passed, 9 skipped; compile and dependency audit PASS; 9 responsive browser smoke tests PASS).
 - Exact-head P73 Verification [#184](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44020636288) passed on `afd733421064bbc2bafefa75d514f7ce456b38ac`: **1,473 Python passed, 9 skipped**, compile PASS, dependency audit PASS, **9 browser smoke tests passed**.
 - The NO-GO release decision remains unchanged because P78 adapters, Owner recovery UI, physical Android acceptance, owner-operated backup/restore, independent security review and final Owner acceptance remain outstanding.
+
+
+## P78 / Owner Recovery implementation update — 2026-11-17
+
+- Added a descriptor-relative, no-follow, bounded UTF-8 project-file read adapter and an explicit read-only adapter registry.
+- Added provider wrappers for web search, HTTPS page reading and YouTube discovery, but no provider/network transport is enabled by default.
+- Added authenticated Owner Recovery UI for tenant-scoped unresolved executions. Pending outcomes remain blocked; uncertain outcomes require explicit Owner confirmation and a completed/cancelled choice. The original action is never retried.
+- Owner reconciliation now appends a payload-free hash-chain audit event in the same SQLite transaction as the state transition.
+- Added adapter, UI and reconciliation audit tests. Exact-head P73 CI for the latest P78 code head is pending.
+- P80 remains NO-GO until exact-head CI passes and the external acceptance gates (physical Android, owner-operated backup/restore, independent security review and explicit Owner acceptance) are completed. Web/YouTube network providers remain disabled pending separate transport/SSRF qualification.
