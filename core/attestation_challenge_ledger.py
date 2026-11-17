@@ -55,6 +55,8 @@ class SQLiteChallengeLedger:
             os.close(fd)
         try:
             info = os.lstat(self.path)
+            if stat.S_ISLNK(info.st_mode):
+                raise ValueError("challenge ledger must not be a symlink")
             if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
                     or stat.S_IMODE(info.st_mode) & 0o077):
                 raise ValueError("challenge ledger must be an owner-owned private regular file")
