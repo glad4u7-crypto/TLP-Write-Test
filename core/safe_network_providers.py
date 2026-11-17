@@ -216,8 +216,10 @@ def _external_result_url(href: str) -> str | None:
     if href.startswith("//"):
         href = "https:" + href
     parsed = urlsplit(href)
-    if (parsed.hostname or "").lower().endswith("duckduckgo.com"):
+    if (parsed.hostname or "").lower() in {"duckduckgo.com", "www.duckduckgo.com"}:
         target = parse_qs(parsed.query).get("uddg", [""])[0]
+        if not target:
+            return None
         href = target
     try:
         return _validate_https_target(href)
@@ -325,6 +327,8 @@ class YouTubePublicSearchProvider:
                     title = " ".join(
                         part.get("text", "") for part in runs if isinstance(part, dict)
                     ).strip()
+                    if not title and isinstance(title_obj, dict):
+                        title = str(title_obj.get("simpleText", "")).strip()
                     if video_id and len(video_id) <= 32 and video_id not in seen and title:
                         seen.add(video_id)
                         items.append(ReadItem(
