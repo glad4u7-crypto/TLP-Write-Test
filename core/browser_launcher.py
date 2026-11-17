@@ -125,7 +125,11 @@ def launch_chromium(
     try:
         session = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
     except BrowserRuntimeGateError as exc:
-        raise BrowserLaunchError("Signed runtime/firewall verification failed; browser was not started.") from exc
+        cause = exc.__cause__
+        detail = cause.__cause__ if cause is not None and cause.__cause__ is not None else exc
+        raise BrowserLaunchError(
+            f"Signed runtime/firewall verification failed; browser was not started ({detail})."
+        ) from exc
     if type(session) is not BrowserSession:
         raise BrowserLaunchError("Verified worker adapter did not return a BrowserSession.")
     return session
