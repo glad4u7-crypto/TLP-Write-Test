@@ -103,6 +103,51 @@ def _http_proxy_uri(proxy_ip: str, port: int) -> str:
         raise ValueError("proxy port is invalid")
     return f"http://{host}:{port}"
 
+
+
+def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[str, object]:
+    code = (
+        "import socket,sys\\n"
+        + f"s=socket.create_connection(({proxy_ip!r},{proxy_port}),timeout=5)\\n"
+        + "print('APAA_PROXY_TCP_CONNECTED')\\n"
+        + "s.close()\\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=8, shell=False,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0 or "APAA_PROXY_TCP_CONNECTED" not in output:
+        diagnostic = redact_sensitive_text(output, limit=240)
+        raise RuntimeError(
+            f"worker could not establish TCP to the mandatory proxy (family={'ipv6' if ':' in proxy_ip else 'ipv4'}; "
+            f"exit={result.returncode}; diagnostic={diagnostic})"
+        )
+    return {
+        "exit_code": result.returncode,
+        "connected": True,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+
+
+def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict[str, object]:
+    marker = "APAA_LOCAL_DUMP_DOM_OK"
+    data_url = "data:text/html,<html><body>" + marker + "</body></html>"
+    result = _run([
+        "podman", "exec", "--user", "65532:65532", container_id, chromium_bin,
+        "--headless=new", "--disable-gpu", "--disable-quic",
+        "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
+        "--disable-crashpad-for-testing", "--no-first-run", "--dump-dom", data_url,
+    ], timeout=45)
+    if "<html" not in result.stdout.lower() or marker not in result.stdout:
+        details = _chromium_failure_details(result, "local-data-url", marker)
+        raise RuntimeError(f"Chromium local dump-dom smoke test failed: {details}")
+    return {
+        "stdout_bytes": len(result.stdout.encode("utf-8")),
+        "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+        "marker_present": True,
+    }
+
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
 ) -> dict[str, object]:
@@ -524,6 +569,11 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
+        evidence["chromium_version"] = _run([
+            "podman", "exec", "--user", "65532:65532", container_id, chromium_bin, "--version",
+        ], timeout=15).stdout.strip()[:160]
+        evidence["chromium_local_dump_dom"] = _probe_chromium_local_dump_dom(container_id, chromium_bin)
+        evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
         post_start_state = post_start_inspect.get("State") or {}
         post_start_pid = post_start_state.get("Pid")
@@ -648,6 +698,11 @@ def main() -> int:
 
         for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
             proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
+            proxy = proxy_servers[0] if family == "ipv4" else proxy_servers[1]
+            preflight = _probe_proxy_tcp(container_id, proxy_ip, proxy_port)
+            evidence[f"proxy_tcp_preflight_{family}"] = preflight
+            accepted_before_browser = proxy.accepted_connections
+            rejected_before_browser = proxy.rejected_requests
             page = _run([
                 "podman", "exec", "--user", "65532:65532", container_id,
                 chromium_bin,
@@ -672,11 +727,13 @@ def main() -> int:
                 "--dump-dom",
                 target.url,
             ], timeout=120)
-            proxy = proxy_servers[0] if family == "ipv4" else proxy_servers[1]
             evidence["proxy_progress"] = {
                 "family": family,
-                "accepted_connections": proxy.accepted_connections,
-                "rejected_requests": proxy.rejected_requests,
+                "accepted_before_browser": accepted_before_browser,
+                "accepted_after_browser": proxy.accepted_connections,
+                "browser_accept_delta": proxy.accepted_connections - accepted_before_browser,
+                "rejected_before_browser": rejected_before_browser,
+                "rejected_after_browser": proxy.rejected_requests,
                 "dialed_addresses": list(proxy.dialed_addresses),
             }
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
