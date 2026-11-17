@@ -334,8 +334,12 @@ def main() -> int:
         # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
         _probe_blocked([
             "podman", "exec", container_id, "python3", "-c",
-            f"import socket; socket.getaddrinfo({target.hostname!r}, 443)",
-        ], "direct DNS resolution")
+            "import socket; q=bytes.fromhex('123401000001000000000000076578616d706c6503636f6d0000010001'); s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(q,('1.1.1.1',53)); s.recvfrom(4096)",
+        ], "direct UDP DNS query")
+        _probe_blocked([
+            "podman", "exec", container_id, "python3", "-c",
+            "import socket; socket.create_connection(('1.1.1.1',53),2)",
+        ], "direct TCP DNS query")
         _probe_blocked([
             "podman", "exec", container_id, "python3", "-c",
             "import socket; socket.create_connection(('1.1.1.1',443),2)",
@@ -349,6 +353,7 @@ def main() -> int:
             "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
         ], "direct UDP/443 QUIC-style egress")
         evidence["tests"]["direct_dns_blocked"] = True
+        evidence["tests"]["direct_tcp_dns_blocked"] = True
         evidence["tests"]["direct_ipv4_blocked"] = True
         evidence["tests"]["direct_ipv6_blocked"] = True
         evidence["tests"]["direct_udp_443_blocked"] = True
