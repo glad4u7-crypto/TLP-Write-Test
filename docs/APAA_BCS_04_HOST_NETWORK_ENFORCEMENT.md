@@ -681,3 +681,10 @@ Added bounded, redacted Chromium stdout/stderr diagnostics to the qualification 
 
 
 The next diagnostic revision also records per-family proxy accept/reject counts and pinned dialed IPs before failing, plus bounded redacted Chromium stderr head/tail and known browser/proxy error markers. This distinguishes failure to reach the proxy from a rejected CONNECT or a browser-side TLS/navigation problem.
+
+
+## Resolver-to-proxy diagnostic correction
+
+The third real OCI attempt confirmed Chromium's user-namespace sandbox was healthy but the proxy recorded zero accepted connections, zero rejected CONNECT requests and zero upstream dials. The target resolver rule `MAP * ~NOTFOUND` did not explicitly exempt the numeric proxy endpoint. The qualification now uses `MAP * ~NOTFOUND, EXCLUDE <proxy-IP>` for both IPv4 and IPv6, keeping target DNS fail-closed while permitting resolution/connection to the numeric mandatory proxy. The same explicit proxy exemption is used in the proxy-outage test so that it actually reaches the stopped proxy instead of passing because proxy name resolution was blocked. Added regression tests for both address families.
+
+This is a targeted hypothesis from the observed zero-connection telemetry; a new real-host run must confirm the result before any PASS is claimed.
