@@ -6,14 +6,17 @@ on:
       test_url:
         description: Exact HTTPS URL on an owner-approved test origin
         required: true
+        default: https://example.com/
         type: string
       allowed_origin:
         description: Exact HTTPS origin matching test_url (scheme + host + optional port)
         required: true
+        default: https://example.com
         type: string
       expected_marker:
         description: Unique text that must appear in the controlled test page HTML
         required: true
+        default: Example Domain
         type: string
 
 permissions:
