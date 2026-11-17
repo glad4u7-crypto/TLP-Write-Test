@@ -194,26 +194,45 @@ class LocalOwnerAuthStore:
                 raise
 
     def change_passphrase(self, current_passphrase: str, new_passphrase: str,
-                          confirmation: str) -> bool:
-        if not self.authenticate(current_passphrase):
-            return False
+                          confirmation: str, *, now: int | None = None) -> bool:
         self._validate_passphrase(new_passphrase)
         if not isinstance(confirmation, str) or not hmac.compare_digest(
             new_passphrase, confirmation
         ):
             raise ValueError("New Owner passphrases do not match.")
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
         salt = secrets.token_bytes(_SALT_BYTES)
         verifier = self._derive(new_passphrase, salt)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                row = db.execute(
+                    """SELECT salt, verifier, failed_attempts, locked_until
+                       FROM local_owner_auth WHERE singleton_id = 1"""
+                ).fetchone()
+                if row is None or current < int(row[3]):
+                    db.commit()
+                    return False
+                actual = self._derive(current_passphrase if isinstance(current_passphrase, str) else "", bytes(row[0]))
+                if not hmac.compare_digest(actual, bytes(row[1])):
+                    failures = int(row[2]) + 1
+                    locked_until = current + self.lockout_seconds if failures >= self.max_attempts else 0
+                    db.execute(
+                        """UPDATE local_owner_auth SET failed_attempts = ?, locked_until = ?
+                           WHERE singleton_id = 1""",
+                        (0 if locked_until else failures, locked_until),
+                    )
+                    db.commit()
+                    return False
                 db.execute(
                     """UPDATE local_owner_auth SET salt = ?, verifier = ?,
                        failed_attempts = 0, locked_until = 0 WHERE singleton_id = 1""",
                     (salt, verifier),
                 )
                 db.commit()
+                return True
             except Exception:
                 db.rollback()
                 raise
-        return True
