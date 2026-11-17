@@ -146,6 +146,14 @@ def test_nftables_strict_verification_rejects_unapproved_established_rule():
         provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128)
 
 
+def test_nftables_strict_verification_rejects_unscoped_established_accept():
+    rules = _nft_output("ct state established,related accept")
+    runner = Runner(stdout=rules)
+    provisioner = NftablesFirewallProvisioner(runner=runner, require_root=False)
+    with pytest.raises(FirewallProvisionError):
+        provisioner.verify_ruleset("apaa-test", proxy_ips=["198.18.0.1"], proxy_port=3128)
+
+
 def test_nftables_strict_verification_rejects_extra_proxy_port():
     rules = _nft_output("ip daddr 198.18.0.1 tcp dport 443 accept")
     runner = Runner(stdout=rules)
