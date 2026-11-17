@@ -978,3 +978,29 @@ def test_execution_ledger_rejects_nonterminal_or_unsupported_status(security_sto
     key = "request-unique-0004"
     assert security_store.claim_execution(tenant, key, "write_file", "e" * 64, now=40) == "claimed"
     assert security_store.finish_execution(tenant, key, status, now=41) is False
+
+
+def test_uncertain_execution_requires_explicit_owner_reconciliation(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0005"
+    assert security_store.claim_execution(tenant, key, "write_file", "f" * 64, now=50) == "claimed"
+    assert security_store.finish_execution(tenant, key, "uncertain", now=51) is True
+    assert security_store.resolve_uncertain_execution(
+        tenant, key, "completed", owner_confirmed=False, now=52
+    ) is False
+    assert security_store.claim_execution(tenant, key, "write_file", "f" * 64, now=53) == "uncertain"
+    assert security_store.resolve_uncertain_execution(
+        tenant, key, "completed", owner_confirmed=True, now=54
+    ) is True
+    assert security_store.claim_execution(tenant, key, "write_file", "f" * 64, now=55) == "completed"
+
+
+def test_concurrent_execution_claim_has_exactly_one_winner(security_store):
+    tenant = TenantKey("https://issuer.example", "alice")
+    key = "request-unique-0006"
+    def claim(_):
+        return security_store.claim_execution(tenant, key, "write_file", "9" * 64)
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(claim, range(12)))
+    assert results.count("claimed") == 1
+    assert results.count("pending") == 11
