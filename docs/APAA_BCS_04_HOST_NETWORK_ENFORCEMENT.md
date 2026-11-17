@@ -89,3 +89,11 @@ unavailable". The three Chromium TLS checks, restricted-proxy Chromium test,
 worker-adapter tests and host-inspector tests passed in that run. The assertion
 was corrected in a follow-up commit. The keyring additions and the correction
 still require exact-head CI verification.
+
+
+The worker adapter now exposes `from_keyring(..., challenge_ledger=...)`,
+which constructs the signer and trusted-key map from the active keyring entry
+and refuses construction without an atomic durable replay ledger. Rotation
+therefore takes effect when a fresh adapter instance is created from the
+rotated keyring; already-running instances retain their original in-memory
+key material and must be retired by the owner-controlled supervisor.
