@@ -496,3 +496,50 @@ decision will be based on those kernel/profile facts; no capability, SUID
 helper, seccomp-unconfined mode or `--no-sandbox` fallback will be introduced.
 
 The seccomp/user-namespace diagnostic run is queued on a fresh disposable host.
+
+
+## BCS-04 follow-up hardening — exact-head review
+
+The recovery and audit implementation was re-reviewed after the first CI attempt.
+The following corrections are now in the branch:
+
+- Every SQLite journal operation now uses an explicitly bounded
+  `BEGIN IMMEDIATE` transaction and closes its connection on all paths.
+  This serializes read/transition/write lifecycle changes across processes and
+  prevents two concurrent terminal transitions from overwriting one another.
+- Request fingerprints accept only canonical lowercase SHA-256 hex.
+- An unconfirmed timeout or cancellation is **not** recorded as successful
+  cancellation. The job is marked `interrupted`, the durable dispatch
+  latch is set, and later jobs are refused until Owner review.
+- Startup recovery that finds any pre-crash active job marks it interrupted,
+  latches dispatch, and refuses to start the runtime gate. No potentially
+  orphaned worker is silently left running while new work starts.
+- Audit redaction now masks bearer/basic credentials before parsing
+  Authorization assignments, including direct dataclass-to-JSONL persistence.
+- Updated the signed-runtime test fixture to exercise the exact current
+  dual-stack `inet apaa` input/output default-DROP policy rather than an obsolete
+  single-chain legacy fixture. Fixed cgroup-v2 test fixtures to model the
+  kernel `cgroup.threads` file and restored precise regression-test error wording.
+
+The earlier exact-head run on commit `3225f7055ebdf27ecb3b46effc43be92e974d7fa`
+failed with 27 tests and 1,139 passed. The identified failures included the
+legacy nftables test fixture, Authorization bearer redaction, cancellation
+error wording, cgroup test fixture completeness, and pinned-peer error wording.
+Those items have been corrected in later commits. Exact-head CI for the current
+branch head must complete successfully before this work can be called CI-verified.
+
+### Remaining non-code acceptance gates
+
+- The real OCI Chromium workflow is intentionally skipped on ordinary pushes;
+  it requires its separate disposable-host qualification trigger and
+  environment. No real-host PASS is claimed.
+- The repository still has no bundled production `IsolatedWorkerBackend`
+  and no Android application/VpnService module. The OCI runtime, host observer,
+  namespace/firewall provisioners and worker adapter remain separately
+  injected components. Real process/container orphan reaping and physical
+  Android crash/bypass acceptance therefore remain unqualified.
+- Interrupted jobs now fail closed and latch dispatch, but clearing that latch
+  requires a separately authenticated Owner recovery/review procedure. No
+  automatic replay or automatic latch reset is provided.
+- Browser/Worker dispatch and Public Live Browsing remain disabled; Auto-Run
+  remains OFF. No merge or deployment.
