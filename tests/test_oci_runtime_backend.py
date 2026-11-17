@@ -26,6 +26,8 @@ class FakeRunner:
 
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
+        if len(command) > 1 and command[1] == "ps":
+            return subprocess.CompletedProcess(command, 0, "", "")
         rc, stdout = self.outputs.pop(0)
         if "--cidfile" in command:
             Path(command[command.index("--cidfile") + 1]).write_text(stdout.strip(), encoding="ascii")
