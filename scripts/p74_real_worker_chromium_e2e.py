@@ -373,6 +373,8 @@ def main() -> int:
             "pids_limit": host.get("PidsLimit"),
             "network_mode": host.get("NetworkMode"),
             "user": config.get("User"),
+            "image_id": inspected.get("Image"),
+            "image_digest": inspected.get("ImageDigest"),
         }
         evidence["tests"]["oci_inspect_hardening"] = True
 
