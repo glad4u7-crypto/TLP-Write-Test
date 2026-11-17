@@ -205,8 +205,13 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
                 page.locator("#blocked-popup-link").click()
             page.evaluate("""() => {
               const socket = new WebSocket("ws://outside.invalid:8765/blocked");
-              socket.onclose = () => document.body.dataset.blockedWebsocket = "blocked";
-              socket.onerror = () => document.body.dataset.blockedWebsocket = "blocked";
+              socket.onopen = () => document.body.dataset.blockedWebsocket = "opened";
+              socket.onclose = () => {
+                if (document.body.dataset.blockedWebsocket !== "opened") document.body.dataset.blockedWebsocket = "blocked";
+              };
+              socket.onerror = () => {
+                if (document.body.dataset.blockedWebsocket !== "opened") document.body.dataset.blockedWebsocket = "blocked";
+              };
             }""")
             page.wait_for_function("document.body.dataset.blockedWebsocket === 'blocked'", timeout=5000)
 
@@ -218,9 +223,14 @@ def test_real_chromium_redirect_subresource_popup_iframe_and_websocket(loopback_
             assert any("outside.invalid/pixel.png" in url for url in blocked_requests)
             assert any("outside.invalid/frame" in url for url in blocked_requests)
             assert any("outside.invalid/popup" in url for url in blocked_requests)
-            # The reserved .invalid hostname must fail closed at browser DNS/
-            # connection setup. No external WebSocket session may be created.
-            assert not any(url.startswith("ws://outside.invalid:") for url in websocket_urls)
-            assert websocket_urls == [f"ws://127.0.0.1:{urlsplit(loopback_site).port}/ws"]
+            # Playwright emits a WebSocket event for a connection attempt, even
+            # when DNS/connection setup fails. Assert the attempt was observed,
+            # while the browser-side handlers prove it never reached onopen.
+            assert any(url.startswith("ws://outside.invalid:") for url in websocket_urls)
+            assert page.locator("body").evaluate("(body) => body.dataset.blockedWebsocket") == "blocked"
+            assert websocket_urls == [
+                f"ws://127.0.0.1:{urlsplit(loopback_site).port}/ws",
+                "ws://outside.invalid:8765/blocked",
+            ]
         finally:
             browser.close()
