@@ -106,6 +106,7 @@ class AttestedBrowserWorkerAdapter:
         trusted_public_keys: Mapping[str, bytes],
         expected_proxy_addresses: Sequence[str],
         challenge_factory: Any = secrets.token_hex,
+        challenge_ledger: Any | None = None,
         cleanup_wait_seconds: float = 15.0,
     ) -> None:
         if type(spec) is not WorkerLaunchSpec:
@@ -138,6 +139,8 @@ class AttestedBrowserWorkerAdapter:
             raise ValueError("Duplicate proxy IP pins are not permitted.")
         if not callable(challenge_factory):
             raise TypeError("challenge_factory must be callable.")
+        if challenge_ledger is not None and not callable(getattr(challenge_ledger, "consume", None)):
+            raise TypeError("challenge_ledger must expose an atomic consume(challenge) operation.")
         if isinstance(cleanup_wait_seconds, bool) or not isinstance(cleanup_wait_seconds, (int, float)) or not 0 < cleanup_wait_seconds <= 60:
             raise ValueError("cleanup_wait_seconds must be between 0 and 60 seconds.")
         self._spec = spec
@@ -147,6 +150,7 @@ class AttestedBrowserWorkerAdapter:
         self._trusted_keys = dict(trusted_public_keys)
         self._proxy_addresses = tuple(sorted(normalized_proxy_ips))
         self._challenge_factory = challenge_factory
+        self._challenge_ledger = challenge_ledger
         self._cleanup_wait = float(cleanup_wait_seconds)
         self._states: dict[str, _WorkerState] = {}
         # Challenges are single-use for this adapter process. The default 256-bit
@@ -188,6 +192,16 @@ class AttestedBrowserWorkerAdapter:
             with self._lock:
                 if challenge in self._used_challenges:
                     raise BrowserWorkerBootstrapError("A host-attestation challenge cannot be reused.")
+                # A persistent ledger makes replay rejection survive adapter
+                # restarts and coordinates multiple adapter processes.
+                if self._challenge_ledger is not None:
+                    try:
+                        if self._challenge_ledger.consume(challenge) is not True:
+                            raise BrowserWorkerBootstrapError("A host-attestation challenge cannot be reused.")
+                    except BrowserWorkerBootstrapError:
+                        raise
+                    except Exception as exc:
+                        raise BrowserWorkerBootstrapError("Durable challenge replay protection failed closed.") from exc
                 # Consume before collection: failed collection cannot make the nonce reusable.
                 self._used_challenges.add(challenge)
 
