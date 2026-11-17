@@ -31,10 +31,11 @@ def make_fs(tmp_path, *, cgroup="/apaa/worker1/container", net_inode=123, ns_ino
     (proc/"status").write_text("Name:\tworker\nSeccomp:\t2\nCapEff:\t0000000000000000\n")
     cg=tmp_path/"cgroup"/"apaa"/"worker1"/"container"
     cg.mkdir(parents=True)
+    (cg.parent/"cgroup.procs").write_text("")
     (cg/"memory.max").write_text("1073741824")
     (cg/"cpu.max").write_text("100000 100000")
     (cg/"pids.max").write_text("128")
-    (cg/"cgroup.procs").write_text("4321\\n")
+    (cg/"cgroup.procs").write_text("4321\n")
     return tmp_path/"proc",tmp_path/"cgroup",tmp_path/"netns"
 
 def payload():
@@ -126,7 +127,7 @@ def test_observer_rejects_nonzero_kernel_effective_capabilities(tmp_path):
 
 def test_observer_normalizes_proc_cgroup_path_with_mount_prefix(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
-    (proc/"4321"/"cgroup").write_text(f"0::{cg}/apaa/worker1/container\\n")
+    (proc/"4321"/"cgroup").write_text(f"0::{cg}/apaa/worker1/container\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     result=observer.observe(CID,spec())
     assert result.cgroup_path == "/apaa/worker1/container"
@@ -134,7 +135,7 @@ def test_observer_normalizes_proc_cgroup_path_with_mount_prefix(tmp_path):
 
 def test_observer_locates_worker_by_kernel_membership_when_proc_path_is_unmapped(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
-    (proc/"4321"/"cgroup").write_text("0::/unmapped/private-cgroup-namespace/path\\n")
+    (proc/"4321"/"cgroup").write_text("0::/unmapped/private-cgroup-namespace/path\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     result=observer.observe(CID,spec())
     assert result.cgroup_path == "/apaa/worker1/container"
@@ -142,7 +143,7 @@ def test_observer_locates_worker_by_kernel_membership_when_proc_path_is_unmapped
 
 def test_observer_rejects_worker_pid_not_listed_in_dedicated_cgroup(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
-    (cg/"apaa"/"worker1"/"container"/"cgroup.procs").write_text("9999\\n")
+    (cg/"apaa"/"worker1"/"container"/"cgroup.procs").write_text("9999\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="not uniquely present"):
         observer.observe(CID,spec())
@@ -152,7 +153,7 @@ def test_observer_rejects_worker_pid_in_multiple_cgroups(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
     extra=cg/"apaa"/"worker1"/"other"
     extra.mkdir()
-    (extra/"cgroup.procs").write_text("4321\\n")
+    (extra/"cgroup.procs").write_text("4321\n")
     observer=PodmanWorkerObserver(Runtime(payload()),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     with pytest.raises(WorkerObservationError,match="multiple"):
         observer.observe(CID,spec())
