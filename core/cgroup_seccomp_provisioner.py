@@ -126,8 +126,9 @@ class CgroupV2Provisioner:
 def validate_seccomp_profile(profile_path: str | Path) -> dict:
     """Reject permissive or malformed seccomp profiles before OCI create."""
     path = Path(profile_path)
-    if not path.is_absolute() or ".." in path.parts or not path.is_file():
-        raise IsolationEnforcementError("seccomp profile must be an existing absolute file")
+    if (not path.is_absolute() or ".." in path.parts or path.is_symlink()
+            or not path.is_file() or path.resolve(strict=True) != path):
+        raise IsolationEnforcementError("seccomp profile must be an existing regular absolute file without symlinks")
     try:
         profile = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
