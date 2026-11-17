@@ -58,6 +58,7 @@ def test_streamlit_project_creation_requires_review_then_explicit_confirm(
     assert projects[0].name == "P06 UI test"
     assert projects[0].description == "Approval integration test"
     assert "pending_project" not in app.session_state
+    assert any("create_project" in item.value for item in app.caption)
 
 
 def test_streamlit_cancel_does_not_create_project(tmp_path, monkeypatch):
