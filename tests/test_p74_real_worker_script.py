@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts import p74_real_worker_chromium_e2e as qualification
 
 
