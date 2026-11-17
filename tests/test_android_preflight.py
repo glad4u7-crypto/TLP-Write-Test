@@ -80,3 +80,47 @@ def test_android_launcher_pins_loopback_xsrf_cors_and_disables_usage_telemetry()
     assert "--server.enableXsrfProtection true" in source
     assert "--browser.gatherUsageStats false" in source
     assert "--server.address 0.0.0.0" not in source
+
+
+def test_android_doctor_reports_runtime_without_exposing_environment_values(monkeypatch, capsys):
+    from scripts import apaa_android_doctor as doctor
+
+    monkeypatch.setattr(doctor, "_git_commit", lambda: "a" * 40)
+    monkeypatch.setattr(doctor, "_loopback_socket_available", lambda: True)
+    monkeypatch.setattr(
+        doctor,
+        "_package_version",
+        lambda name: "1.2.3" if name == "streamlit" else "50.0.0",
+    )
+    monkeypatch.setattr(doctor.importlib.util, "find_spec", lambda name: object())
+    results = doctor.collect_diagnostics()
+
+    assert results["streamlit_version"] == "1.2.3"
+    assert results["cryptography_version"] == "50.0.0"
+    assert results["loopback_bind_available"] is True
+    assert results["git_commit"] == "a" * 40
+    assert "password" not in " ".join(results).casefold()
+    assert "secret" not in " ".join(results).casefold()
+
+
+def test_android_doctor_main_marks_missing_runtime_as_blocked(monkeypatch, capsys):
+    from scripts import apaa_android_doctor as doctor
+
+    monkeypatch.setattr(
+        doctor,
+        "collect_diagnostics",
+        lambda: {
+            "python_version": "3.12.0",
+            "streamlit_version": "NOT INSTALLED",
+            "cryptography_version": "NOT INSTALLED",
+            "aes_256_gcm_available": False,
+            "scrypt_available": False,
+            "loopback_bind_available": True,
+            "git_commit": "UNKNOWN",
+        },
+    )
+    assert doctor.main() == 2
+    output = capsys.readouterr().out
+    assert "READ ONLY" in output
+    assert "BLOCKED" in output
+    assert "no network connection" in output
