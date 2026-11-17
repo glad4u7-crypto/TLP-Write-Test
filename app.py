@@ -1061,6 +1061,10 @@ if not auth_required and selected_file_project is not None:
         "Store small UTF-8 text files inside the selected project's private directory. "
         "Uploads require explicit approval; inspection is read-only."
     )
+    st.warning(
+        "Project files are not yet included in APAA backup archives. "
+        "Do not store irreplaceable documents here until project-file backup is added."
+    )
     with st.form("apaa_project_file_upload_form", clear_on_submit=True):
         project_file_upload = st.file_uploader(
             "Choose a text file",
