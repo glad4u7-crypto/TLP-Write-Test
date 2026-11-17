@@ -416,9 +416,15 @@ def restore_personal_backup(
                 project_total += metadata["size"]
                 if project_total > _MAX_PROJECT_FILES_TOTAL:
                     raise PersonalBackupError("Project files exceed the aggregate restore limit.")
-                target = stage / "project-files" / parts[1] / parts[2]
-                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                os.chmod(target.parent, 0o700)
+                files_root = stage / "project-files"
+                if not files_root.exists():
+                    files_root.mkdir(mode=0o700)
+                os.chmod(files_root, 0o700)
+                project_root = files_root / parts[1]
+                if not project_root.exists():
+                    project_root.mkdir(mode=0o700)
+                os.chmod(project_root, 0o700)
+                target = project_root / parts[2]
                 flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
                 descriptor = os.open(target, flags, 0o600)
                 digest = hashlib.sha256()
