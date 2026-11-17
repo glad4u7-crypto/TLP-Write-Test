@@ -69,7 +69,12 @@ class PinnedDestination:
     def __post_init__(self) -> None:
         if not self.hostname or type(self.port) is not int or not 1 <= self.port <= 65535:
             raise ValueError("Invalid pinned destination.")
-        canonical = canonicalize_https_url(f"https://{self.hostname}:{self.port}/")
+        try:
+            host_literal = ipaddress.ip_address(self.hostname)
+            host_for_url = f"[{self.hostname}]" if host_literal.version == 6 else self.hostname
+        except ValueError:
+            host_for_url = self.hostname
+        canonical = canonicalize_https_url(f"https://{host_for_url}:{self.port}/")
         if canonical.hostname != self.hostname.lower() or canonical.port != self.port:
             raise ValueError("Pinned hostname/port must be canonical.")
         if not self.addresses:
