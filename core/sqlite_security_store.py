@@ -395,6 +395,46 @@ class SQLiteSecurityStore:
                 connection.rollback()
                 raise
 
+    def resolve_uncertain_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        resolution: str,
+        *,
+        owner_confirmed: bool,
+        now: int | None = None,
+    ) -> bool:
+        """Record an explicit owner reconciliation; never infer an outcome.
+
+        The caller must be a trusted, authenticated Owner UI/controller. This
+        storage primitive does not authenticate the owner itself.
+        """
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(owner_confirmed) is not bool or owner_confirmed is not True:
+            return False
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            return False
+        if resolution not in {"completed", "cancelled"}:
+            return False
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    """UPDATE execution_idempotency SET status = ?, updated_at = ?
+                       WHERE issuer = ? AND subject = ? AND request_key = ?
+                         AND status = 'uncertain'""",
+                    (resolution, current, tenant.issuer, tenant.subject, request_key),
+                )
+                connection.commit()
+                return cursor.rowcount == 1
+            except Exception:
+                connection.rollback()
+                raise
+
     def list_unresolved_executions(
         self, tenant: TenantKey, *, limit: int = 50
     ) -> tuple[dict[str, object], ...]:
