@@ -6,6 +6,7 @@ from core.browser_execution import BrowserExecutionCoordinator, BrowserExecution
 from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_nftables import collect_signed_inspector_evidence, _expected_dual_stack_rules
+from core.browser_recovery import SQLiteBrowserRecoveryLedger
 
 
 NOW = 1000
@@ -300,7 +301,7 @@ def test_gate_blocks_empty_trust_store_before_worker_adapter():
 
 
 
-def test_execution_coordinator_accepts_only_real_verified_attestation_gate():
+def test_execution_coordinator_accepts_only_real_verified_attestation_gate(tmp_path):
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
 
@@ -312,6 +313,10 @@ def test_execution_coordinator_accepts_only_real_verified_attestation_gate():
             return True
 
     worker = Worker()
+    recovery_dir = tmp_path / "private-recovery"
+    recovery_dir.mkdir(mode=0o700)
+    recovery_dir.chmod(0o700)
+    recovery_ledger = SQLiteBrowserRecoveryLedger(recovery_dir / "jobs.sqlite3")
     gate = AttestedBrowserRuntime(
         spec,
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
@@ -324,15 +329,20 @@ def test_execution_coordinator_accepts_only_real_verified_attestation_gate():
         challenge=CHALLENGE,
         now=NOW,
         audit=lambda event: None,
+        recovery_ledger=recovery_ledger,
     )
     assert isinstance(coordinator, BrowserExecutionCoordinator)
     assert coordinator._worker is worker
 
 
 
-def test_execution_coordinator_rejects_invalid_worker_from_verified_gate():
+def test_execution_coordinator_rejects_invalid_worker_from_verified_gate(tmp_path):
     spec = make_spec()
     key = Ed25519PrivateKey.generate()
+    recovery_dir = tmp_path / "private-recovery"
+    recovery_dir.mkdir(mode=0o700)
+    recovery_dir.chmod(0o700)
+    recovery_ledger = SQLiteBrowserRecoveryLedger(recovery_dir / "jobs.sqlite3")
     gate = AttestedBrowserRuntime(
         spec,
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
@@ -346,4 +356,5 @@ def test_execution_coordinator_rejects_invalid_worker_from_verified_gate():
             challenge=CHALLENGE,
             now=NOW,
             audit=lambda event: None,
+            recovery_ledger=recovery_ledger,
         )
