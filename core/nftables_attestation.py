@@ -26,10 +26,12 @@ class NftablesPolicy:
             if type(value) is not str:
                 raise ValueError("proxy IP must be text")
             address = ipaddress.ip_address(value)
-            if (not address.is_global or address.is_unspecified or address.is_multicast
-                    or address.is_loopback or address.is_link_local or address.is_reserved
-                    or address.compressed != value):
-                raise ValueError("proxy IP must be canonical public unicast")
+            if (address.is_unspecified or address.is_multicast or address.is_loopback
+                    or address.is_link_local or address.compressed != value):
+                raise ValueError("proxy IP must be canonical unicast")
+            if address.version == 4 and address in (ipaddress.ip_network("0.0.0.0/32"),
+                                                     ipaddress.ip_network("255.255.255.255/32")):
+                raise ValueError("proxy IP cannot be an unspecified or broadcast address")
             normalized.append(value)
         if len(set(normalized)) != len(normalized):
             raise ValueError("duplicate proxy IPs are forbidden")
@@ -101,7 +103,7 @@ def _rule_signature(rule: dict[str, Any]) -> tuple[str, tuple[tuple[str, str, st
 
 def _expected(policy: NftablesPolicy) -> Counter[tuple[str, tuple[tuple[str, str, str], ...]]]:
     eq = lambda field, value: (field, "==", json.dumps(value, separators=(",", ":")))
-    inside = lambda field, values: (field, "in", json.dumps(list(values), separators=(",", ":")))
+    inside = lambda field, values: (field, "in", json.dumps({"set": list(values)}, sort_keys=True, separators=(",", ":")))
     expected: Counter[tuple[str, tuple[tuple[str, str, str], ...]]] = Counter()
 
     def add(chain: str, *matches: tuple[str, str, str]) -> None:
