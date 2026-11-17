@@ -228,3 +228,16 @@ parent exists. The next diagnostic artifact now includes the parent's
 `cgroup.events` values to determine whether Podman attached the process
 directly to the delegated parent, used a different cgroup namespace, or failed
 to create the expected child. The observer remains fail-closed.
+
+
+### Run #83 — cgroup child-controller root cause and fix
+
+The parent cgroup diagnostics showed `cgroup.procs` empty,
+`cgroup.subtree_control` empty, and no `libpod-<id>` child directory.
+The OCI process reported the child path, but the parent had not delegated
+`cpu`, `memory` and `pids` controllers to children. The cgroup provisioner
+now enables and verifies all three controllers on the per-worker parent before
+Podman creates its child cgroup. New tests cover successful delegation and
+fail-closed behavior when controllers are unavailable. The real-host workflow
+must verify that Podman now creates the expected leaf and that effective limits
+are read back before browser tests can run.
