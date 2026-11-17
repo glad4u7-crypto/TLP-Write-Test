@@ -50,8 +50,11 @@ def test_create_uses_digest_pinned_image_and_hardening_flags():
     assert command[1] == "create"
     assert "--pull=never" in command
     assert "--read-only" in command
+    assert "--tmpfs" in command
+    assert "--shm-size" in command
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
+    assert "--entrypoint" in command and "sleep" in command and "infinity" in command
     assert f"ns:{NS}" in command
     assert IMAGE in command
     assert kwargs["shell"] is False
