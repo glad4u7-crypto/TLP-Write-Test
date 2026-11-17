@@ -46,11 +46,14 @@ BCS-06 does **not** qualify a browser automation runtime on Android. Android Chr
 
 ## Physical Android acceptance matrix (Owner-operated)
 
+Before manual Chrome checks, run `python scripts/android_device_acceptance.py` from the repository root in Termux. This non-invasive diagnostic reports Android/Termux detection, Python version, non-root status, presence of OIDC-required Owner configuration (without printing secrets), and a loopback TCP self-test. It does not test Chrome itself and cannot replace the manual acceptance matrix. It exits non-zero if any automated diagnostic fails.
+
 All checks below require the actual target handset. Desktop emulation, CI viewport tests, or a Linux shell are not substitutes.
 
 | ID | Test | Expected result |
 |---|---|---|
 | A01 | Install supported Termux distribution and update packages | Installation succeeds; record app/package versions |
+| A01a | Run `python scripts/android_device_acceptance.py` | D01–D06 diagnostics all PASS; retain redacted output |
 | A02 | Start APAA from Termux | App starts without root |
 | A03 | Verify bind address | Listener is loopback only |
 | A04 | Open local URL in Android Chrome | Owner login page loads on same phone |
@@ -71,7 +74,7 @@ Record only redacted facts: handset model, Android version, Termux source/versio
 
 - Automated contract tests: added in `tests/test_android_compatibility.py` and `tests/test_android_owner_ui.py`; exact-head CI must pass.\n- Android launcher: `scripts/android_owner_ui.py` requires OIDC auth and binds Streamlit to `127.0.0.1`.
 - Existing Android/Desktop browser viewport tests: useful UI regression evidence only.
-- Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone.
+- Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone. The diagnostic script is ready but has not been run on the handset.
 - Android browser-worker runtime: **NOT SUPPORTED / DISABLED**.
 - Overall BCS-06: implementation and automated contract scope can be completed in CI, but final physical-device acceptance remains **PENDING OWNER TEST**. Do not report the handset as accepted without A01–A12 evidence.
 
