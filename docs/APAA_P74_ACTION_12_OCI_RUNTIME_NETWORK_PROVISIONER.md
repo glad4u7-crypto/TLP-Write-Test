@@ -102,3 +102,25 @@ must block worker startup and keep Public Live Browsing disabled.
 
 No merge, deployment, host firewall mutation on a non-disposable host, paid
 provider, API key, purchase/payment, or Auto-Run is authorized by this work.
+
+
+## Production integration boundary (not yet enabled)
+
+The real-host script is a disposable qualification harness. It creates and runs a
+real Chromium process inside a Podman OCI container, but it is not yet injected
+as the production `IsolatedWorkerBackend` for
+`AttestedBrowserWorkerAdapter`. The existing adapter remains fail-closed and
+requires a separately trusted backend and Ed25519 host-attestor key.
+
+The earlier host-inspector JSON parser currently accepts a narrower nftables
+output-rule grammar than this new dual-stack ruleset (loopback, IPv6 neighbour
+discovery, and proxy-scoped established-state rules). Before production wiring,
+the signed host-inspector parser/provider must be extended and tested against
+the exact live `nft -j list ruleset` output. Do not synthesize attestation
+fields from the launch request or use the text verifier as a substitute for
+signed host evidence.
+
+Accordingly, passing the manual worker qualification will be necessary but
+not sufficient to enable Public Live Browsing. Production adapter integration,
+key provisioning/rotation, challenge replay protection, and full lifecycle
+recovery must also pass independently.
