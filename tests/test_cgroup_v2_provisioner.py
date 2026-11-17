@@ -18,6 +18,7 @@ def fake_cgroupfs(tmp_path, monkeypatch, *, root_available="cpu memory pids",
     (delegated / "cgroup.controllers").write_text(root_available)
     (delegated / "cgroup.subtree_control").write_text(root_enabled)
     (delegated / "cgroup.procs").write_text("")
+    (delegated / "cgroup.threads").write_text("")
     monkeypatch.setattr(cgroups, "_CGROUP_ROOT", mount)
 
     original_mkdir = Path.mkdir
@@ -29,6 +30,7 @@ def fake_cgroupfs(tmp_path, monkeypatch, *, root_available="cpu memory pids",
             (path / "cgroup.controllers").write_text(child_available)
             (path / "cgroup.subtree_control").write_text("")
             (path / "cgroup.procs").write_text("")
+            (path / "cgroup.threads").write_text("")
         return result
 
     def write_text(path, data, *args, **kwargs):
@@ -76,6 +78,7 @@ def test_remove_cleans_only_empty_nested_container_cgroups(tmp_path, monkeypatch
     child = path / "libpod-test"
     child.mkdir()
     (child / "cgroup.procs").write_text("")
+    (child / "cgroup.threads").write_text("")
     provisioner.remove(path)
     assert not path.exists()
 
@@ -88,6 +91,20 @@ def test_remove_refuses_nested_cgroup_with_live_process(tmp_path, monkeypatch):
     child.mkdir()
     (child / "cgroup.procs").write_text("4321\n")
     with pytest.raises(IsolationEnforcementError, match="subtree still contains processes"):
+        provisioner.remove(path)
+    assert path.is_dir()
+    assert child.is_dir()
+
+
+def test_remove_refuses_nested_cgroup_with_live_thread(tmp_path, monkeypatch):
+    _, delegated = fake_cgroupfs(tmp_path, monkeypatch)
+    provisioner = CgroupV2Provisioner(str(delegated))
+    path = provisioner.create("worker-thread")
+    child = path / "libpod-test"
+    child.mkdir()
+    (child / "cgroup.procs").write_text("")
+    (child / "cgroup.threads").write_text("4321\\n")
+    with pytest.raises(IsolationEnforcementError, match="processes or threads"):
         provisioner.remove(path)
     assert path.is_dir()
     assert child.is_dir()
