@@ -4,6 +4,7 @@ name: APAA P74 real OCI Chromium worker
 # Optional stack symbolication resolves the pinned Debian Chromium build-id.
 # Debug symbol fetch and address translation are time-bounded and non-fatal.
 # Snapshots span the full crash window and PID matching checks executable stack ranges.
+# The unprefixed fatal stack is mapped across all worker Chromium processes.
 
 on:
   push:
