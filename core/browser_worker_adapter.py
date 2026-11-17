@@ -236,11 +236,19 @@ class AttestedBrowserWorkerAdapter(BrowserWorker):
         if state is None:
             return False
         state.cancelled.set()
+        # Never destroy a handle from the cancellation thread while run() may
+        # still be provisioning it. If a process already exists, ask that
+        # process to stop; run() owns final resource teardown in its finally.
+        process = state.process
+        process_stopped = True
+        if process is not None:
+            try:
+                process_stopped = process.terminate() is True
+            except Exception:
+                process_stopped = False
         if not state.closed.wait(timeout=self._cleanup_wait):
-            # If run() is blocked in the remote process, force termination now.
-            if not self._cleanup(state):
-                return False
-        return state.closed.is_set() and state.cleanup_ok is True
+            return False
+        return process_stopped and state.cleanup_ok is True
 
     def _cleanup(self, state: _WorkerState) -> bool:
         if not state.cleanup_lock.acquire(timeout=self._cleanup_wait):
