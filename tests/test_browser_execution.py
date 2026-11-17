@@ -351,3 +351,42 @@ def test_timeout_does_not_claim_session_closed_when_termination_unconfirmed():
         )
     assert any(event["event"] == "session_cleanup_unconfirmed" for event in events)
     assert not any(event["event"] == "session_closed" for event in events)
+
+
+
+def test_cancel_wakes_coordinator_without_waiting_for_worker_callback():
+    started = threading.Event()
+    release = threading.Event()
+    terminated = []
+
+    class StuckWorker(FakeWorker):
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            started.set()
+            release.wait(timeout=8)
+            return {"text": "must-not-be-returned"}
+
+        def terminate(self, session_id):
+            terminated.append(session_id)
+            return True
+
+    events = []
+    coordinator = BrowserExecutionCoordinator(StuckWorker(), audit=events.append)
+    errors = []
+
+    def execute():
+        try:
+            coordinator.execute(valid_job(max_runtime_seconds=20), resolver=lambda host: ["93.184.216.34"])
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert started.wait(timeout=2)
+    assert coordinator.cancel("job_p74_123456") is True
+    thread.join(timeout=1)
+    release.set()
+    assert not thread.is_alive()
+    assert len(terminated) == 1
+    assert len(errors) == 1
+    assert isinstance(errors[0], BrowserCancelled)
+    assert events[-1]["event"] == "session_closed"
