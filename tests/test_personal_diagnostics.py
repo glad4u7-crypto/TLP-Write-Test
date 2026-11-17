@@ -78,3 +78,21 @@ def test_insecure_data_directory_fails_closed_on_posix(tmp_path):
 def test_diagnostics_summary_counts_statuses():
     results = inspect_personal_runtime(Path("/path/that/does/not/exist"))
     assert diagnostics_summary(results) == (0, 0, 1)
+
+
+
+def test_broken_symlink_database_is_rejected(tmp_path):
+    root = _private_dir(tmp_path / "owner-data")
+    paths = personal_runtime_paths(root)
+    paths.projects_db.symlink_to(tmp_path / "missing-target.sqlite3")
+    results = inspect_personal_runtime(root)
+    by_code = {item.code: item for item in results}
+    assert by_code["projects_db"].status == "FAIL"
+
+
+def test_symlinked_parent_data_directory_is_rejected(tmp_path):
+    real_root = _private_dir(tmp_path / "real-owner-data")
+    alias = tmp_path / "owner-data-link"
+    alias.symlink_to(real_root, target_is_directory=True)
+    results = inspect_personal_runtime(alias)
+    assert results[0].status == "FAIL"
