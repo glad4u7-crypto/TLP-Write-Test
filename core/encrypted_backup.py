@@ -22,7 +22,7 @@ _CHUNK_SIZE = 1024 * 1024
 _SALT_SIZE = 16
 _NONCE_PREFIX_SIZE = 8
 _TAG_SIZE = 16
-_HEADER = struct.Struct(">8sB I 16s 8s")
+_HEADER = struct.Struct(">8sB I Q 16s 8s")
 _LENGTH = struct.Struct(">I")
 _MAX_INPUT_BYTES = 512 * 1024 * 1024
 _SCRYPT_N = 2**14
@@ -83,7 +83,7 @@ def encrypt_backup_file(source_path: str | Path, destination_path: str | Path, p
 
     salt = os.urandom(_SALT_SIZE)
     nonce_prefix = os.urandom(_NONCE_PREFIX_SIZE)
-    header = _HEADER.pack(_MAGIC, _VERSION, _CHUNK_SIZE, salt, nonce_prefix)
+    header = _HEADER.pack(_MAGIC, _VERSION, _CHUNK_SIZE, metadata.st_size, salt, nonce_prefix)
     cipher = AESGCM(_derive_key(passphrase, salt))
     fd, temporary_name = tempfile.mkstemp(prefix=".apaa-encrypt-", suffix=".tmp", dir=destination.parent)
     temporary = Path(temporary_name)
@@ -144,7 +144,7 @@ def decrypt_backup_file(source_path: str | Path, destination_path: str | Path, p
             header = input_stream.read(_HEADER.size)
             if len(header) != _HEADER.size:
                 raise EncryptedBackupError("Encrypted backup header is truncated.")
-            magic, version, chunk_size, salt, nonce_prefix = _HEADER.unpack(header)
+            magic, version, chunk_size, expected_size, salt, nonce_prefix = _HEADER.unpack(header)
             if magic != _MAGIC or version != _VERSION or chunk_size != _CHUNK_SIZE:
                 raise EncryptedBackupError("Encrypted backup format is unsupported.")
             cipher = AESGCM(_derive_key(passphrase, salt))
