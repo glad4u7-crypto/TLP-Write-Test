@@ -51,6 +51,22 @@ jobs:
           nft --version
           ip -Version
 
+      - name: Fetch exact Chromium 156.0.8078.79 debug symbols
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y debian-archive-keyring
+          echo "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian-security-debug bookworm-security-debug updates/main" | sudo tee /etc/apt/sources.list.d/debian-security-debug.list >/dev/null
+          sudo apt-get update -o Acquire::Check-Valid-Until=false
+          mkdir -p "$RUNNER_TEMP/chromium-debug"
+          (
+            cd "$RUNNER_TEMP"
+            apt-get download chromium-dbgsym=156.0.8078.79-1~deb12u1
+          )
+          dpkg-deb -x "$RUNNER_TEMP/chromium-dbgsym_156.0.8078.79-1~deb12u1_amd64.deb" "$RUNNER_TEMP/chromium-debug"
+          DEBUG_FILE="$RUNNER_TEMP/chromium-debug/usr/lib/debug/.build-id/4a/74f6497529d42bb61262c76d7b1add49c4dea6.debug"
+          test -s "$DEBUG_FILE"
+          echo "APAA_CHROMIUM_DEBUG_ROOT=$RUNNER_TEMP/chromium-debug/usr/lib/debug" >> "$GITHUB_ENV"
+
       - name: Prepare delegated cgroup v2 subtree
         shell: bash
         run: |
@@ -110,6 +126,7 @@ jobs:
             APAA_P74_ALLOWED_ORIGIN="$APAA_P74_ALLOWED_ORIGIN" \
             APAA_P74_EXPECTED_MARKER="$APAA_P74_EXPECTED_MARKER" \
             APAA_P74_EVIDENCE_PATH="$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" \
+            APAA_CHROMIUM_DEBUG_ROOT="$APAA_CHROMIUM_DEBUG_ROOT" \
             PYTHONPATH="$GITHUB_WORKSPACE" \
             python3 scripts/p74_real_worker_chromium_e2e.py
 
