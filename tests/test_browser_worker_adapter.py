@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import core.browser_worker_adapter as adapter_module
 from core.browser_worker_adapter import AttestedBrowserWorkerAdapter, BrowserWorkerBootstrapError
+from core.attestation_keyring import FileEd25519Keyring
+from core.attestation_challenge_ledger import SQLiteChallengeLedger
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_isolation import validate_worker_profile
 from core.browser_execution import CancellationToken
@@ -355,3 +357,28 @@ def test_adapter_consumes_durable_challenge_before_attestation_collection(monkey
     assert execute(worker, session_id="session-ledger-first-123") == {"ok": True}
     assert ledger.values == {"f" * 64}
     assert collected[0][2]["challenge"] == "f" * 64
+
+
+def test_adapter_factory_uses_active_keyring_and_requires_durable_replay_ledger(tmp_path):
+    key_dir = tmp_path / "attestation-keys"
+    key_dir.mkdir(mode=0o700)
+    keyring = FileEd25519Keyring(key_dir)
+    keyring.create_initial("host-key-001")
+    ledger = SQLiteChallengeLedger(tmp_path / "attestation-replay.sqlite3")
+    backend = RealGateBackend()
+    worker = AttestedBrowserWorkerAdapter.from_keyring(
+        make_spec(),
+        backend=backend,
+        keyring=keyring,
+        expected_proxy_addresses=[PROXY_IP],
+        challenge_ledger=ledger,
+        cleanup_wait_seconds=2,
+    )
+    assert execute(worker, session_id="session-keyring-12345") == {"ok": True}
+    assert backend.verified_evidence is not None
+
+    with pytest.raises(TypeError, match="durable atomic challenge ledger"):
+        AttestedBrowserWorkerAdapter.from_keyring(
+            make_spec(), backend=RealGateBackend(), keyring=keyring,
+            expected_proxy_addresses=[PROXY_IP], challenge_ledger=None,
+        )
