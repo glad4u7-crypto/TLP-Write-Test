@@ -66,7 +66,9 @@ def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[s
     return result
 
 
-def _probe_blocked(command: list[str], description: str) -> dict[str, object]:
+def _probe_blocked(
+    command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
+) -> dict[str, object]:
     result = subprocess.run(command, check=False, capture_output=True, text=True,
                              timeout=8, shell=False)
     output = (result.stdout or "") + (result.stderr or "")
@@ -78,9 +80,17 @@ def _probe_blocked(command: list[str], description: str) -> dict[str, object]:
         ("no_route", ("no route to host", "network is down")),
         ("timeout", ("timed out", "connection timed out")),
     ) if any(marker in lowered for marker in markers)), None)
+    if denial is None and allow_seccomp_socket_denial and (
+        "permissionerror: [errno 1] operation not permitted" in lowered
+        or "permissionerror: [errno 13] permission denied" in lowered
+    ):
+        # The default deny-by-default seccomp profile may forbid creation of
+        # UDP sockets entirely. This is a stronger UDP block than a firewall
+        # drop, but is recorded separately and never conflated with nftables.
+        denial = "seccomp_socket_creation_denied"
     if denial is None:
-        # A failed podman exec, missing executable, seccomp denial or malformed
-        # probe is not evidence that the network firewall blocked the packet.
+        # A failed podman exec, missing executable, or malformed probe is not
+        # evidence that the network boundary blocked the packet.
         diagnostic = " ".join(output.split())
         diagnostic = re.sub(r"https?://[^\\s]+", "<url>", diagnostic)[:240]
         digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
@@ -506,7 +516,7 @@ def main() -> int:
             "udp_dns": _probe_blocked([
                 "podman", "exec", container_id, "python3", "-c",
                 "import socket; q=bytes.fromhex('123401000001000000000000076578616d706c6503636f6d0000010001'); s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(q,('1.1.1.1',53)); s.recvfrom(4096)",
-            ], "direct UDP DNS query"),
+            ], "direct UDP DNS query", allow_seccomp_socket_denial=True),
             "tcp_dns": _probe_blocked([
                 "podman", "exec", container_id, "python3", "-c",
                 "import socket; socket.create_connection(('1.1.1.1',53),2)",
@@ -522,7 +532,11 @@ def main() -> int:
             "udp_443": _probe_blocked([
                 "podman", "exec", container_id, "python3", "-c",
                 "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
-            ], "direct UDP/443 QUIC-style egress"),
+            ], "direct UDP/443 QUIC-style egress", allow_seccomp_socket_denial=True),
+            "udp6_443": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP6-PROBE',('2606:4700:4700::1111',443)); s.recvfrom(1)",
+            ], "direct IPv6 UDP/443 QUIC-style egress", allow_seccomp_socket_denial=True),
         }
         evidence["tests"]["direct_dns_blocked"] = True
         evidence["tests"]["direct_tcp_dns_blocked"] = True
