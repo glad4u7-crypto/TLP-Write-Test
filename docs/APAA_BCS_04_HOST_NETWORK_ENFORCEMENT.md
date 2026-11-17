@@ -558,3 +558,13 @@ bounded tail of Chromium's sandbox diagnostics. No capabilities or seccomp
 permissions have been broadened.
 
 The complete user-namespace mapping/chroot probe is queued for exact-head CI and a new disposable-host run.
+
+
+## Verification update
+
+APAA Security CI run `44084851998` completed successfully on parent commit
+`3b914a582e552f6d436b185dc3bd4905df2a30d8`: **1,170 passed, 0 failed, 1 warning**.
+All dedicated Chromium TLS, restricted-proxy Chromium, worker-adapter and
+Linux host-inspector stages passed. The latest branch subsequently added a
+user-namespace/chroot fail-closed regression test; exact-head CI for the
+newer commit must also pass before BCS-04 is declared fully CI-verified.
