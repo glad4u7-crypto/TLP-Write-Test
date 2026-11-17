@@ -23,6 +23,7 @@ def test_personal_runtime_paths_are_grouped_under_owner_data_directory(tmp_path)
     paths = personal_runtime_paths(tmp_path / "private")
     assert paths.projects_db.parent == paths.data_dir
     assert paths.security_db.parent == paths.data_dir
+    assert paths.owner_auth_db.parent == paths.data_dir
     assert paths.memory_db.parent == paths.data_dir
     assert paths.audit_log.parent == paths.data_dir
     assert paths.signing_key.name == SIGNING_KEY_FILENAME
