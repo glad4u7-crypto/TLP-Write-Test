@@ -710,3 +710,10 @@ The fourth/fifth diagnostic runs established that the namespace/chroot and defau
 The latest sanitized timeout evidence exposed Chromium's `Crashing due to FD ownership violation` followed by network-service restart. Chromium's own `base/files/scoped_file_linux.cc` documents the FD-ownership guard, and `base/metrics/histogram_shared_memory.cc` documents a known case where utility processes receive a read-only histogram shared-memory FD and later attempt to acquire it as writable, triggering this exact ownership failure. The `PassHistogramSharedMemoryOnLaunch` feature is enabled for Linux in Chromium's field-trial configuration. The disposable worker now passes `--disable-features=PassHistogramSharedMemoryOnLaunch` to prevent that optional metrics-FD handoff; this does not change the browser sandbox, seccomp policy, or network restrictions. A regression test asserts the feature is disabled on all Chromium invocations and that `--no-sandbox` remains absent.
 
 A fresh disposable OCI run is requested to verify the browser now starts and traverses the mandatory proxy. The previous run's cleanup was confirmed.
+
+
+## Chromium inherited-descriptor isolation retry
+
+Disabling the optional histogram shared-memory handoff did not eliminate the network-service FD-ownership crash. Chromium's upstream `ScopedFD` tracker crashes when the same descriptor ownership transition is attempted twice; this is a process-level descriptor-lifecycle invariant, not a reason to disable the browser sandbox. The worker qualification now launches Chromium through a tiny Python `exec` shim that closes inherited file descriptors above stdio (0/1/2) before `execvp` replaces the shim with Chromium. This narrows the browser's inherited descriptor set while preserving stdout/stderr capture, all Chromium sandbox flags, seccomp, namespaces, and network policy. A regression test checks that only stdio is preserved and `--no-sandbox` is absent.
+
+This is a defensive hypothesis, not a proven fix. A new disposable-host run is requested; if Chromium still fails, the worker remains unqualified and dispatch stays disabled.
