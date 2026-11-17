@@ -90,3 +90,19 @@ def test_destination_must_be_in_private_directory(tmp_path):
     public_dir.mkdir(mode=0o755)
     with pytest.raises(EncryptedBackupError, match="private"):
         encrypt_backup_file(source, public_dir / "backup.apaa.enc", "correct horse battery staple")
+
+
+def test_truncation_at_authenticated_chunk_boundary_is_rejected(tmp_path):
+    directory = _private_dir(tmp_path)
+    source = directory / "source.zip"
+    source.write_bytes(b"x" * (1024 * 1024 * 2))
+    source.chmod(0o600)
+    encrypted = encrypt_backup_file(source, directory / "backup.apaa.enc", "correct horse battery staple")
+    data = encrypted.read_bytes()
+    # Keep the header and one complete authenticated chunk; remove the rest.
+    header_size = 8 + 1 + 4 + 8 + 16 + 8
+    first_chunk_size = 4 + 1024 * 1024 + 16
+    encrypted.write_bytes(data[:header_size + first_chunk_size])
+    encrypted.chmod(0o600)
+    with pytest.raises(EncryptedBackupError, match="truncated"):
+        decrypt_backup_file(encrypted, directory / "restored.zip", "correct horse battery staple")
