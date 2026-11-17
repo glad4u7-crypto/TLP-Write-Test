@@ -22,6 +22,14 @@ from core.storage import TenantKey
 ActionHandler = Callable[[Mapping[str, Any]], Any]
 
 
+class ActionHandlerDisabled(RuntimeError):
+    """A registered action is intentionally unavailable before its safety gate passes.
+
+    Handlers must raise this before performing any side effect. The gateway
+    records a denied outcome (not a successful execution or uncertain failure).
+    """
+
+
 def _canonical_action(action: object) -> str:
     if not isinstance(action, str):
         return ""
@@ -245,6 +253,19 @@ class ExecutionGateway:
 
         try:
             output = handler(payload_snapshot)
+        except ActionHandlerDisabled as exc:
+            completion, completed_persisted = self._record(
+                action, False, "registered_handler_disabled"
+            )
+            if ledger_claimed:
+                try:
+                    self._idempotency_store.finish_execution(tenant, idempotency_key, "cancelled")
+                except Exception:
+                    pass
+            reason = str(exc).strip() or "The registered action handler is disabled."
+            if not completed_persisted:
+                reason = "The handler is disabled and denial audit persistence failed."
+            return ExecutionResult(False, reason, None, completion)
         except Exception:
             completion, completed_persisted = self._record(
                 action, False, "registered_handler_failed"
