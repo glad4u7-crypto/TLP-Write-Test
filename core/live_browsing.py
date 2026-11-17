@@ -76,14 +76,14 @@ class LiveBrowsingController:
         resolver: Callable[[str], Any],
     ) -> LiveBrowsingResult:
         started = time.monotonic()
+        if not callable(resolver):
+            raise LiveBrowsingError("A trusted live DNS resolver is required.")
         try:
             job = validate_browser_job(raw_job, now=now, resolver=resolver)
         except (BrowserPolicyError, TypeError, ValueError) as exc:
             raise LiveBrowsingError("Browser job failed closed validation.") from exc
 
-        # Require a live resolver at both job admission and each browser request.
-        if not callable(resolver):
-            raise LiveBrowsingError("A trusted live DNS resolver is required.")
+        # Require the live resolver at admission and for every browser request.
         self._emit("job_accepted", job.job_id, job.action)
 
         session: BrowserSession | None = None
@@ -157,7 +157,9 @@ class LiveBrowsingController:
             links: tuple[dict[str, str], ...] = ()
             screenshot: bytes | None = None
 
-            if job.action == "read_page_title":
+            if job.action == "navigate_exact_origin":
+                pass
+            elif job.action == "read_page_title":
                 title = page.title()
                 if len(title.encode("utf-8")) > job.max_response_bytes:
                     raise LiveBrowsingError("Page title exceeds the response byte limit.")
