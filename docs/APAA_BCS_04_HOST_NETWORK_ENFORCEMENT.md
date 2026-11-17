@@ -351,3 +351,6 @@ verification also checks the connected peer port, not only its IP address.
 Focused tests cover SNI parsing, fragmentation, malformed/no/duplicate SNI,
 shutdown behavior boundaries and exact upstream peer identity. These changes
 require exact-head CI and a new real Chromium qualification.
+
+
+The latest changes are queued for a fresh disposable-host Chromium and network-bypass run.
