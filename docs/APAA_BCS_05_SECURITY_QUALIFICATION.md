@@ -31,10 +31,10 @@ Initial implementation added on the BCS-05 branch:
 
 - `tests/test_chromium_browser_surfaces.py` launches real Playwright Chromium against an HTTP fixture bound only to 127.0.0.1.
 - Positive coverage: same-origin redirect, image subresource, popup, iframe, and WebSocket echo.
-- Negative browser-harness coverage: cross-origin image, iframe, popup, and WebSocket attempts are intercepted and aborted/closed by Playwright routing.
+- Negative browser-harness coverage: cross-origin redirect, image, iframe, popup, and WebSocket attempts are intercepted and aborted/closed by Playwright routing.
 - The CI workflow now runs this test on the BCS-05 branch and pull requests targeting the P74 branch.
 
-**Qualification status: PARTIAL / CI PENDING.** The new test has not yet been observed passing on the exact BCS-05 head. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Cross-origin redirect enforcement and production controller integration still require dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
+**Qualification status: PARTIAL / CI PENDING.** The new test has not yet been observed passing on the exact BCS-05 head. Playwright request/WebSocket interception is a browser-test guard, not proof of production policy enforcement or host firewall behavior. Production controller integration still requires dedicated cases. The existing TLS integration tests remain separate and use a test-only fixture with sandbox disabled.
 
 These tests establish Chromium behavior only. They do NOT establish OCI isolation or host network enforcement.
 
