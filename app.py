@@ -1,4 +1,5 @@
 import hashlib
+import json
 import hmac
 import os
 import secrets
@@ -11,7 +12,7 @@ from core.mobile_ui import apply_mobile_ui
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from core.models import Task
-from core.planner import PlanStatus, StepCategory, create_structured_plan
+from core.planner import PlanStatus, StepCategory, create_structured_plan, task_plan_from_dict
 from core.projects import ProjectRegistry
 from core.persistent_projects import PersistentProjectRegistry
 from core.project_access import ProjectAccessControl
@@ -1037,6 +1038,16 @@ else:
     st.write("Create your first project to start organizing agent tasks.")
 
 st.divider()
+def execute_owner_ui_mutation(action, approved, payload, operation):
+    """Route every Owner UI mutation through payload-bound approval + audit."""
+    return execute_audited_ui_mutation(
+        audit_log, action, approved, payload, operation,
+        approval_authority=st.session_state["approval_authority"],
+        tenant=tenant,
+        session_scope=st.session_state["approval_session_scope"],
+    )
+
+
 st.header("Task Workspace")
 task = st.text_area(
     "Describe a task",
@@ -1062,6 +1073,36 @@ if plan is not None:
 
     if plan.status is PlanStatus.READY:
         st.success("READY · Reviewable plan prepared. Nothing has been executed.")
+        selected_plan_project = visible_project(st.session_state.get("selected_project_id", ""))
+        if selected_plan_project is not None and memory_store is not None:
+            with st.form("save_task_plan_form"):
+                save_plan_consent = st.checkbox(
+                    "I explicitly approve saving this plan to the selected project"
+                )
+                save_plan_submit = st.form_submit_button("Save plan to project")
+            if save_plan_submit:
+                try:
+                    execute_owner_ui_mutation(
+                        "task_plan.save", save_plan_consent,
+                        {
+                            "project_id": selected_plan_project.project_id,
+                            "plan_id": plan.plan_id,
+                            "task_description": plan.task_description,
+                            "plan": plan.to_dict(),
+                        },
+                        lambda payload: memory_store.save_task_plan(
+                            tenant, project_id=payload["project_id"],
+                            plan_id=payload["plan_id"],
+                            task_description=payload["task_description"],
+                            plan=payload["plan"], consent=True,
+                        ),
+                    )
+                    st.success("Plan saved to the selected project.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Plan could not be saved: {exc}")
+        else:
+            st.info("Select an existing project to save this plan across restarts.")
         for step in plan.steps:
             st.markdown(f"**{step.step_id} — {step.title}**")
             st.write(step.purpose)
@@ -1113,6 +1154,41 @@ if plan is not None:
         for note in plan.safety_notes:
             st.write(f"- {note}")
 
+selected_plan_project = visible_project(st.session_state.get("selected_project_id", ""))
+if selected_plan_project is not None and memory_store is not None:
+    with st.expander("Saved task plans for this project", expanded=False):
+        try:
+            saved_plans = memory_store.list_task_plans(
+                tenant, project_id=selected_plan_project.project_id, limit=50
+            )
+            if not saved_plans:
+                st.caption("No saved task plans for this project.")
+            else:
+                saved_plan_ids = [item.plan_id for item in saved_plans]
+                selected_saved_plan = st.selectbox(
+                    "Choose a saved plan",
+                    options=saved_plan_ids,
+                    format_func=lambda value: next(
+                        f"{item.task_description[:90]} · {item.updated_at[:19]}"
+                        for item in saved_plans if item.plan_id == value
+                    ),
+                    key="apaa_saved_task_plan_selector",
+                )
+                if st.button("Load saved plan", key="apaa_load_saved_task_plan"):
+                    saved_record = next(
+                        item for item in saved_plans if item.plan_id == selected_saved_plan
+                    )
+                    try:
+                        restored_plan = task_plan_from_dict(json.loads(saved_record.plan_json))
+                        st.session_state["structured_task_plan"] = restored_plan
+                        st.session_state["structured_task_source"] = restored_plan.task_description
+                        st.session_state["structured_task_input"] = restored_plan.task_description
+                        st.rerun()
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        st.error(f"Saved plan failed validation and was not loaded: {exc}")
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            st.error(f"Saved task plans are unavailable: {exc}")
+
 st.caption(
     "Planning is offline and deterministic. This review screen is read-only: "
     "it cannot approve, dispatch, or execute a task."
@@ -1126,16 +1202,6 @@ st.caption(
 # Persistent memory is available in the authenticated owner runtime and in
 # the loopback-only Personal Edition. Every write has a separate consent checkbox.
 st.divider()
-def execute_owner_ui_mutation(action, approved, payload, operation):
-    """Route every Owner UI mutation through payload-bound approval + audit."""
-    return execute_audited_ui_mutation(
-        audit_log, action, approved, payload, operation,
-        approval_authority=st.session_state["approval_authority"],
-        tenant=tenant,
-        session_scope=st.session_state["approval_session_scope"],
-    )
-
-
 st.header("Memory & Knowledge")
 if memory_store is None or checkpoint_access is None:
     st.info("Persistent memory is unavailable because its private store did not initialize.")
