@@ -3,6 +3,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -38,6 +39,8 @@ def _wait_for_server(process: subprocess.Popen, timeout: float = 45.0) -> None:
 def streamlit_server():
     env = os.environ.copy()
     env.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+    personal_data = tempfile.TemporaryDirectory(prefix="apaa-android-smoke-")
+    env["APAA_PERSONAL_DATA_DIR"] = personal_data.name
     process = subprocess.Popen(
         [
             sys.executable, "-m", "streamlit", "run", "app.py",
@@ -62,6 +65,7 @@ def streamlit_server():
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        personal_data.cleanup()
 
 
 def test_pixel_sized_viewport_has_no_page_level_horizontal_overflow(streamlit_server):
@@ -107,9 +111,11 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         button_heights = page.locator(
             ".stButton > button, .stFormSubmitButton > button"
         ).evaluate_all(
-            "(nodes) => nodes.map(node => node.getBoundingClientRect().height)"
+            "(nodes) => nodes.map(node => node.getBoundingClientRect())."
+            "filter(rect => rect.width > 0 && rect.height > 0)."
+            "map(rect => rect.height)"
         )
-        assert button_heights, "Expected APAA primary/action buttons to render"
+        assert button_heights, "Expected visible APAA primary/action buttons to render"
         assert all(height >= 44 for height in button_heights), button_heights
 
         context.close()
@@ -194,7 +200,7 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
           )).map(node => {
             const rect = node.getBoundingClientRect();
             return {width: rect.width, height: rect.height};
-          })
+          }).filter(rect => rect.width > 0 && rect.height > 0)
         })""")
         assert metrics["documentWidth"] <= metrics["viewport"] + 2, metrics
         assert metrics["bodyWidth"] <= metrics["viewport"] + 2, metrics
