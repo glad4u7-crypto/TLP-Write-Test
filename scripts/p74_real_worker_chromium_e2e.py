@@ -106,6 +106,32 @@ def _probe_blocked(
     }
 
 
+
+def _probe_user_namespace(container_id: str) -> dict[str, object]:
+    """Verify unprivileged userns mapping and chroot without adding capabilities."""
+    code = (
+        "import ctypes,os,sys; uid=os.getuid(); gid=os.getgid(); "
+        "libc=ctypes.CDLL(None,use_errno=True); "
+        "r=libc.unshare(0x10000000); "
+        "if r != 0: print('USERNS_UNSHARE_ERR',ctypes.get_errno()); sys.exit(10); "
+        "open('/proc/self/setgroups','w').write('deny'); "
+        "open('/proc/self/uid_map','w').write(f'0 {uid} 1'); "
+        "open('/proc/self/gid_map','w').write(f'0 {gid} 1'); "
+        "try: os.chroot('/proc/self/fdinfo'); print('USERNS_CHROOT_OK') "
+        "except OSError as e: print('USERNS_CHROOT_ERR',e.errno); sys.exit(11)"
+    )
+    result = subprocess.run(
+        ["podman", "exec", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=8, shell=False,
+    )
+    output = (result.stdout or "").strip()
+    return {
+        "exit_code": result.returncode,
+        "user_namespace_chroot_available": result.returncode == 0 and "USERNS_CHROOT_OK" in output,
+        "result": output[:160],
+        "stderr_sha256": hashlib.sha256((result.stderr or "").encode("utf-8")).hexdigest(),
+    }
+
 def _probe_proxy_outage(command: list[str], expected_marker: str, description: str) -> dict:
     """A dead mandatory proxy must not produce the allowed page via direct fallback."""
     result = subprocess.run(command, check=False, capture_output=True, text=True,
@@ -538,17 +564,10 @@ def main() -> int:
         evidence["tests"]["kernel_cgroup_v2_readback"] = True
         evidence["tests"]["kernel_seccomp_active"] = True
 
-        userns_probe = subprocess.run([
-            "podman", "exec", container_id, "python3", "-c",
-            "import ctypes,os; libc=ctypes.CDLL(None,use_errno=True); "
-            "result=libc.unshare(0x10000000); "
-            "raise SystemExit(0 if result == 0 else ctypes.get_errno() or 1)",
-        ], check=False, capture_output=True, text=True, timeout=8, shell=False)
-        evidence["user_namespace_probe"] = {
-            "exit_code": userns_probe.returncode,
-            "stderr_sha256": hashlib.sha256((userns_probe.stderr or "").encode("utf-8")).hexdigest(),
-        }
-        evidence["tests"]["unprivileged_user_namespace_available"] = userns_probe.returncode == 0
+        userns_probe = _probe_user_namespace(container_id)
+        evidence["user_namespace_probe"] = userns_probe
+        evidence["tests"]["unprivileged_user_namespace_available"] = userns_probe["exit_code"] == 0
+        evidence["tests"]["user_namespace_chroot_available"] = userns_probe["user_namespace_chroot_available"]
 
         # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
         evidence["direct_network_probes"] = {
@@ -595,6 +614,9 @@ def main() -> int:
                 "--disable-quic",
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
+                "--disable-crash-reporter",
+                "--enable-logging=stderr",
+                "--v=1",
                 "--disable-http2",
                 "--host-resolver-rules=MAP * ~NOTFOUND",
                 "--disable-background-networking",
