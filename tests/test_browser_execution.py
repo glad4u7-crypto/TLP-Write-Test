@@ -417,3 +417,12 @@ def test_worker_result_must_be_json_safe_and_within_response_limit(result):
             resolver=lambda host: ["93.184.216.34"],
         )
     assert events[-1]["event"] == "session_closed"
+
+
+
+def test_tls_transport_rejects_legacy_tls_minimum_version():
+    destination = PinnedDestination("example.com", 443, ("93.184.216.34",))
+    legacy = ssl.create_default_context()
+    legacy.minimum_version = ssl.TLSVersion.TLSv1_1
+    with pytest.raises(ValueError, match="TLS 1.2"):
+        PinnedHTTPSConnection(destination, context=legacy)
