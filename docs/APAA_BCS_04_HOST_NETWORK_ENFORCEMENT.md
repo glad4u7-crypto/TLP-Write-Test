@@ -241,3 +241,19 @@ Podman creates its child cgroup. New tests cover successful delegation and
 fail-closed behavior when controllers are unavailable. The real-host workflow
 must verify that Podman now creates the expected leaf and that effective limits
 are read back before browser tests can run.
+
+
+### Run #78 — cgroup path was not backed by a host cgroup directory
+
+The retained evidence showed that the reported procfs membership named a
+`libpod-<container-id>` child that did not exist under the delegated cgroup
+parent. The parent itself existed, but the evidence did not prove where the
+worker PID was actually accounted. The observer has therefore been changed
+to locate the host PID by reading `cgroup.procs` throughout only the
+dedicated worker subtree (no symlink traversal; bounded to 4,096 directories
+and depth 8), requiring exactly one match, and reading limits from that
+matched cgroup. It rejects missing or duplicate PID membership. Regression
+tests cover namespace-relative/unmapped proc paths, absent PID membership,
+and duplicate membership. This is stronger than accepting a procfs path and
+does not relax cgroup isolation. A new real-host run is required to establish
+whether the worker is actually accounted within the delegated subtree.
