@@ -300,7 +300,10 @@ def restore_personal_backup(
         return destination
     except PersonalBackupError:
         raise
-    except (OSError, sqlite3.Error, UnicodeError, json.JSONDecodeError, zipfile.BadZipFile, ValueError) as exc:
+    except (
+        OSError, sqlite3.Error, UnicodeError, json.JSONDecodeError,
+        zipfile.BadZipFile, ValueError, RecursionError,
+    ) as exc:
         raise PersonalBackupError("Personal backup restore failed safely.") from exc
     finally:
         if stage.exists():
