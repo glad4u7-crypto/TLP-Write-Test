@@ -177,6 +177,84 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
 
 
 
+def _chromium_binary_build_id(container_id: str) -> str | None:
+    """Read the GNU build-id note from the exact worker Chromium ELF, read-only."""
+    code = (
+        "import struct\\n"
+        "p='/usr/lib/chromium/chromium'\\n"
+        "f=open(p,'rb')\\n"
+        "h=f.read(64)\\n"
+        "if h[:4] != b'\\\\x7fELF' or h[4] != 2: raise SystemExit(3)\\n"
+        "endian='<' if h[5] == 1 else '>'\\n"
+        "phoff=struct.unpack_from(endian+'Q',h,32)[0]\\n"
+        "entsize=struct.unpack_from(endian+'H',h,54)[0]\\n"
+        "count=struct.unpack_from(endian+'H',h,56)[0]\\n"
+        "f.seek(phoff)\\n"
+        "for i in range(count):\\n"
+        " ph=f.read(entsize)\\n"
+        " typ=struct.unpack_from(endian+'I',ph,0)[0]\\n"
+        " if typ != 4: continue\\n"
+        " off=struct.unpack_from(endian+'Q',ph,8)[0]; size=struct.unpack_from(endian+'Q',ph,32)[0]\\n"
+        " f.seek(off); b=f.read(size); pos=0\\n"
+        " while pos+12 <= len(b):\\n"
+        "  ns,ds,nt=struct.unpack_from(endian+'III',b,pos); pos+=12\\n"
+        "  name=b[pos:pos+ns].rstrip(b'\\\\0'); pos=(pos+ns+3)&~3\\n"
+        "  desc=b[pos:pos+ds]; pos=(pos+ds+3)&~3\\n"
+        "  if name == b'GNU' and nt == 3: print(desc.hex()); raise SystemExit(0)\\n"
+        "raise SystemExit(4)\\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    value = (result.stdout or "").strip().lower()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{16,128}", value) else None
+
+
+def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
+    """Best-effort Debian debuginfod symbolication; never changes worker execution."""
+    if not build_id:
+        return {"status": "missing-build-id", "frames": []}
+    finder = shutil.which("debuginfod-find")
+    addr2line = shutil.which("eu-addr2line")
+    if not finder or not addr2line:
+        return {"status": "debug-tools-unavailable", "frames": []}
+    env = dict(os.environ)
+    env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
+    found = subprocess.run(
+        [finder, "debuginfo", build_id], check=False, capture_output=True,
+        text=True, timeout=45, shell=False, env=env,
+    )
+    if found.returncode != 0 or not found.stdout.strip():
+        return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
+    debug_file = found.stdout.strip().splitlines()[-1]
+    symbolized = []
+    for frame in failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", []):
+        offset = frame.get("module_offset")
+        if not isinstance(offset, str) or not re.fullmatch(r"0x[0-9a-f]+", offset):
+            continue
+        result = subprocess.run(
+            [addr2line, "-f", "-C", "-e", debug_file, offset],
+            check=False, capture_output=True, text=True, timeout=10, shell=False,
+        )
+        lines = (result.stdout or "").splitlines()
+        if result.returncode == 0 and lines:
+            function = redact_sensitive_text(lines[0], limit=240)
+            location = lines[1] if len(lines) > 1 else "??:0"
+            location = location.rsplit("/", 1)[-1][:160]
+            symbolized.append({
+                "frame": frame.get("frame"),
+                "module_offset": offset,
+                "function": function,
+                "source_location": location,
+            })
+    return {
+        "status": "symbolized" if symbolized else "symbols-loaded-no-matching-frames",
+        "build_id": build_id,
+        "frames": symbolized[:64],
+    }
+
+
 def _http_proxy_uri(proxy_ip: str, port: int) -> str:
     address = ipaddress.ip_address(proxy_ip)
     host = f"[{address.compressed}]" if address.version == 6 else address.compressed
@@ -765,12 +843,17 @@ def main() -> int:
             _podman_chromium_command(container_id, chromium_bin, ["--version"]),
             cgroup_path, timeout=15,
         )[0].stdout.strip()[:160]
+        chromium_build_id = _chromium_binary_build_id(container_id)
+        evidence["chromium_binary_build_id"] = chromium_build_id
         local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
         evidence["chromium_local_dump_dom"] = local_smoke
         evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
         if not local_smoke["marker_present"]:
             local_smoke["failure"]["process_mapping"] = _map_failure_to_fd_snapshot(
                 local_smoke["failure"], local_fd_diagnostics,
+            )
+            local_smoke["failure"]["symbolication"] = _symbolize_failure_frames(
+                local_smoke["failure"], chromium_build_id,
             )
             evidence["chromium_local_dump_dom"] = local_smoke
             raise RuntimeError(f"Chromium local dump-dom smoke test failed: {local_smoke['failure']}")
@@ -943,6 +1026,7 @@ target.url,
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
                 failure = _chromium_failure_details(page, family, expected_marker)
                 failure["process_mapping"] = _map_failure_to_fd_snapshot(failure, fd_diagnostics)
+                failure["symbolication"] = _symbolize_failure_frames(failure, chromium_build_id)
                 evidence["chromium_failure"] = failure
                 raise RuntimeError(
                     f"Chromium did not return the expected controlled-page marker over the {family} proxy "
