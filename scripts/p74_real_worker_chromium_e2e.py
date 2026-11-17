@@ -1,18 +1,33 @@
-"""Opt-in real-host Chromium worker qualification; never runs in ordinary CI.
+"""Provision and qualify one disposable, isolated Chromium worker on a real Linux host.
 
-Set APAA_P74_REAL_HOST=1 only on an owner-approved disposable Linux host.
-This test is a qualification probe, not a public browsing feature.
+This is opt-in and destructive only to uniquely named APAA resources created by
+this run. It never enables public browsing. Requires a local digest-pinned
+Chromium image, deny-by-default seccomp profile, delegated cgroup-v2 subtree,
+Podman, iproute2 and nftables. The proxy is started on both host-side veth IPs;
+it permits only the exact HTTPS hostname and dials a numeric address from one
+validated DNS answer set. TLS remains end-to-end in Chromium (SNI/cert checks).
 """
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
+from pathlib import Path
+import re
 import subprocess
 import sys
+import time
 
 from core.browser_security import canonicalize_https_url
+from core.cgroup_seccomp_provisioner import (
+    CgroupLimits,
+    CgroupV2Provisioner,
+    validate_seccomp_profile,
+)
+from core.linux_network_namespace import LinuxNetworkNamespaceProvisioner, NamespacePlan
 from core.nftables_firewall_provisioner import NftablesFirewallProvisioner
 from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
+from core.pinned_connect_proxy import PinnedConnectProxy
 
 
 def _required(name: str) -> str:
@@ -23,114 +38,253 @@ def _required(name: str) -> str:
 
 
 def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        command, check=False, capture_output=True, text=True,
-        timeout=timeout, shell=False,
-    )
+    result = subprocess.run(command, check=False, capture_output=True, text=True,
+                            timeout=timeout, shell=False)
     if result.returncode:
-        raise RuntimeError("real worker qualification command failed")
+        raise RuntimeError(f"qualification command failed: {command[0]}")
     return result
+
+
+def _probe_blocked(command: list[str], description: str) -> None:
+    result = subprocess.run(command, check=False, capture_output=True, text=True,
+                             timeout=8, shell=False)
+    if result.returncode == 0:
+        raise RuntimeError(f"network bypass unexpectedly succeeded: {description}")
+
+
+def _evidence_write(path_value: str, evidence: dict) -> None:
+    if not path_value:
+        return
+    path = Path(path_value)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("evidence path must be an absolute normalized path")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
 
 
 def main() -> int:
     if os.environ.get("APAA_P74_REAL_HOST") != "1":
-        print("BLOCKED: set APAA_P74_REAL_HOST=1 only on an approved disposable Linux host")
+        print("BLOCKED: set APAA_P74_REAL_HOST=1 only on an owner-approved disposable Linux host")
         return 2
 
+    worker_id = os.environ.get("APAA_P74_WORKER_ID", "worker-p74-01")
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", worker_id):
+        print("BLOCKED: worker ID must be a lowercase safe identifier")
+        return 2
+
+    namespace_name = os.environ.get("APAA_P74_NETNS_NAME", "apaa-w1")
+    host_veth = os.environ.get("APAA_P74_HOST_VETH", "apahost0")
+    worker_veth = os.environ.get("APAA_P74_WORKER_VETH", "apawork0")
+    plan = NamespacePlan(
+        name=namespace_name,
+        host_veth=host_veth,
+        worker_veth=worker_veth,
+        host_ipv4=os.environ.get("APAA_P74_HOST_IPV4", "198.18.0.1/30"),
+        worker_ipv4=os.environ.get("APAA_P74_WORKER_IPV4", "198.18.0.2/30"),
+        host_ipv6=os.environ.get("APAA_P74_HOST_IPV6", "2001:db8:1::1/64"),
+        worker_ipv6=os.environ.get("APAA_P74_WORKER_IPV6", "2001:db8:1::2/64"),
+    )
+
     container_id = None
+    cgroup_path = None
+    namespace_created = False
+    proxy_servers: list[PinnedConnectProxy] = []
+    cleanup_errors: list[str] = []
+    evidence: dict = {
+        "result": "BLOCKED",
+        "worker_id": worker_id,
+        "namespace": namespace_name,
+        "host_veth": host_veth,
+        "worker_veth": worker_veth,
+        "tests": {},
+    }
     runtime = PodmanOCIRuntime(timeout_seconds=30)
+    namespace = LinuxNetworkNamespaceProvisioner()
+    firewall = NftablesFirewallProvisioner()
+    cgroups = CgroupV2Provisioner(os.environ.get("APAA_P74_CGROUP_ROOT", "/sys/fs/cgroup/apaa"))
+
     try:
         image = _required("APAA_P74_IMAGE_DIGEST")
-        namespace_path = _required("APAA_P74_NETNS_PATH")
         seccomp_profile = _required("APAA_P74_SECCOMP_PROFILE")
-        worker_id = _required("APAA_P74_WORKER_ID")
-        proxy_ip = ipaddress.ip_address(_required("APAA_P74_PROXY_IP"))
-        proxy_port = int(_required("APAA_P74_PROXY_PORT"))
         target = canonicalize_https_url(_required("APAA_P74_TEST_URL"))
         allowed_origin = _required("APAA_P74_ALLOWED_ORIGIN")
         chromium_bin = os.environ.get("APAA_P74_CHROMIUM_BIN", "chromium")
-
-        if target.origin != allowed_origin:
-            raise RuntimeError("test URL does not match the exact approved origin")
-        if not 1 <= proxy_port <= 65535:
-            raise RuntimeError("proxy port is invalid")
+        proxy_port = int(os.environ.get("APAA_P74_PROXY_PORT", "3128"))
+        if target.origin != allowed_origin or target.port != 443:
+            raise RuntimeError("test URL must be the exact approved HTTPS origin on port 443")
         if not chromium_bin or "/" in chromium_bin or "\x00" in chromium_bin:
             raise RuntimeError("Chromium executable must be a command name")
-        if not namespace_path.startswith("/run/netns/"):
-            raise RuntimeError("network namespace path is outside /run/netns")
+        if not 1024 <= proxy_port <= 65535:
+            raise RuntimeError("proxy port is outside the permitted range")
+        validate_seccomp_profile(seccomp_profile)
+        if not image.startswith("sha256:") and "@sha256:" not in image:
+            raise RuntimeError("Chromium image must be addressed by an immutable sha256 digest")
 
-        namespace = namespace_path.rsplit("/", 1)[-1]
-        NftablesFirewallProvisioner().verify_ruleset(
-            namespace, proxy_ips=[proxy_ip.compressed], proxy_port=proxy_port
+        host4 = str(ipaddress.ip_interface(plan.host_ipv4).ip)
+        host6 = str(ipaddress.ip_interface(plan.host_ipv6).ip)
+        proxy_ips = [host4, host6]
+        namespace_path = f"/run/netns/{namespace_name}"
+        evidence.update({
+            "image_digest": image,
+            "target_origin": target.origin,
+            "proxy_ips": proxy_ips,
+            "proxy_port": proxy_port,
+            "seccomp_profile": seccomp_profile,
+        })
+
+        namespace.provision(plan)
+        namespace_created = True
+        evidence["tests"]["namespace_provisioned"] = True
+
+        firewall.install(namespace_name, proxy_ips, proxy_port)
+        ruleset = firewall.verify_ruleset(
+            namespace_name, proxy_ips=proxy_ips, proxy_port=proxy_port
         )
+        evidence["nftables_ruleset"] = ruleset
+        evidence["tests"]["nftables_exact_default_drop"] = True
 
+        for bind_ip in proxy_ips:
+            proxy = PinnedConnectProxy(
+                bind_ip, proxy_port, allowed_hosts=[target.hostname], allowed_port=443
+            )
+            proxy.start()
+            proxy_servers.append(proxy)
+        evidence["tests"]["pinned_proxy_ipv4_ipv6_listeners"] = True
+
+        cgroup_path = cgroups.create(worker_id, CgroupLimits())
+        evidence["cgroup_parent"] = str(cgroup_path)
         spec = OCIWorkerSpec(
             image=image,
             network_namespace=namespace_path,
             seccomp_profile=seccomp_profile,
             worker_id=worker_id,
             limits=WorkerLimits(),
+            cgroup_parent=str(cgroup_path),
         )
         container_id = runtime.create(spec)
+        evidence["container_id"] = container_id
         inspected = runtime.inspect(container_id)
         host = inspected.get("HostConfig") or {}
         config = inspected.get("Config") or {}
+        state = inspected.get("State") or {}
         security = host.get("SecurityOpt") or []
         cap_drop = host.get("CapDrop") or []
+        expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
         if not host.get("ReadonlyRootfs") or "ALL" not in cap_drop:
             raise RuntimeError("OCI inspect did not confirm read-only rootfs and all capabilities dropped")
         if not any(item.startswith("no-new-privileges") for item in security):
             raise RuntimeError("OCI inspect did not confirm no-new-privileges")
         if not any(item == f"seccomp={seccomp_profile}" for item in security):
             raise RuntimeError("OCI inspect did not confirm the requested seccomp profile")
-        expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
-        if (
-            host.get("Memory") != spec.limits.memory_bytes
-            or host.get("PidsLimit") != spec.limits.pids_limit
-            or host.get("NanoCpus") != expected_cpu_nanos
-        ):
+        if (host.get("Memory") != spec.limits.memory_bytes
+                or host.get("PidsLimit") != spec.limits.pids_limit
+                or host.get("NanoCpus") != expected_cpu_nanos):
             raise RuntimeError("OCI inspect did not confirm CPU, memory and PID limits")
-        if config.get("User") != "65532:65532" or not str(host.get("NetworkMode", "")).startswith("ns:"):
-            raise RuntimeError("OCI inspect did not confirm non-root user and isolated network namespace")
+        if config.get("User") != "65532:65532":
+            raise RuntimeError("OCI inspect did not confirm the unprivileged worker UID/GID")
+        if host.get("NetworkMode") != f"ns:{namespace_path}":
+            raise RuntimeError("OCI inspect did not confirm the exact isolated network namespace")
+        if state.get("Status") not in ("created", "configured"):
+            raise RuntimeError("OCI worker did not remain in the created pre-start state")
+        evidence["oci_inspect"] = {
+            "readonly_rootfs": host.get("ReadonlyRootfs"),
+            "cap_drop": cap_drop,
+            "security_opt": security,
+            "memory_bytes": host.get("Memory"),
+            "nano_cpus": host.get("NanoCpus"),
+            "pids_limit": host.get("PidsLimit"),
+            "network_mode": host.get("NetworkMode"),
+            "user": config.get("User"),
+        }
+        evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
-        # Kernel read-backs confirm the worker is in cgroup v2 and seccomp is active.
-        cgroup = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/memory.max"]).stdout.strip()
-        cpu = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/cpu.max"]).stdout.strip()
-        pids = _run(["podman", "exec", container_id, "cat", "/sys/fs/cgroup/pids.max"]).stdout.strip()
+        inspected = runtime.inspect(container_id)
+        state = inspected.get("State") or {}
+        host_pid = state.get("Pid")
+        if type(host_pid) is not int or host_pid <= 1:
+            raise RuntimeError("OCI runtime did not expose a valid host PID for namespace attestation")
+        if os.stat(f"/proc/{host_pid}/ns/net").st_ino != os.stat(namespace_path).st_ino:
+            raise RuntimeError("container init process is not in the provisioned network namespace")
+        process_cgroup = Path(f"/proc/{host_pid}/cgroup").read_text(encoding="ascii")
+        if f"/{worker_id}/" not in process_cgroup:
+            raise RuntimeError("container init process is not inside its dedicated APAA cgroup")
+        evidence["tests"]["network_namespace_inode_match"] = True
+        evidence["tests"]["host_pid_cgroup_membership"] = True
+
+        def container_read(path: str) -> str:
+            return _run(["podman", "exec", container_id, "cat", path]).stdout.strip()
+
+        memory = container_read("/sys/fs/cgroup/memory.max")
+        cpu = container_read("/sys/fs/cgroup/cpu.max")
+        pids = container_read("/sys/fs/cgroup/pids.max")
         status = _run(["podman", "exec", container_id, "cat", "/proc/self/status"]).stdout
-        if cgroup != str(spec.limits.memory_bytes) or cpu != "100000 100000" or pids != str(spec.limits.pids_limit):
+        if (memory != str(spec.limits.memory_bytes)
+                or cpu != "100000 100000"
+                or pids != str(spec.limits.pids_limit)):
             raise RuntimeError("kernel cgroup-v2 read-back does not match requested worker limits")
         seccomp_lines = [line for line in status.splitlines() if line.startswith("Seccomp:")]
         if seccomp_lines != ["Seccomp:\t2"]:
             raise RuntimeError("kernel does not report an active seccomp filter")
+        evidence["cgroup_readback"] = {"memory.max": memory, "cpu.max": cpu, "pids.max": pids}
+        evidence["tests"]["kernel_cgroup_v2_readback"] = True
+        evidence["tests"]["kernel_seccomp_active"] = True
 
-        proxy_host = f"[{proxy_ip.compressed}]" if proxy_ip.version == 6 else proxy_ip.compressed
-        proxy_url = f"http://{proxy_host}:{proxy_port}"
-        page = _run([
-            "podman", "exec", "--user", "65532:65532", container_id,
-            chromium_bin,
-            "--headless=new",
-            "--disable-gpu",
-            "--disable-quic",
-            "--disable-background-networking",
-            "--disable-component-update",
-            "--disable-sync",
-            "--no-first-run",
-            "--proxy-server=" + proxy_url,
-            "--proxy-bypass-list=<-loopback>",
-            "--dump-dom",
-            target.url,
-        ], timeout=120)
-        if "<html" not in page.stdout.lower():
-            raise RuntimeError("Chromium did not return an HTML document")
-        print("PASS: Chromium ran inside the isolated container through the configured proxy.")
-        print("NOTE: sink-side packet capture, TLS negative tests, DNS rebinding and full bypass matrix still require independent host evidence.")
-        return 0
+        # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
+        _probe_blocked([
+            "podman", "exec", container_id, "python3", "-c",
+            f"import socket; socket.getaddrinfo({target.hostname!r}, 443)",
+        ], "direct DNS resolution")
+        _probe_blocked([
+            "podman", "exec", container_id, "python3", "-c",
+            "import socket; socket.create_connection(('1.1.1.1',443),2)",
+        ], "direct IPv4 TCP")
+        _probe_blocked([
+            "podman", "exec", container_id, "python3", "-c",
+            "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('2606:4700:4700::1111',443))",
+        ], "direct IPv6 TCP")
+        evidence["tests"]["direct_dns_blocked"] = True
+        evidence["tests"]["direct_ipv4_blocked"] = True
+        evidence["tests"]["direct_ipv6_blocked"] = True
+
+        for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
+            proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
+            proxy_argument = f"http={proxy_host}:{proxy_port};https={proxy_host}:{proxy_port}"
+            page = _run([
+                "podman", "exec", "--user", "65532:65532", container_id,
+                chromium_bin,
+                "--headless=new",
+                "--disable-gpu",
+                "--disable-quic",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-sync",
+                "--no-first-run",
+                "--proxy-server=" + proxy_argument,
+                "--proxy-bypass-list=<-loopback>",
+                "--dump-dom",
+                target.url,
+            ], timeout=120)
+            if "<html" not in page.stdout.lower():
+                raise RuntimeError(f"Chromium returned no HTML over the {family} proxy")
+            evidence["tests"][f"chromium_https_via_{family}_proxy"] = True
+            evidence[f"chromium_{family}_stdout"] = page.stdout[:12000]
+
+        evidence["result"] = "PASS"
+        print("PASS: Chromium ran inside the isolated OCI worker through both IPv4 and IPv6 pinned proxies.")
+        print("PASS: direct DNS, direct IPv4 TCP and direct IPv6 TCP were blocked.")
     except Exception as exc:
+        evidence["error"] = f"{type(exc).__name__}: {exc}"
         print(f"BLOCKED: {type(exc).__name__}: {exc}")
-        return 1
     finally:
+        for proxy in reversed(proxy_servers):
+            try:
+                proxy.close()
+            except Exception as exc:
+                cleanup_errors.append(f"proxy: {type(exc).__name__}")
         if container_id:
             try:
                 runtime.stop(container_id, timeout_seconds=5)
@@ -138,8 +292,30 @@ def main() -> int:
                 pass
             try:
                 runtime.remove(container_id)
-            except Exception:
-                print("CLEANUP_REQUIRED: OCI container removal failed", file=sys.stderr)
+            except Exception as exc:
+                cleanup_errors.append(f"container: {type(exc).__name__}")
+        if cgroup_path is not None:
+            try:
+                cgroups.remove(cgroup_path)
+            except Exception as exc:
+                cleanup_errors.append(f"cgroup: {type(exc).__name__}")
+        if namespace_created:
+            try:
+                namespace.remove(plan)
+            except Exception as exc:
+                cleanup_errors.append(f"namespace/veth: {type(exc).__name__}")
+        evidence["cleanup_errors"] = cleanup_errors
+        evidence["cleanup_confirmed"] = not cleanup_errors
+        evidence["finished_at_unix"] = int(time.time())
+        try:
+            _evidence_write(os.environ.get("APAA_P74_EVIDENCE_PATH", ""), evidence)
+        except Exception as exc:
+            cleanup_errors.append(f"evidence: {type(exc).__name__}")
+        if cleanup_errors:
+            evidence["result"] = "CLEANUP_REQUIRED"
+            print("CLEANUP_REQUIRED: one or more worker resources could not be confirmed removed.", file=sys.stderr)
+
+    return 0 if evidence["result"] == "PASS" and not cleanup_errors else 1
 
 
 if __name__ == "__main__":
