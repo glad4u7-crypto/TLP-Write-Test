@@ -190,8 +190,32 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
                     server_hostname=self.destination.hostname,
                 )
                 return
-            except (OSError, ssl.SSLError, BrowserExecutionError) as exc:
-                last_error = exc if isinstance(exc, OSError) else OSError(str(exc))
+            except BrowserExecutionError:
+                if raw is not None:
+                    try:
+                        raw.close()
+                    except OSError:
+                        pass
+                # A peer mismatch is a security violation, never a fallback case.
+                raise
+            except ssl.SSLCertVerificationError as exc:
+                if raw is not None:
+                    try:
+                        raw.close()
+                    except OSError:
+                        pass
+                # Certificate/hostname failures are terminal. Trying another IP
+                # could hide a broken or malicious endpoint configuration.
+                raise BrowserExecutionError("TLS certificate or hostname verification failed.") from exc
+            except ssl.SSLError as exc:
+                if raw is not None:
+                    try:
+                        raw.close()
+                    except OSError:
+                        pass
+                raise BrowserExecutionError("TLS handshake failed; pinned connection aborted.") from exc
+            except OSError as exc:
+                last_error = exc
                 if raw is not None:
                     try:
                         raw.close()
@@ -308,23 +332,30 @@ class BrowserExecutionCoordinator:
             changed = token.cancel()
         if not changed:
             return False
+        # Record cancellation before terminating the worker: otherwise the
+        # worker's completion thread can race ahead and write job_cancelled
+        # before cancel_requested. Audit failure must not prevent termination.
+        audit_error = None
+        try:
+            self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
+        except Exception as exc:
+            audit_error = exc
         termination_error = None
         if self._worker is not None:
             try:
                 if self._worker.terminate(session_id) is not True:
                     raise BrowserExecutionError("Worker termination was not confirmed.")
+                termination_confirmed.set()
                 if not completed.wait(timeout=2.0):
                     raise BrowserExecutionError("Worker supervisor did not stop after process termination.")
-                termination_confirmed.set()
             except Exception as exc:
                 termination_error = exc
-        audit_error = None
-        try:
-            self._record("cancel_requested", job_id=job_id, session_id=session_id, detail="user_or_controller")
-            if termination_error is not None:
+        if termination_error is not None:
+            try:
                 self._record("worker_terminate_error", job_id=job_id, session_id=session_id, detail="adapter_error")
-        except Exception as exc:
-            audit_error = exc
+            except Exception as exc:
+                if audit_error is None:
+                    audit_error = exc
         if termination_error is not None:
             raise BrowserExecutionError("Worker termination failed; job remains cancelled.") from termination_error
         if audit_error is not None:
@@ -436,6 +467,11 @@ class BrowserExecutionCoordinator:
                 self._active.pop(job.job_id, None)
             if termination_confirmed.is_set():
                 cleanup_mode = "worker_process_exit_confirmed"
+            elif token.cancelled:
+                # Give the cancelling controller a bounded opportunity to
+                # confirm OS process exit before emitting the cleanup audit.
+                if termination_confirmed.wait(timeout=2.0):
+                    cleanup_mode = "worker_process_exit_confirmed"
             try:
                 self._record(
                     "session_closed" if cleanup_mode is not None else "session_cleanup_unconfirmed",
