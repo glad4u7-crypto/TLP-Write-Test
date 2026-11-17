@@ -158,6 +158,19 @@ class SQLiteSecurityStore:
                 change_id TEXT,
                 updated_at TEXT
             )""",
+            """CREATE TABLE IF NOT EXISTS execution_idempotency (
+                issuer TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                action TEXT NOT NULL,
+                payload_digest TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'uncertain', 'cancelled')),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (issuer, subject, request_key)
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_execution_idempotency_status
+                ON execution_idempotency (issuer, subject, status, updated_at)""",
         )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -290,6 +303,121 @@ class SQLiteSecurityStore:
             except Exception:
                 connection.rollback()
                 raise
+
+    _EXECUTION_REQUEST_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{15,127}$")
+
+    def claim_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        action: str,
+        payload_digest: str,
+        *,
+        now: int | None = None,
+    ) -> str:
+        """Atomically claim a tenant-scoped idempotency key without storing payloads.
+
+        Existing keys are never re-dispatched. A pending row left by a crash is
+        deliberately not auto-recovered because the external side effect may
+        already have happened.
+        """
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            raise ValueError("Execution idempotency key is invalid.")
+        if type(action) is not str or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", action):
+            raise ValueError("Execution action is invalid.")
+        if type(payload_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", payload_digest):
+            raise ValueError("Execution payload digest is invalid.")
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            raise ValueError("Execution timestamp is invalid.")
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    """SELECT action, payload_digest, status FROM execution_idempotency
+                       WHERE issuer = ? AND subject = ? AND request_key = ?""",
+                    (tenant.issuer, tenant.subject, request_key),
+                ).fetchone()
+                if row is not None:
+                    if row["action"] != action or not hmac.compare_digest(
+                        str(row["payload_digest"]), payload_digest
+                    ):
+                        connection.commit()
+                        return "conflict"
+                    connection.commit()
+                    return str(row["status"])
+                connection.execute(
+                    """INSERT INTO execution_idempotency
+                       (issuer, subject, request_key, action, payload_digest,
+                        status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                    (tenant.issuer, tenant.subject, request_key, action,
+                     payload_digest, current, current),
+                )
+                connection.commit()
+                return "claimed"
+            except Exception:
+                connection.rollback()
+                raise
+
+    def finish_execution(
+        self,
+        tenant: TenantKey,
+        request_key: str,
+        status: str,
+        *,
+        now: int | None = None,
+    ) -> bool:
+        """Transition a claimed request once; pending -> terminal only."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(request_key) is not str or not self._EXECUTION_REQUEST_KEY.fullmatch(request_key):
+            return False
+        if status not in {"completed", "uncertain", "cancelled"}:
+            return False
+        current = int(time.time()) if now is None else now
+        if type(current) is not int or current < 0:
+            return False
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    """UPDATE execution_idempotency SET status = ?, updated_at = ?
+                       WHERE issuer = ? AND subject = ? AND request_key = ?
+                         AND status = 'pending'""",
+                    (status, current, tenant.issuer, tenant.subject, request_key),
+                )
+                connection.commit()
+                return cursor.rowcount == 1
+            except Exception:
+                connection.rollback()
+                raise
+
+    def list_unresolved_executions(
+        self, tenant: TenantKey, *, limit: int = 50
+    ) -> tuple[dict[str, object], ...]:
+        """List pending/uncertain metadata for owner reconciliation; never auto-retry."""
+        if not isinstance(tenant, TenantKey):
+            raise TypeError("A validated TenantKey is required.")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("Execution recovery limit must be between 1 and 500.")
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """SELECT request_key, action, status, created_at, updated_at
+                   FROM execution_idempotency
+                   WHERE issuer = ? AND subject = ? AND status IN ('pending', 'uncertain')
+                   ORDER BY created_at LIMIT ?""",
+                (tenant.issuer, tenant.subject, limit),
+            ).fetchall()
+        return tuple({
+            "request_key": str(row["request_key"]),
+            "action": str(row["action"]),
+            "status": str(row["status"]),
+            "created_at": int(row["created_at"]),
+            "updated_at": int(row["updated_at"]),
+        } for row in rows)
 
     def consume_approval_nonce(
         self, tenant: TenantKey, nonce: str, expires_at: int, *, now: int | None = None
