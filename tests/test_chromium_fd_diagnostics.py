@@ -8,6 +8,7 @@ import pytest
 
 from core.chromium_fd_diagnostics import (
     _proc_stat_identity,
+    _executable_mappings,
     _process_role,
     _target_class,
     snapshot_cgroup,
@@ -190,3 +191,22 @@ def test_parent_child_shared_kernel_fd_is_reported_as_candidate_not_fact(tmp_pat
     assert candidates[0]["child_fd"] == 5
     assert candidates[0]["same_fd_number"] is False
     assert candidates[0]["interpretation"] == "shared_kernel_object_candidate_not_proof_of_inheritance"
+
+
+
+def test_executable_mapping_parser_keeps_only_sanitized_module_ranges(tmp_path):
+    proc = tmp_path / "proc" / "4242"
+    proc.mkdir(parents=True)
+    (proc / "maps").write_text(
+        "55555000-55556000 r-xp 00001000 08:01 123 /usr/lib/chromium/chromium\\n"
+        "7fff0000-7fff1000 rw-p 00000000 00:00 0 [stack]\\n"
+        "55556000-55557000 r--p 00002000 08:01 123 /usr/lib/chromium/chromium\\n",
+        encoding="ascii",
+    )
+    mappings = _executable_mappings(proc, "chromium")
+    assert len(mappings) == 2
+    assert mappings[0] == {
+        "start": "0x55555000", "end": "0x55556000", "file_offset": "0x1000",
+        "permissions": "r-xp", "device": "08:01", "inode": 123, "module": "chromium",
+    }
+    assert "[stack]" not in str(mappings)
