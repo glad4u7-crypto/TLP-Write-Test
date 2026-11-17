@@ -4,6 +4,7 @@ import os
 import secrets
 import sqlite3
 import time
+import tempfile
 from pathlib import Path
 import streamlit as st
 from core.mobile_ui import apply_mobile_ui
@@ -24,6 +25,7 @@ from core.identity import AuthorizationDenied, Principal
 from core.session_security import bind_session_identity, clear_session_identity, session_identity_key
 from core.storage import TenantKey
 from core.personal_diagnostics import inspect_personal_runtime, diagnostics_summary
+from core.personal_backup import create_personal_backup, restore_personal_backup, PersonalBackupError
 from core.personal_runtime import (
     PERSONAL_OWNER_TENANT,
     load_or_create_approval_signing_key,
@@ -574,6 +576,86 @@ with st.sidebar:
                         )
                 except (OSError, ValueError, sqlite3.Error) as exc:
                     st.error(f"Local diagnostics could not complete safely: {exc}")
+
+    if not auth_required:
+        with st.expander("Personal Backup & Restore", expanded=False):
+            st.caption(
+                "Create an owner-private snapshot or validate a backup into a new "
+                "directory. Restore never overwrites the live data directory."
+            )
+            if st.button("Create backup", key="apaa_create_personal_backup"):
+                try:
+                    backup_parent = Path(personal_data_dir).expanduser().absolute().parent
+                    with tempfile.TemporaryDirectory(
+                        prefix=".apaa-backup-download-", dir=str(backup_parent)
+                    ) as temporary_directory:
+                        backup_file = Path(temporary_directory) / "apaa-personal-backup.zip"
+                        create_personal_backup(personal_data_dir, backup_file)
+                        backup_bytes = backup_file.read_bytes()
+                    st.download_button(
+                        "Download APAA backup",
+                        data=backup_bytes,
+                        file_name=f"apaa-personal-backup-{time.strftime('%Y%m%d-%H%M%S')}.zip",
+                        mime="application/zip",
+                        key="apaa_download_personal_backup",
+                    )
+                    st.warning(
+                        "This archive contains private Owner data and is not encrypted. "
+                        "Keep it in a private location; never share or upload it publicly. "
+                        "The approval signing key is excluded."
+                    )
+                except (PersonalBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Backup could not be created safely: {exc}")
+
+            uploaded_backup = st.file_uploader(
+                "Choose an APAA backup archive",
+                type=["zip"],
+                key="apaa_restore_backup_upload",
+            )
+            if st.button(
+                "Validate and restore into a new directory",
+                key="apaa_restore_personal_backup",
+                disabled=uploaded_backup is None,
+            ):
+                temporary_archive = None
+                try:
+                    if uploaded_backup is None:
+                        st.error("Select a backup archive first.")
+                    elif uploaded_backup.size > 512 * 1024 * 1024:
+                        st.error("Backup archive exceeds the 512 MiB safety limit.")
+                    else:
+                        restore_parent = Path(personal_data_dir).expanduser().absolute().parent
+                        with tempfile.NamedTemporaryFile(
+                            prefix=".apaa-restore-upload-", suffix=".zip",
+                            dir=str(restore_parent), delete=False,
+                        ) as temporary_file:
+                            temporary_archive = Path(temporary_file.name)
+                            os.chmod(temporary_archive, 0o600)
+                            temporary_file.write(uploaded_backup.getvalue())
+                            temporary_file.flush()
+                            os.fsync(temporary_file.fileno())
+                        restored_directory = restore_parent / (
+                            f"{Path(personal_data_dir).name}-restored-"
+                            f"{int(time.time())}-{secrets.token_hex(4)}"
+                        )
+                        restore_personal_backup(temporary_archive, restored_directory)
+                        st.success(
+                            f"Backup verified and restored to a new private directory: "
+                            f"{restored_directory}"
+                        )
+                        st.info(
+                            "To use this restored copy, stop APAA first, then restart it "
+                            "with APAA_PERSONAL_DATA_DIR set to the restored directory. "
+                            "The current live data directory was not replaced."
+                        )
+                except (PersonalBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                    st.error(f"Restore was rejected safely: {exc}")
+                finally:
+                    if temporary_archive is not None:
+                        try:
+                            temporary_archive.unlink(missing_ok=True)
+                        except OSError:
+                            st.error("Temporary restore upload could not be removed; inspect the private data-directory parent.")
 
     with st.expander("Action history"):
         try:
