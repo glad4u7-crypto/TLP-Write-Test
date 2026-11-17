@@ -8,6 +8,7 @@ import pytest
 
 from core.chromium_fd_diagnostics import (
     _proc_stat_identity,
+    _process_role,
     _target_class,
     snapshot_cgroup,
     snapshot_json_safe,
@@ -131,3 +132,27 @@ def test_fd_disappearing_between_listing_and_readlink_is_ignored(tmp_path):
     result = snapshot_cgroup(cgroup, proc_root=proc)
     assert result["process_count_observed"] == 1
     assert len(result["processes"][0]["fds"]) == 1
+
+
+
+@pytest.mark.parametrize(
+    ("cmdline", "expected"),
+    [
+        (b"/usr/bin/chromium\\0--type=zygote\\0", "zygote"),
+        (b"/usr/bin/chromium\\0--type=renderer\\0", "renderer"),
+        (b"/usr/bin/chromium\\0--type=gpu-process\\0", "gpu"),
+        (b"/usr/bin/chromium\\0--type=utility\\0--utility-sub-type=network.mojom.NetworkService\\0", "network-service"),
+        (b"/usr/bin/chromium\\0--type=utility\\0", "utility"),
+        (b"/usr/bin/chromium\\0", "browser-or-launcher"),
+        (b"", "other"),
+    ],
+)
+def test_chromium_role_classification_does_not_retain_argv(cmdline, expected):
+    assert _process_role(cmdline) == expected
+
+
+def test_production_snapshot_rejects_cgroup_outside_mount(tmp_path, monkeypatch):
+    proc, cgroup = _proc_fixture(tmp_path)
+    monkeypatch.setattr("core.chromium_fd_diagnostics.Path.resolve", lambda self: Path("/tmp/outside"))
+    with pytest.raises(ValueError, match="beneath /sys/fs/cgroup"):
+        snapshot_cgroup(cgroup, proc_root="/proc")
