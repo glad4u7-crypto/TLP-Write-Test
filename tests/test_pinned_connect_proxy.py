@@ -115,3 +115,55 @@ def test_tls_client_hello_reader_rejects_non_handshake_records():
     finally:
         receiver.close()
         sender.close()
+
+
+def _run_connect_with_sni(monkeypatch, sni):
+    import socket
+    import threading
+    import core.pinned_connect_proxy as proxy_module
+    from core.pinned_egress import PinnedDestination
+
+    proxy = PinnedConnectProxy("172.20.0.2", 3128, allowed_hosts=["example.com"])
+    client, server = socket.socketpair()
+    upstream_peer, upstream = socket.socketpair()
+    pinned = PinnedDestination("example.com", 443, ("8.8.8.8",))
+    monkeypatch.setattr(proxy_module, "resolve_and_pin", lambda *args, **kwargs: pinned)
+    monkeypatch.setattr(proxy_module, "connect_pinned", lambda *args, **kwargs: upstream)
+    thread = threading.Thread(target=proxy._handle_client, args=(server,), daemon=True)
+    thread.start()
+    client.sendall(b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
+    response = bytearray()
+    while b"\\r\\n\\r\\n" not in response:
+        response.extend(client.recv(1024))
+    assert response.startswith(b"HTTP/1.1 200")
+    wire = _tls_record(_client_hello(sni))
+    client.sendall(wire)
+    return proxy, client, upstream_peer, thread, wire
+
+
+def test_proxy_rejects_tls_sni_mismatch_before_forwarding_client_hello(monkeypatch):
+    proxy, client, upstream_peer, thread, _wire = _run_connect_with_sni(monkeypatch, "evil.example")
+    try:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        upstream_peer.settimeout(1)
+        assert upstream_peer.recv(1024) == b""
+        assert proxy.rejected_requests == 1
+        assert proxy.accepted_connections == 0
+    finally:
+        client.close()
+        upstream_peer.close()
+
+
+def test_proxy_forwards_client_hello_only_after_matching_sni(monkeypatch):
+    proxy, client, upstream_peer, thread, wire = _run_connect_with_sni(monkeypatch, "example.com")
+    try:
+        upstream_peer.settimeout(1)
+        assert upstream_peer.recv(len(wire)) == wire
+        assert proxy.accepted_connections == 1
+        client.shutdown(socket.SHUT_RDWR)
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+    finally:
+        client.close()
+        upstream_peer.close()
