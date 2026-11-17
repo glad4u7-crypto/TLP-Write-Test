@@ -111,8 +111,7 @@ def test_mobile_controls_keep_readable_inputs_and_large_primary_targets(streamli
         browser = playwright.chromium.launch()
         context = browser.new_context(**playwright.devices["Pixel 7"])
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.wait_for_timeout(1200)
 
         input_sizes = page.locator("input, textarea").evaluate_all(
@@ -197,8 +196,7 @@ def test_android_responsive_viewport_matrix_has_usable_controls(
             has_touch=True,
         )
         page = context.new_page()
-        page.goto(streamlit_server, wait_until="domcontentloaded", timeout=30000)
-        page.locator('[data-testid="stAppViewContainer"]').wait_for(timeout=30000)
+        _open_owner_page(page, streamlit_server)
         page.get_by_label("Describe a task").wait_for(timeout=30000)
         page.wait_for_timeout(800)
 
