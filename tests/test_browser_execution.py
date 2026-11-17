@@ -392,3 +392,25 @@ def test_cancel_wakes_coordinator_without_waiting_for_worker_callback():
     assert len(errors) == 1
     assert isinstance(errors[0], BrowserCancelled)
     assert events[-1]["event"] == "session_closed"
+
+
+
+@pytest.mark.parametrize("result", [
+    {"text": "x" * 1000},
+    {"text": object()},
+    {1: "non-string-key"},
+    {"number": float("nan")},
+])
+def test_worker_result_must_be_json_safe_and_within_response_limit(result):
+    class ResultWorker(FakeWorker):
+        def run(self, *args, **kwargs):
+            return result
+
+    events = []
+    coordinator = BrowserExecutionCoordinator(ResultWorker(), audit=events.append)
+    with pytest.raises(BrowserExecutionError):
+        coordinator.execute(
+            valid_job(max_response_bytes=128),
+            resolver=lambda host: ["93.184.216.34"],
+        )
+    assert events[-1]["event"] == "session_cleanup_unconfirmed"
