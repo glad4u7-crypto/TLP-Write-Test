@@ -101,7 +101,8 @@ class CgroupV2Provisioner:
     def remove(self, cgroup_path: str | Path) -> None:
         root = self._verified_root()
         path = Path(cgroup_path)
-        if not path.is_absolute() or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name):
+        if (not path.is_absolute() or path.is_symlink() or path.resolve(strict=True) != path
+                or path.parent.resolve(strict=True) != root or not _NAME.fullmatch(path.name)):
             raise ValueError("cgroup path is outside the delegated worker subtree")
         try:
             if (path / "cgroup.procs").read_text(encoding="ascii").strip():
