@@ -15,7 +15,7 @@ import ssl
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
 from core.attested_browser_runtime import AttestedBrowserRuntime
@@ -25,6 +25,7 @@ from core.browser_security import (
     canonicalize_https_url,
     validate_browser_job,
     validate_dns_answers,
+    validate_redirect,
 )
 
 
@@ -88,6 +89,49 @@ class PinnedDestination:
         if len(normalized) != len(self.addresses):
             raise ValueError("Duplicate pinned addresses are not permitted.")
         object.__setattr__(self, "addresses", normalized)
+
+
+def resolve_pinned_destination(
+    url: str,
+    *,
+    resolver: Callable[[str], Sequence[str]],
+) -> tuple[Any, PinnedDestination]:
+    """Resolve a canonical HTTPS URL now and bind its complete validated IP set."""
+    if not callable(resolver):
+        raise BrowserExecutionError("A live DNS resolver is required for destination pinning.")
+    target = canonicalize_https_url(url)
+    try:
+        literal = ipaddress.ip_address(target.hostname)
+        answers: Sequence[str] = [literal.compressed]
+    except ValueError:
+        answers = resolver(target.hostname)
+    try:
+        addresses = validate_dns_answers(target.hostname, answers)
+        destination = PinnedDestination(target.hostname, target.port, addresses)
+    except (BrowserPolicyError, TypeError, ValueError) as exc:
+        raise BrowserExecutionError("Destination failed live DNS/IP pin validation.") from exc
+    return target, destination
+
+
+def authorize_redirect_and_pin(
+    current_url: str,
+    location: str,
+    allowed_origins: Sequence[str],
+    *,
+    resolver: Callable[[str], Sequence[str]],
+) -> tuple[Any, PinnedDestination]:
+    """Authorize one redirect and resolve a fresh pin set before it can connect.
+
+    This deliberately returns a new destination object. Callers must discard the
+    previous connection/pin and create a new PinnedHTTPSConnection from this pin.
+    """
+    if not callable(resolver):
+        raise BrowserExecutionError("Redirects require a live DNS resolver.")
+    try:
+        target = validate_redirect(current_url, location, allowed_origins)
+    except BrowserPolicyError as exc:
+        raise BrowserExecutionError("Redirect target failed URL/origin policy.") from exc
+    return resolve_pinned_destination(target.url, resolver=resolver)
 
 
 class PinnedHTTPSConnection(http.client.HTTPSConnection):
@@ -289,17 +333,7 @@ class BrowserExecutionCoordinator:
         # the exact pin set to the worker.
         try:
             job = validate_browser_job(raw_job)
-            target = canonicalize_https_url(job.url)
-            try:
-                literal = ipaddress.ip_address(target.hostname)
-                answers = [literal.compressed]
-            except ValueError:
-                answers = resolver(target.hostname)
-            pinned = PinnedDestination(
-                hostname=target.hostname,
-                port=target.port,
-                addresses=validate_dns_answers(target.hostname, answers),
-            )
+            target, pinned = resolve_pinned_destination(job.url, resolver=resolver)
         except (BrowserPolicyError, TypeError, ValueError, OSError) as exc:
             raise BrowserExecutionError("Browser job failed live DNS/IP pin validation.") from exc
 
