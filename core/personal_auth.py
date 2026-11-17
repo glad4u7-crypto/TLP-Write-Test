@@ -54,6 +54,13 @@ class LocalOwnerAuthStore:
                     last_success_at INTEGER
                 )"""
             )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS local_owner_auth_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    occurred_at INTEGER NOT NULL
+                )"""
+            )
         self._secure_path(create_parent=False)
 
     def _secure_path(self, *, create_parent: bool) -> None:
@@ -117,6 +124,36 @@ class LocalOwnerAuthStore:
         if len(passphrase) > 1024 or not passphrase.strip():
             raise ValueError("Owner passphrase length is invalid.")
 
+    _ALLOWED_EVENTS = frozenset({
+        "owner_setup", "login_success", "login_failed", "login_locked",
+        "logout", "passphrase_changed", "passphrase_change_failed",
+    })
+
+    def record_event(self, event_type: str, *, occurred_at: int | None = None) -> None:
+        """Append a payload-free local authentication security event."""
+        if event_type not in self._ALLOWED_EVENTS:
+            raise ValueError("Unsupported Owner authentication audit event.")
+        timestamp = int(time.time()) if occurred_at is None else occurred_at
+        if type(timestamp) is not int or timestamp < 0:
+            raise ValueError("Owner authentication audit timestamp is invalid.")
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                (event_type, timestamp),
+            )
+
+    def list_events(self, *, limit: int = 100) -> tuple[tuple[str, int], ...]:
+        """Return newest payload-free authentication events for local review."""
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Owner authentication audit limit is invalid.")
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT event_type, occurred_at FROM local_owner_auth_events
+                   ORDER BY event_id DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return tuple((str(row[0]), int(row[1])) for row in rows)
+
     def is_configured(self) -> bool:
         with self._connect() as db:
             row = db.execute(
@@ -139,11 +176,16 @@ class LocalOwnerAuthStore:
                     "SELECT 1 FROM local_owner_auth WHERE singleton_id = 1"
                 ).fetchone():
                     raise ValueError("Owner authentication is already configured.")
+                created_at = int(time.time())
                 db.execute(
                     """INSERT INTO local_owner_auth
                        (singleton_id, salt, verifier, failed_attempts, locked_until, created_at)
                        VALUES (1, ?, ?, 0, 0, ?)""",
-                    (salt, verifier, int(time.time())),
+                    (salt, verifier, created_at),
+                )
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("owner_setup", created_at),
                 )
                 db.commit()
             except Exception:
@@ -165,7 +207,14 @@ class LocalOwnerAuthStore:
                     """SELECT salt, verifier, failed_attempts, locked_until
                        FROM local_owner_auth WHERE singleton_id = 1"""
                 ).fetchone()
-                if row is None or current < int(row[3]):
+                if row is None:
+                    db.commit()
+                    return False
+                if current < int(row[3]):
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("login_locked", current),
+                    )
                     db.commit()
                     return False
                 actual = self._derive(candidate, bytes(row[0]))
@@ -177,6 +226,10 @@ class LocalOwnerAuthStore:
                            WHERE singleton_id = 1""",
                         (current,),
                     )
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("login_success", current),
+                    )
                     db.commit()
                     return True
                 failures = int(row[2]) + 1
@@ -186,6 +239,10 @@ class LocalOwnerAuthStore:
                        SET failed_attempts = ?, locked_until = ?
                        WHERE singleton_id = 1""",
                     (0 if locked_until else failures, locked_until),
+                )
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("login_locked" if locked_until else "login_failed", current),
                 )
                 db.commit()
                 return False
@@ -230,6 +287,10 @@ class LocalOwnerAuthStore:
                     """UPDATE local_owner_auth SET salt = ?, verifier = ?,
                        failed_attempts = 0, locked_until = 0 WHERE singleton_id = 1""",
                     (salt, verifier),
+                )
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("passphrase_changed", current),
                 )
                 db.commit()
                 return True
