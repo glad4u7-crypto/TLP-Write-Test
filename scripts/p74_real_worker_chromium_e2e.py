@@ -344,9 +344,14 @@ def main() -> int:
             "podman", "exec", container_id, "python3", "-c",
             "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('2606:4700:4700::1111',443))",
         ], "direct IPv6 TCP")
+        _probe_blocked([
+            "podman", "exec", container_id, "python3", "-c",
+            "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
+        ], "direct UDP/443 QUIC-style egress")
         evidence["tests"]["direct_dns_blocked"] = True
         evidence["tests"]["direct_ipv4_blocked"] = True
         evidence["tests"]["direct_ipv6_blocked"] = True
+        evidence["tests"]["direct_udp_443_blocked"] = True
 
         for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
             proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
