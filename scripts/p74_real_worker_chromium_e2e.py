@@ -67,7 +67,7 @@ def _audit_worker_capture(
     arp_packets = 0
     ndp_packets = 0
     unexpected = []
-    endpoint_pattern = re.compile(r"\\bIP6?\\s+(\\S+)\\s+>\\s+(\\S+):")
+    endpoint_pattern = re.compile(r"\bIP6?\s+(\S+)\s+>\s+(\S+):")
     for line in output.splitlines():
         if "ARP," in line:
             arp_packets += 1
