@@ -7,12 +7,14 @@ cannot know whether a remote side effect happened before the crash.
 from __future__ import annotations
 
 import hashlib
+import json
 from contextlib import contextmanager
 import os
 import re
 from pathlib import Path
 import sqlite3
 import stat
+import tempfile
 import threading
 import time
 from typing import Final
@@ -83,6 +85,21 @@ class SQLiteBrowserRecoveryLedger:
                     value TEXT NOT NULL,
                     updated_at REAL NOT NULL
                 )""")
+                db.execute("""CREATE TABLE IF NOT EXISTS browser_job_history (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    occurred_at REAL NOT NULL,
+                    outcome_code TEXT,
+                    previous_hash TEXT NOT NULL CHECK(length(previous_hash)=64),
+                    entry_hash TEXT NOT NULL UNIQUE CHECK(length(entry_hash)=64)
+                )""")
+                db.execute("""CREATE TRIGGER IF NOT EXISTS browser_history_no_update
+                    BEFORE UPDATE ON browser_job_history
+                    BEGIN SELECT RAISE(ABORT, 'action history is append-only'); END""")
+                db.execute("""CREATE TRIGGER IF NOT EXISTS browser_history_no_delete
+                    BEFORE DELETE ON browser_job_history
+                    BEGIN SELECT RAISE(ABORT, 'action history is append-only'); END""")
             os.chmod(path, 0o600)
         except (OSError, sqlite3.Error) as exc:
             raise RecoveryLedgerError("recovery ledger initialization failed") from exc
@@ -119,6 +136,163 @@ class SQLiteBrowserRecoveryLedger:
             raise ValueError("job ID is invalid")
         if type(request_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", request_digest):
             raise ValueError("request digest must be a canonical lowercase SHA-256 hex digest")
+
+    @staticmethod
+    def _history_entry_hash(previous_hash: str, job_id: str, state: str,
+                            occurred_at: float, outcome_code: str | None) -> str:
+        payload = {
+            "job_id": job_id,
+            "state": state,
+            "occurred_at": occurred_at,
+            "outcome_code": outcome_code,
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=True, allow_nan=False).encode("ascii")
+        return hashlib.sha256(previous_hash.encode("ascii") + b"\\n" + canonical).hexdigest()
+
+    def _append_history(self, db: sqlite3.Connection, job_id: str, state: str,
+                        occurred_at: float, outcome_code: str | None) -> None:
+        row = db.execute(
+            "SELECT entry_hash FROM browser_job_history ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = row[0] if row else "0" * 64
+        entry_hash = self._history_entry_hash(
+            previous_hash, job_id, state, occurred_at, outcome_code
+        )
+        db.execute(
+            """INSERT INTO browser_job_history
+               (job_id,state,occurred_at,outcome_code,previous_hash,entry_hash)
+               VALUES(?,?,?,?,?,?)""",
+            (job_id, state, occurred_at, outcome_code, previous_hash, entry_hash),
+        )
+
+    @staticmethod
+    def _verify_history_connection(db: sqlite3.Connection) -> str:
+        previous_hash = "0" * 64
+        rows = db.execute(
+            """SELECT sequence,job_id,state,occurred_at,outcome_code,
+                      previous_hash,entry_hash
+               FROM browser_job_history ORDER BY sequence"""
+        ).fetchall()
+        for expected_sequence, row in enumerate(rows, start=1):
+            sequence, job_id, state, occurred_at, outcome_code, stored_previous, stored_hash = row
+            if sequence != expected_sequence or stored_previous != previous_hash:
+                raise RecoveryLedgerError("action history sequence or hash chain is broken")
+            expected_hash = SQLiteBrowserRecoveryLedger._history_entry_hash(
+                previous_hash, job_id, state, occurred_at, outcome_code
+            )
+            if not isinstance(stored_hash, str) or not __import__("hmac").compare_digest(
+                expected_hash, stored_hash
+            ):
+                raise RecoveryLedgerError("action history integrity verification failed")
+            previous_hash = stored_hash
+        return previous_hash
+
+    def verify_history(self) -> str:
+        """Verify the append-only action-state history and return its head hash."""
+        try:
+            with self._database() as db:
+                return self._verify_history_connection(db)
+        except RecoveryLedgerError:
+            raise
+        except sqlite3.Error as exc:
+            raise RecoveryLedgerError("action history could not be verified") from exc
+
+    def list_history(self, job_id: str | None = None) -> list[dict[str, object]]:
+        """Return payload-free history records; never expose session IDs or request bodies."""
+        if job_id is not None and (type(job_id) is not str or not 8 <= len(job_id) <= 128):
+            raise ValueError("job ID is invalid")
+        try:
+            with self._database() as db:
+                if job_id is None:
+                    rows = db.execute(
+                        """SELECT sequence,job_id,state,occurred_at,outcome_code,entry_hash
+                           FROM browser_job_history ORDER BY sequence"""
+                    ).fetchall()
+                else:
+                    rows = db.execute(
+                        """SELECT sequence,job_id,state,occurred_at,outcome_code,entry_hash
+                           FROM browser_job_history WHERE job_id=? ORDER BY sequence""",
+                        (job_id,),
+                    ).fetchall()
+            return [
+                dict(zip(("sequence","job_id","state","occurred_at","outcome_code","entry_hash"), row))
+                for row in rows
+            ]
+        except sqlite3.Error as exc:
+            raise RecoveryLedgerError("action history could not be read") from exc
+
+    def backup_to(self, destination: str | os.PathLike[str]) -> Path:
+        """Create a consistent, owner-private SQLite backup without overwriting files."""
+        target = Path(destination)
+        if not target.is_absolute() or target.parent != self.path.parent:
+            raise ValueError("backup must use an absolute path in the private ledger directory")
+        parent = target.parent.lstat()
+        if stat.S_ISLNK(parent.st_mode) or not stat.S_ISDIR(parent.st_mode) or stat.S_IMODE(parent.st_mode) & 0o077:
+            raise ValueError("backup directory must remain owner-private")
+        try:
+            fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except FileExistsError as exc:
+            raise RecoveryLedgerError("backup destination already exists; refusing overwrite") from exc
+        os.close(fd)
+        try:
+            with self._database() as source:
+                destination_db = sqlite3.connect(target, isolation_level=None)
+                try:
+                    source.backup(destination_db)
+                    result = destination_db.execute("PRAGMA integrity_check").fetchone()
+                    if not result or result[0] != "ok":
+                        raise RecoveryLedgerError("backup SQLite integrity check failed")
+                    self._verify_history_connection(destination_db)
+                finally:
+                    destination_db.close()
+            os.chmod(target, 0o600)
+            return target
+        except Exception:
+            try:
+                target.unlink()
+            except OSError:
+                pass
+            raise
+
+    def restore_from(self, backup: str | os.PathLike[str]) -> None:
+        """Restore only a structurally valid backup; replace atomically after verification."""
+        source_path = Path(backup)
+        if not source_path.is_absolute() or source_path == self.path or source_path.parent != self.path.parent:
+            raise ValueError("restore source must be a separate absolute file in the private ledger directory")
+        info = source_path.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
+            raise ValueError("restore source must be an owner-private regular file")
+        fd, temporary_name = tempfile.mkstemp(prefix=".apaa-restore-", dir=self.path.parent)
+        os.close(fd)
+        temporary_path = Path(temporary_name)
+        try:
+            source_db = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
+            destination_db = sqlite3.connect(temporary_path, isolation_level=None)
+            try:
+                source_db.backup(destination_db)
+                result = destination_db.execute("PRAGMA integrity_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise RecoveryLedgerError("restore source failed SQLite integrity check")
+                self._verify_history_connection(destination_db)
+                required = {"browser_jobs", "browser_control", "browser_job_history"}
+                present = {row[0] for row in destination_db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()}
+                if not required.issubset(present):
+                    raise RecoveryLedgerError("restore source is missing required ledger tables")
+            finally:
+                source_db.close()
+                destination_db.close()
+            os.chmod(temporary_path, 0o600)
+            os.replace(temporary_path, self.path)
+            os.chmod(self.path, 0o600)
+        except Exception:
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+            raise
 
     def dispatch_blocked(self) -> bool:
         try:
@@ -172,6 +346,7 @@ class SQLiteBrowserRecoveryLedger:
                     if row:
                         raise DuplicateBrowserJob("job ID was already consumed; automatic replay is forbidden") from exc
                     raise RecoveryLedgerError("job claim violated a ledger constraint") from exc
+                self._append_history(db, job_id, "accepted", now, None)
         except (DuplicateBrowserJob, BrowserDispatchBlocked, RecoveryLedgerError):
             raise
         except sqlite3.Error as exc:
@@ -188,7 +363,7 @@ class SQLiteBrowserRecoveryLedger:
             raise ValueError("outcome code must be a short non-sensitive code")
         now = self._now()
         try:
-            with self._lock, self._connect() as db:
+            with self._lock, self._database() as db:
                 row = db.execute("SELECT state FROM browser_jobs WHERE job_id=?", (job_id,)).fetchone()
                 if row is None:
                     raise RecoveryLedgerError("job does not exist in the recovery ledger")
@@ -206,6 +381,7 @@ class SQLiteBrowserRecoveryLedger:
                     "UPDATE browser_jobs SET state=?, updated_at=?, outcome_code=? WHERE job_id=?",
                     (state, now, outcome_code, job_id),
                 )
+                self._append_history(db, job_id, state, now, outcome_code)
         except RecoveryLedgerError:
             raise
         except sqlite3.Error as exc:
@@ -215,16 +391,18 @@ class SQLiteBrowserRecoveryLedger:
         """Mark pre-crash jobs interrupted; never re-dispatch them automatically."""
         now = self._now()
         try:
-            with self._lock, self._connect() as db:
+            with self._lock, self._database() as db:
                 rows = db.execute(
                     "SELECT job_id FROM browser_jobs WHERE state IN ('accepted','running','cancel_requested')"
                 ).fetchall()
                 ids = [row[0] for row in rows]
-                db.execute(
-                    "UPDATE browser_jobs SET state='interrupted', updated_at=?, "
-                    "outcome_code='process_restart' WHERE state IN ('accepted','running','cancel_requested')",
-                    (now,),
-                )
+                for (job_id,) in rows:
+                    db.execute(
+                        "UPDATE browser_jobs SET state='interrupted', updated_at=?, "
+                        "outcome_code='process_restart' WHERE job_id=?",
+                        (now, job_id),
+                    )
+                    self._append_history(db, job_id, "interrupted", now, "process_restart")
                 return ids
         except sqlite3.Error as exc:
             raise RecoveryLedgerError("crash recovery scan failed; dispatch must remain disabled") from exc
