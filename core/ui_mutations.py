@@ -13,7 +13,8 @@ class UIActionAuditError(RuntimeError):
 
 
 def execute_audited_ui_mutation(
-    audit_log: Any, action: str, operation: Callable[[], Any]
+    audit_log: Any, action: str, operation: Callable[[], Any], *,
+    approved: bool = False,
 ) -> Any:
     """Persist intent before a user-confirmed UI mutation and completion after it.
 
@@ -24,7 +25,11 @@ def execute_audited_ui_mutation(
     """
     if not isinstance(action, str) or not action.strip() or not callable(operation):
         raise ValueError("A fixed action identifier and operation are required.")
-    decision = authorize_action(action, approved_action=action)
+    if type(approved) is not bool:
+        raise ValueError("Explicit UI approval must be a boolean.")
+    decision = authorize_action(
+        action, approved_action=action if approved else None
+    )
     if not decision.allowed:
         raise UIActionAuditError(decision.reason)
     try:
