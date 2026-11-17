@@ -31,6 +31,7 @@ from core.personal_project_files import (
     project_files_directory, save_project_file,
 )
 from core.personal_backup import create_personal_backup, restore_personal_backup, PersonalBackupError
+from core.encrypted_backup import encrypt_backup_file, decrypt_backup_file, EncryptedBackupError
 from core.personal_runtime import (
     PERSONAL_OWNER_TENANT,
     load_or_create_approval_signing_key,
@@ -622,44 +623,72 @@ with st.sidebar:
     if not auth_required:
         with st.expander("Personal Backup & Restore", expanded=False):
             st.caption(
-                "Create an owner-private snapshot or validate a backup into a new "
-                "directory. Restore never overwrites the live data directory."
+                "New backups are encrypted with your own passphrase. Restore always "
+                "creates a new private directory and never overwrites live data."
             )
-            if st.button("Create backup", key="apaa_create_personal_backup"):
+            backup_passphrase = st.text_input(
+                "New backup encryption passphrase (12+ characters)",
+                type="password",
+                key="apaa_backup_encrypt_passphrase",
+                max_chars=1024,
+            )
+            if st.button("Create encrypted backup", key="apaa_create_personal_backup"):
                 try:
+                    if len(backup_passphrase) < 12:
+                        raise EncryptedBackupError("Use a backup passphrase with at least 12 characters.")
                     backup_parent = Path(personal_data_dir).expanduser().absolute().parent
                     with tempfile.TemporaryDirectory(
                         prefix=".apaa-backup-download-", dir=str(backup_parent)
                     ) as temporary_directory:
                         backup_file = Path(temporary_directory) / "apaa-personal-backup.zip"
+                        encrypted_file = Path(temporary_directory) / "apaa-personal-backup.apaa.enc"
                         create_personal_backup(personal_data_dir, backup_file)
-                        backup_bytes = backup_file.read_bytes()
+                        encrypt_backup_file(backup_file, encrypted_file, backup_passphrase)
+                        backup_bytes = encrypted_file.read_bytes()
                     st.download_button(
-                        "Download APAA backup",
+                        "Download encrypted APAA backup",
                         data=backup_bytes,
-                        file_name=f"apaa-personal-backup-{time.strftime('%Y%m%d-%H%M%S')}.zip",
-                        mime="application/zip",
+                        file_name=f"apaa-personal-backup-{time.strftime('%Y%m%d-%H%M%S')}.apaa.enc",
+                        mime="application/octet-stream",
                         key="apaa_download_personal_backup",
                     )
-                    st.warning(
-                        "This archive contains private Owner data and is not encrypted. "
-                        "Keep it in a private location; never share or upload it publicly. "
-                        "The approval signing key is excluded."
-                    )
-                except (PersonalBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                    st.success("Encrypted backup created. Keep the passphrase separately; APAA cannot recover it.")
+                    st.caption("The archive uses scrypt key derivation and chunked AES-256-GCM authentication. The approval signing key is excluded.")
+                except (PersonalBackupError, EncryptedBackupError, OSError, ValueError, sqlite3.Error) as exc:
                     st.error(f"Backup could not be created safely: {exc}")
 
             uploaded_backup = st.file_uploader(
-                "Choose an APAA backup archive",
-                type=["zip"],
+                "Choose an encrypted APAA backup (.apaa.enc) or legacy plain ZIP",
+                type=["enc", "zip"],
                 key="apaa_restore_backup_upload",
             )
+            uploaded_is_legacy = bool(
+                uploaded_backup is not None and uploaded_backup.name.lower().endswith(".zip")
+            )
+            legacy_confirmed = False
+            restore_passphrase = ""
+            if uploaded_backup is not None and uploaded_is_legacy:
+                st.warning("This is a legacy unencrypted archive. Only restore it if you created it and trust its source.")
+                legacy_confirmed = st.checkbox(
+                    "I understand this legacy backup is not encrypted",
+                    key="apaa_confirm_legacy_backup_restore",
+                )
+            elif uploaded_backup is not None:
+                restore_passphrase = st.text_input(
+                    "Backup decryption passphrase",
+                    type="password",
+                    key="apaa_backup_decrypt_passphrase",
+                    max_chars=1024,
+                )
+
+            restore_disabled = uploaded_backup is None or (uploaded_is_legacy and not legacy_confirmed)
             if st.button(
-                "Validate and restore into a new directory",
+                "Verify and restore into a new directory",
                 key="apaa_restore_personal_backup",
-                disabled=uploaded_backup is None,
+                disabled=restore_disabled,
             ):
                 temporary_archive = None
+                temporary_plaintext = None
                 try:
                     if uploaded_backup is None:
                         st.error("Select a backup archive first.")
@@ -667,37 +696,40 @@ with st.sidebar:
                         st.error("Backup archive exceeds the 512 MiB safety limit.")
                     else:
                         restore_parent = Path(personal_data_dir).expanduser().absolute().parent
-                        with tempfile.NamedTemporaryFile(
-                            prefix=".apaa-restore-upload-", suffix=".zip",
-                            dir=str(restore_parent), delete=False,
-                        ) as temporary_file:
-                            temporary_archive = Path(temporary_file.name)
+                        with tempfile.TemporaryDirectory(
+                            prefix=".apaa-restore-stage-", dir=str(restore_parent)
+                        ) as temporary_directory:
+                            temporary_root = Path(temporary_directory)
+                            temporary_archive = temporary_root / (
+                                "uploaded-legacy.zip" if uploaded_is_legacy else "uploaded.apaa.enc"
+                            )
+                            temporary_archive.write_bytes(uploaded_backup.getvalue())
                             os.chmod(temporary_archive, 0o600)
-                            temporary_file.write(uploaded_backup.getvalue())
-                            temporary_file.flush()
-                            os.fsync(temporary_file.fileno())
-                        restored_directory = restore_parent / (
-                            f"{Path(personal_data_dir).name}-restored-"
-                            f"{int(time.time())}-{secrets.token_hex(4)}"
-                        )
-                        restore_personal_backup(temporary_archive, restored_directory)
-                        st.success(
-                            f"Backup verified and restored to a new private directory: "
-                            f"{restored_directory}"
-                        )
-                        st.info(
-                            "To use this restored copy, stop APAA first, then restart it "
-                            "with APAA_PERSONAL_DATA_DIR set to the restored directory. "
-                            "The current live data directory was not replaced."
-                        )
-                except (PersonalBackupError, OSError, ValueError, sqlite3.Error) as exc:
+                            if uploaded_is_legacy:
+                                restore_source = temporary_archive
+                            else:
+                                if len(restore_passphrase) < 12:
+                                    raise EncryptedBackupError("Enter the backup passphrase (at least 12 characters).")
+                                temporary_plaintext = temporary_root / "decrypted-backup.zip"
+                                decrypt_backup_file(
+                                    temporary_archive, temporary_plaintext, restore_passphrase
+                                )
+                                restore_source = temporary_plaintext
+                            restored_directory = restore_parent / (
+                                f"{Path(personal_data_dir).name}-restored-"
+                                f"{int(time.time())}-{secrets.token_hex(4)}"
+                            )
+                            restore_personal_backup(restore_source, restored_directory)
+                            st.success(
+                                f"Backup verified and restored to a new private directory: {restored_directory}"
+                            )
+                            st.info(
+                                "To use this restored copy, stop APAA first, then restart it "
+                                "with APAA_PERSONAL_DATA_DIR set to the restored directory. "
+                                "The current live data directory was not replaced."
+                            )
+                except (PersonalBackupError, EncryptedBackupError, OSError, ValueError, sqlite3.Error) as exc:
                     st.error(f"Restore was rejected safely: {exc}")
-                finally:
-                    if temporary_archive is not None:
-                        try:
-                            temporary_archive.unlink(missing_ok=True)
-                        except OSError:
-                            st.error("Temporary restore upload could not be removed; inspect the private data-directory parent.")
 
     with st.expander("Action history"):
         try:
