@@ -104,9 +104,16 @@ class NftablesFirewallProvisioner:
                 family = "ip" if address.version == 4 else "ip6"
                 expected.add(f"{family} daddr {address.compressed} tcp dport {proxy_port}")
             accept_lines = [line.strip() for line in output.splitlines() if " accept" in line]
-            proxy_lines = {line for line in accept_lines if "tcp dport" in line}
-            if proxy_lines != expected:
-                raise FirewallProvisionError("firewall proxy allow rules do not exactly match the approved endpoints")
+            proxy_lines = [line for line in accept_lines if "tcp dport" in line]
+            if len(proxy_lines) != len(expected):
+                raise FirewallProvisionError("firewall has an unexpected number of proxy ACCEPT rules")
+            for rule in expected:
+                matches = [
+                    line for line in proxy_lines
+                    if line.startswith(rule) and line[len(rule):].strip() in {"accept", "ct state new accept"}
+                ]
+                if len(matches) != 1:
+                    raise FirewallProvisionError("firewall proxy allow rules do not exactly match approved endpoints")
             allowed_fragments = (
                 'iifname "lo"', 'oifname "lo"', "ct state established,related",
                 "ip6 saddr fe80::/10 icmpv6 type", "ip6 saddr fe80::/10 ip6 daddr ff02::/16 icmpv6 type",
