@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-PERSONAL-P79  
 **Date:** 2026-11-17  
 **Branch:** `apaa-personal-edition-foundation`  
-**Status:** Core safety implementation committed; exact-head CI pending. Adapter/UI integration is gated on P78.  
+**Status:** Core safety implementation and first Personal Edition Owner UI integration committed; latest exact-head CI pending. External adapter workflows remain gated on P78.  
 **PR:** #13 — Draft / Open / Unmerged.
 
 ## Scope
@@ -19,6 +19,8 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 - `ExecutionGateway` can be configured with the durable ledger. When configured, every handler dispatch requires a validated `TenantKey` and an idempotency key.
 - Existing one-time approval receipts remain action-, payload-, tenant- and session-bound. Receipt consumption occurs before dispatch and cannot be replayed.
 - The gateway snapshots the caller's JSON payload before approval verification and passes only that private snapshot to the handler, preventing post-approval mutation of the caller-owned mapping from changing the dispatched request. Non-finite/non-JSON payloads fail closed.
+- The existing project-create UI now configures the durable idempotency ledger. Each reviewed project draft receives a fresh random request key; the gateway requires the validated Owner tenant and key, and a repeated key cannot create a second project.
+- Memory, knowledge, conversation, preference and checkpoint UI mutations now consume fresh one-time `ApprovalAuthority` receipts bound to action + exact JSON payload + Owner tenant + current session. The mutation operation receives only the approved private JSON snapshot. Audit intent is still persisted before the operation; missing, invalid, expired, replayed or mismatched receipts block dispatch.
 - Durable intent audit is written before the handler. Audit failure blocks dispatch.
 - A cancellation callback is checked immediately before the handler starts. A pre-dispatch cancellation becomes terminal and cannot be replayed. A synchronous handler already in progress is not represented as cancellable.
 - Handler exceptions and post-side-effect audit/ledger failures are treated as uncertain outcomes, not safe-to-retry failures.
@@ -27,15 +29,14 @@ Implement the safety boundary for future Owner-approved mutations: exact action 
 
 ## Important limitations
 
-- This is a generic dispatch/storage safety primitive. It does not yet register new project/file/email/YouTube mutation handlers.
-- P78's bounded read-only adapters are not present on the current branch. P79 must not be treated as a complete end-to-end user workflow until P78 is implemented and its source provenance and permissions are tested.
+- This is a generic dispatch/storage safety primitive. The current project-create handler is wired through the durable ledger, and existing local memory/knowledge/conversation/preference/checkpoint UI mutations use the payload-bound receipt wrapper. It does not register new file/email/YouTube mutation handlers.
+- P78's bounded read-only adapters are not present on the current branch. Browser/file/YouTube research and subsequent mutation workflows are therefore not available. P79 recovery records can be inspected through the storage API, but a dedicated Owner UI for reconciling uncertain external outcomes remains outstanding.
 - The current cancellation contract is pre-dispatch only. Long-running external operations require adapter-specific cooperative cancellation and remote outcome reconciliation.
 - A local SQLite ledger protects against accidental duplicate dispatch and process restart; it is not an external anti-tamper anchor against an attacker controlling the same OS account.
 
 ## Verification
 
-- Exact-head GitHub Actions for the P79 commits is pending/not yet observed.
-- Do not mark P79 automated PASS until all workflow jobs for the final exact head pass.
+- Exact-head GitHub Actions run [#160](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44019306207) passed for its tested head `1429ee69aa637b0927e0ef234ab0e6432e4d8b5d` (Python, compile, dependency audit and responsive browser smoke). The subsequent Owner UI receipt and project idempotency integration commits are newer and require a fresh exact-head run.
 - P78 remains a prerequisite for end-to-end mutation workflows.
 
 ## Safety
