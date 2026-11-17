@@ -45,7 +45,7 @@ Use only the existing explicitly gated real-host qualification harness on a disp
 Existing code coverage inspected on the P74 base:
 - The disposable-host harness has direct UDP/TCP DNS, IPv4/IPv6 TCP, IPv4/IPv6 UDP/443 probes, dual-stack proxy preflight, packet capture, and proxy-outage/no-direct-fallback checks.
 - Unit tests cover mixed public/private DNS answers, DNS rebinding to a private answer, and connected-peer mismatch against the pinned address.
-- Explicit disposable-host probes for private, link-local, loopback, and metadata destinations are still missing from the host harness.
+- Added explicit disposable-host probes for IPv4 private (10.0.0.1), IPv4 link-local metadata (169.254.169.254), IPv6 unique-local (fd00::1), and IPv6 metadata (fd00:ec2::254) destinations. These are code-complete but remain UNEXECUTED until the gated disposable-host run.
 - The harness has NOT been run for this BCS-05 head. It requires an Owner-approved HTTPS test origin; the workflow's example.com default is not treated as authorization.
 
 Required negative probes:
