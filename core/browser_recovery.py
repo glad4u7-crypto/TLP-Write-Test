@@ -101,6 +101,23 @@ class SQLiteBrowserRecoveryLedger:
                 db.execute("""CREATE TRIGGER IF NOT EXISTS browser_history_no_delete
                     BEFORE DELETE ON browser_job_history
                     BEGIN SELECT RAISE(ABORT, 'action history is append-only'); END""")
+                db.execute("""CREATE TABLE IF NOT EXISTS browser_approval_correlations (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id TEXT NOT NULL UNIQUE,
+                    approval_ref TEXT NOT NULL CHECK(length(approval_ref)=64),
+                    owner_ref TEXT NOT NULL CHECK(length(owner_ref)=64),
+                    session_ref TEXT NOT NULL CHECK(length(session_ref)=64),
+                    request_digest TEXT NOT NULL CHECK(length(request_digest)=64),
+                    occurred_at REAL NOT NULL,
+                    previous_hash TEXT NOT NULL CHECK(length(previous_hash)=64),
+                    entry_hash TEXT NOT NULL UNIQUE CHECK(length(entry_hash)=64)
+                )""")
+                db.execute("""CREATE TRIGGER IF NOT EXISTS browser_approval_no_update
+                    BEFORE UPDATE ON browser_approval_correlations
+                    BEGIN SELECT RAISE(ABORT, 'approval correlations are append-only'); END""")
+                db.execute("""CREATE TRIGGER IF NOT EXISTS browser_approval_no_delete
+                    BEFORE DELETE ON browser_approval_correlations
+                    BEGIN SELECT RAISE(ABORT, 'approval correlations are append-only'); END""")
                 # One-time migration: existing jobs predate the history table.
                 # Seed a current-state snapshot; prior transitions cannot be reconstructed.
                 marker = db.execute(
@@ -218,7 +235,126 @@ class SQLiteBrowserRecoveryLedger:
             latest = latest_by_job.get(job_id)
             if latest is None or latest[:3] != (state, updated_at, outcome_code):
                 raise RecoveryLedgerError("action history does not match the current job ledger state")
+        SQLiteBrowserRecoveryLedger._verify_approval_correlations_connection(db)
         return previous_hash
+
+    @staticmethod
+    def _approval_correlation_hash(previous_hash: str, job_id: str,
+                                   approval_ref: str, owner_ref: str,
+                                   session_ref: str, request_digest: str,
+                                   occurred_at: float) -> str:
+        payload = {
+            "job_id": job_id,
+            "approval_ref": approval_ref,
+            "owner_ref": owner_ref,
+            "session_ref": session_ref,
+            "request_digest": request_digest,
+            "occurred_at": occurred_at,
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=True, allow_nan=False).encode("ascii")
+        return hashlib.sha256(previous_hash.encode("ascii") + b"\\n" + canonical).hexdigest()
+
+    @staticmethod
+    def _verify_approval_correlations_connection(db: sqlite3.Connection) -> str:
+        previous_hash = "0" * 64
+        rows = db.execute(
+            """SELECT sequence,job_id,approval_ref,owner_ref,session_ref,
+                      request_digest,occurred_at,previous_hash,entry_hash
+               FROM browser_approval_correlations ORDER BY sequence"""
+        ).fetchall()
+        for expected_sequence, row in enumerate(rows, start=1):
+            (sequence, job_id, approval_ref, owner_ref, session_ref,
+             request_digest, occurred_at, stored_previous, stored_hash) = row
+            if sequence != expected_sequence or stored_previous != previous_hash:
+                raise RecoveryLedgerError("approval correlation sequence or hash chain is broken")
+            if any(type(value) is not str or not re.fullmatch(r"[0-9a-f]{64}", value)
+                   for value in (approval_ref, owner_ref, session_ref, request_digest)):
+                raise RecoveryLedgerError("approval correlation contains malformed references")
+            expected_hash = SQLiteBrowserRecoveryLedger._approval_correlation_hash(
+                previous_hash, job_id, approval_ref, owner_ref, session_ref,
+                request_digest, occurred_at,
+            )
+            if not isinstance(stored_hash, str) or not hmac.compare_digest(expected_hash, stored_hash):
+                raise RecoveryLedgerError("approval correlation integrity verification failed")
+            job = db.execute(
+                "SELECT request_digest FROM browser_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+            if job is None or job[0] != request_digest:
+                raise RecoveryLedgerError("approval correlation does not match a claimed browser job")
+            previous_hash = stored_hash
+        return previous_hash
+
+    def record_approval_correlation(
+        self, job_id: str, *, approval_ref: str, owner_ref: str,
+        session_ref: str, request_digest: str,
+    ) -> str:
+        """Persist opaque Owner/approval/session references against an already-claimed job."""
+        self._validate_job(job_id, request_digest)
+        for label, value in (
+            ("approval_ref", approval_ref), ("owner_ref", owner_ref),
+            ("session_ref", session_ref),
+        ):
+            if type(value) is not str or not re.fullmatch(r"[0-9a-f]{64}", value):
+                raise ValueError(f"{label} must be a lowercase SHA-256 reference")
+        now = self._now()
+        try:
+            with self._lock, self._database() as db:
+                self._verify_history_connection(db)
+                job = db.execute(
+                    "SELECT request_digest,state FROM browser_jobs WHERE job_id=?", (job_id,)
+                ).fetchone()
+                if job is None or job[0] != request_digest or job[1] != "accepted":
+                    raise RecoveryLedgerError("approval correlation requires the matching newly accepted job")
+                previous_row = db.execute(
+                    "SELECT entry_hash FROM browser_approval_correlations ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous_row[0] if previous_row else "0" * 64
+                entry_hash = self._approval_correlation_hash(
+                    previous_hash, job_id, approval_ref, owner_ref, session_ref,
+                    request_digest, now,
+                )
+                db.execute(
+                    """INSERT INTO browser_approval_correlations
+                       (job_id,approval_ref,owner_ref,session_ref,request_digest,
+                        occurred_at,previous_hash,entry_hash)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    (job_id, approval_ref, owner_ref, session_ref, request_digest,
+                     now, previous_hash, entry_hash),
+                )
+                return entry_hash
+        except RecoveryLedgerError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise RecoveryLedgerError("approval correlation already exists or violates ledger integrity") from exc
+        except sqlite3.Error as exc:
+            raise RecoveryLedgerError("approval correlation could not be persisted") from exc
+
+    def list_approval_correlations(self, job_id: str | None = None) -> list[dict[str, object]]:
+        """Return verified opaque approval references; never expose receipt nonces or identities."""
+        if job_id is not None and (type(job_id) is not str or not 8 <= len(job_id) <= 128):
+            raise ValueError("job ID is invalid")
+        try:
+            with self._database() as db:
+                self._verify_history_connection(db)
+                if job_id is None:
+                    rows = db.execute(
+                        """SELECT job_id,approval_ref,owner_ref,session_ref,
+                                  request_digest,occurred_at,entry_hash
+                           FROM browser_approval_correlations ORDER BY sequence"""
+                    ).fetchall()
+                else:
+                    rows = db.execute(
+                        """SELECT job_id,approval_ref,owner_ref,session_ref,
+                                  request_digest,occurred_at,entry_hash
+                           FROM browser_approval_correlations WHERE job_id=?""",
+                        (job_id,),
+                    ).fetchall()
+            names = ("job_id","approval_ref","owner_ref","session_ref",
+                     "request_digest","occurred_at","entry_hash")
+            return [dict(zip(names, row)) for row in rows]
+        except sqlite3.Error as exc:
+            raise RecoveryLedgerError("approval correlations could not be read") from exc
 
     def verify_history(self) -> str:
         """Verify the append-only action-state history and return its head hash."""
@@ -321,6 +457,7 @@ class SQLiteBrowserRecoveryLedger:
                     "browser_jobs": {"job_id", "request_digest", "state", "created_at", "updated_at", "session_id", "outcome_code"},
                     "browser_control": {"key", "value", "updated_at"},
                     "browser_job_history": {"sequence", "job_id", "state", "occurred_at", "outcome_code", "previous_hash", "entry_hash"},
+                    "browser_approval_correlations": {"sequence", "job_id", "approval_ref", "owner_ref", "session_ref", "request_digest", "occurred_at", "previous_hash", "entry_hash"},
                 }
                 for table, required in required_columns.items():
                     columns = {row[1] for row in destination_db.execute(
@@ -331,7 +468,8 @@ class SQLiteBrowserRecoveryLedger:
                 triggers = {row[0] for row in destination_db.execute(
                     "SELECT name FROM sqlite_master WHERE type='trigger'"
                 ).fetchall()}
-                if not {"browser_history_no_update", "browser_history_no_delete"}.issubset(triggers):
+                if not {"browser_history_no_update", "browser_history_no_delete",
+                        "browser_approval_no_update", "browser_approval_no_delete"}.issubset(triggers):
                     raise RecoveryLedgerError("restore source is missing append-only history protections")
             finally:
                 source_db.close()
