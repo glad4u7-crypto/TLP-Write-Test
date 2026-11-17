@@ -492,3 +492,56 @@ def test_redirect_authorization_rejects_unapproved_current_origin():
             resolver=lambda host: calls.append(host) or ["93.184.216.34"],
         )
     assert calls == []
+
+
+class _FakeRawSocket:
+    def __init__(self, peer):
+        self.peer = peer
+        self.closed = False
+
+    def getpeername(self):
+        return (self.peer, 443)
+
+    def close(self):
+        self.closed = True
+
+
+class _RecordingTLSContext:
+    verify_mode = ssl.CERT_REQUIRED
+    check_hostname = True
+    minimum_version = ssl.TLSVersion.TLSv1_2
+    maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+
+    def __init__(self):
+        self.server_names = []
+
+    def wrap_socket(self, raw, *, server_hostname):
+        self.server_names.append(server_hostname)
+        return object()
+
+
+def test_pinned_connection_uses_logical_hostname_for_tls_sni(monkeypatch):
+    destination = PinnedDestination("example.com", 443, ("93.184.216.34",))
+    context = _RecordingTLSContext()
+    connection = PinnedHTTPSConnection(destination, context=context)
+    raw = _FakeRawSocket("93.184.216.34")
+    monkeypatch.setattr(connection, "_create_connection", lambda address, timeout: raw)
+
+    connection.connect()
+
+    assert context.server_names == ["example.com"]
+    assert connection.sock is not None
+
+
+def test_pinned_connection_rejects_socket_peer_outside_pin_set(monkeypatch):
+    destination = PinnedDestination("example.com", 443, ("93.184.216.34",))
+    context = _RecordingTLSContext()
+    connection = PinnedHTTPSConnection(destination, context=context)
+    raw = _FakeRawSocket("1.1.1.1")
+    monkeypatch.setattr(connection, "_create_connection", lambda address, timeout: raw)
+
+    with pytest.raises(BrowserExecutionError, match="peer differs"):
+        connection.connect()
+
+    assert raw.closed is True
+    assert context.server_names == []
