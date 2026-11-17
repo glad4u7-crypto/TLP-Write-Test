@@ -94,6 +94,14 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         ],
     }
 
+
+
+def _host_resolver_rules(proxy_ip: str) -> str:
+    address = ipaddress.ip_address(proxy_ip).compressed
+    # Keep target DNS fail-closed while explicitly exempting the numeric
+    # proxy endpoint so Chromium can establish its HTTP CONNECT tunnel.
+    return f"MAP * ~NOTFOUND, EXCLUDE {address}"
+
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
 ) -> dict[str, object]:
@@ -655,7 +663,7 @@ def main() -> int:
                 "--enable-logging=stderr",
                 "--v=1",
                 "--disable-http2",
-                "--host-resolver-rules=MAP * ~NOTFOUND",
+                "--host-resolver-rules=" + _host_resolver_rules(proxy_ip),
                 "--disable-background-networking",
                 "--disable-component-update",
                 "--disable-sync",
@@ -732,7 +740,7 @@ def main() -> int:
                 "--disable-setuid-sandbox",
                 "--disable-breakpad",
                 "--disable-http2",
-                "--host-resolver-rules=MAP * ~NOTFOUND",
+                "--host-resolver-rules=" + _host_resolver_rules(proxy_ip),
                 "--disable-background-networking", "--disable-component-update",
                 "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
                 "--proxy-bypass-list=<-loopback>", "--dump-dom", target.url,
