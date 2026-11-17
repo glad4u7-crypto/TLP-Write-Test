@@ -61,6 +61,10 @@ def test_owner_login_unlocks_runtime_and_logout_clears_capabilities(tmp_path, mo
     assert "pending_project" not in app.session_state
     assert "apaa_local_authenticated_at" not in app.session_state
     assert any("APAA is locked" in item.value for item in app.warning)
+    audit = LocalOwnerAuthStore(tmp_path / ".apaa_personal" / "owner-auth.sqlite3")
+    event_types = [event for event, _ in audit.list_events()]
+    assert "login_success" in event_types
+    assert "logout" in event_types
 
 
 def test_idle_session_expiry_clears_pending_approval_and_owner_runtime(tmp_path, monkeypatch):
