@@ -129,7 +129,7 @@ def test_tls_rejects_certificate_hostname_mismatch(tmp_path):
         tmp_path,
         expired=False,
         server_hostname="wrong.example.test",
-        reason="hostname mismatch",
+        reason="[Hh]ostname mismatch",
     )
 
 
