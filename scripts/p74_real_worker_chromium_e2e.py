@@ -326,7 +326,7 @@ def main() -> int:
             names = rule.get("names", []) if isinstance(rule, dict) else []
             if any(name in {"socket", "clone", "clone3", "unshare", "setns", "chroot", "ptrace"} for name in names):
                 relevant_syscalls.append(rule)
-        evidence["seccomp_profile"] = {
+        evidence["seccomp_profile_summary"] = {
             "filename": Path(seccomp_profile).name,
             "sha256": hashlib.sha256(seccomp_bytes).hexdigest(),
             "default_action": seccomp_document.get("defaultAction"),
