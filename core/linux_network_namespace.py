@@ -1,9 +1,4 @@
-"""Linux network-namespace and veth provisioner.
-
-Provisioning is an explicit privileged host operation. There is no implicit
-fallback to the host network namespace. Tests inject a runner; real-host
-qualification is separate and must be performed on a disposable Linux host.
-"""
+"""Linux network-namespace and veth provisioner with fail-closed rollback."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,9 +28,11 @@ class NamespacePlan:
     worker_ipv6: str
 
     def __post_init__(self):
-        for value in (self.name, self.host_veth, self.worker_veth):
-            if not _NAME.fullmatch(value):
-                raise ValueError("namespace and interface names must be short safe identifiers")
+        names = (self.name, self.host_veth, self.worker_veth)
+        if any(type(value) is not str or not _NAME.fullmatch(value) for value in names):
+            raise ValueError("namespace and interface names must be short safe identifiers")
+        if len(set(names)) != 3:
+            raise ValueError("namespace, host veth and worker veth names must be distinct")
         for host, worker, version, prefix in (
             (self.host_ipv4, self.worker_ipv4, 4, 30),
             (self.host_ipv6, self.worker_ipv6, 6, 64),
@@ -45,12 +42,17 @@ class NamespacePlan:
                 raise ValueError("host and worker addresses must share the expected IP subnet")
             if h.network.prefixlen != prefix:
                 raise ValueError("veth subnet must use the required point-to-point prefix")
-            if h.ip == w.ip or h.ip.is_loopback or w.ip.is_loopback or h.ip.is_multicast or w.ip.is_multicast:
+            if (h.ip == w.ip or h.ip not in h.network or w.ip not in w.network
+                    or h.ip.is_unspecified or w.ip.is_unspecified
+                    or h.ip.is_loopback or w.ip.is_loopback
+                    or h.ip.is_multicast or w.ip.is_multicast):
                 raise ValueError("invalid point-to-point addresses")
 
 
 class LinuxNetworkNamespaceProvisioner:
     def __init__(self, *, runner: Runner = subprocess.run, require_root: bool = True, timeout_seconds: int = 10):
+        if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60:
+            raise ValueError("timeout_seconds is invalid")
         self._runner = runner
         self._require_root = require_root
         self._timeout = timeout_seconds
