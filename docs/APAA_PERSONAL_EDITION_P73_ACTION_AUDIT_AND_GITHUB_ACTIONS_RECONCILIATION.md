@@ -90,3 +90,12 @@ A source review found that the shared UI mutation wrapper supplied the action na
 - Tests cover missing approval, invalid approval type, intent-audit failure, operation failure, completion-audit failure, prohibited actions, and SQLite hash-chain integrity.
 
 This is an additional application-layer approval check, not a replacement for the cryptographic, payload/tenant/session-bound one-time receipts used by the project execution gateway. Owner authentication event history remains a separate local SQLite event table and is not independently tamper-proof.
+
+
+## 6. Final Owner action-history UI verification
+
+- Added a tenant-fingerprint-scoped recent-history reader. It verifies the complete SQLite audit hash chain before returning events for the current Owner.
+- Added an Owner sidebar Action history expander showing only sequence, timestamp, action, result and reason code. Request payloads, page/task content, credentials and secrets are not displayed.
+- Added tamper-detection, payload-exclusion, tenant-scoping and UI visibility tests. The separate Owner authentication event table remains a local convenience log and is not independently tamper-proof.
+- Added an AppTest for actual sidebar passphrase rotation and forced reauthentication.
+- Exact code/test head `b975d14f351bf42d72940fcea54103a2b4b384fe`: [run #112](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44008562833) completed PASS — Python 1,417 passed / 9 skipped, compile PASS, pip-audit no known vulnerabilities, browser smoke 9 passed.
