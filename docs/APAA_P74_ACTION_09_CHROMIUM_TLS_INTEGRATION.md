@@ -29,8 +29,12 @@ These are three independent browser-process tests. Each starts Playwright's Chro
 - [x] Trusted CA installed only into an isolated test trust database.
 - [x] Hostname mismatch and expired-certificate cases use a CA-trusted leaf, so each test isolates the intended validation failure.
 - [x] CI setup includes NSS certificate-store tooling.
+- [x] CI exposes the three Chromium acceptance cases as separate named steps.
+- [x] CI no longer cancels an active run merely because another commit is pushed to the same ref.
 - [ ] Latest GitHub Actions run completes with all three tests passing.
 - [ ] Review CI logs to confirm the browser process actually launched and the expected Chromium error codes were observed.
+
+The workflow runs each Chromium acceptance test independently, then runs the remaining security suite while excluding only this dedicated three-test file. This makes the three browser outcomes individually visible in CI. Concurrency is configured to queue rather than cancel an active run for the same ref.
 
 A test is not accepted merely because it was committed or because Python TLS tests pass. The acceptance state remains pending until GitHub Actions executes these tests successfully on this branch.
 
