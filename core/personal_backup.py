@@ -67,7 +67,7 @@ def _regular_private_file(path: Path, *, label: str, maximum: int) -> os.stat_re
 
 def _sqlite_integrity(path: Path) -> None:
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
         try:
             row = connection.execute("PRAGMA integrity_check").fetchone()
         finally:
@@ -82,7 +82,7 @@ def _snapshot_database(source: Path, destination: Path) -> None:
     _regular_private_file(source, label=source.name, maximum=_MAX_DATABASE_BYTES)
     try:
         source_connection = sqlite3.connect(
-            f"file:{source.as_posix()}?mode=ro", uri=True, timeout=10
+            source.as_uri() + "?mode=ro", uri=True, timeout=10
         )
         destination_connection = sqlite3.connect(destination, timeout=10)
         try:
@@ -177,7 +177,7 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
         return destination
     except PersonalBackupError:
         raise
-    except (OSError, sqlite3.Error, zipfile.BadZipFile, ValueError) as exc:
+    except (OSError, sqlite3.Error, zipfile.BadZipFile, ValueError, RecursionError) as exc:
         raise PersonalBackupError("Personal backup creation failed safely.") from exc
     finally:
         if temporary_archive is not None:
