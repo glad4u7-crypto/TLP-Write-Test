@@ -78,14 +78,20 @@ class LocalOwnerAuthStore:
                         "PRAGMA table_info(local_owner_auth_events)"
                     ).fetchall()
                 }
-                legacy_schema = (
-                    "previous_hash" not in columns or "entry_hash" not in columns
-                )
-                if "previous_hash" not in columns:
+                has_previous_hash = "previous_hash" in columns
+                has_entry_hash = "entry_hash" in columns
+                if has_previous_hash != has_entry_hash:
+                    # A genuine pre-chain database has neither column. A
+                    # partially missing chain column is corruption, not a
+                    # legacy schema that may be silently resealed.
+                    raise ValueError(
+                        "Owner authentication audit schema is partially missing; refusing migration."
+                    )
+                legacy_schema = not has_previous_hash and not has_entry_hash
+                if legacy_schema:
                     db.execute(
                         "ALTER TABLE local_owner_auth_events ADD COLUMN previous_hash TEXT"
                     )
-                if "entry_hash" not in columns:
                     db.execute(
                         "ALTER TABLE local_owner_auth_events ADD COLUMN entry_hash TEXT"
                     )
