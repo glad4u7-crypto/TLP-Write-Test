@@ -443,3 +443,26 @@ CONNECT port spelling is enforced (exactly `:443`, without alternate numeric
 forms). These checks still require exact-head CI and disposable-host execution.
 
 The latest DNS-rebinding and outage-gate changes are queued for exact-head verification.
+
+
+### Critical launch-boundary correction — host Playwright is not the OCI worker
+
+A source audit found that the legacy signed-gate callback used
+`browser_type.launch()` in the host Python process after verifying a separate
+OCI worker's network namespace. That did not place Chromium inside the attested
+worker and could therefore bypass the worker's namespace/firewall boundary.
+The callback now always fails closed with an explicit isolated-backend-required
+error. The separate P01 local Playwright launcher is also disabled by default
+and can be used only through an explicit test/developer opt-in; it is not a
+production action path. The Streamlit app does not expose LiveBrowsingController
+or BrowserExecutionCoordinator as user-facing actions. No public browsing or
+browser dispatch is enabled.
+
+**Remaining integration blocker:** implement and independently qualify a real
+`IsolatedWorkerBackend` that creates the OCI worker, gathers live host evidence,
+starts Playwright/Chromium inside that worker, streams only bounded job results
+back over a private worker channel, and destroys the worker on success, timeout,
+cancellation and crash. A host-local Playwright callback is not an acceptable
+substitute. Android additionally needs a real VpnService/worker transport and
+physical-device bypass qualification; the repository currently has no Android
+application module.
