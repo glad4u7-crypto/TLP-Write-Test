@@ -543,6 +543,7 @@ def main() -> int:
         evidence["tests"]["direct_ipv4_blocked"] = True
         evidence["tests"]["direct_ipv6_blocked"] = True
         evidence["tests"]["direct_udp_443_blocked"] = True
+        evidence["tests"]["direct_udp6_443_blocked"] = True
 
         for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
             proxy_host = f"[{proxy_ip}]" if ":" in proxy_ip else proxy_ip
