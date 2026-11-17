@@ -318,7 +318,7 @@ def test_real_ed25519_and_nftables_evidence_gate_precedes_remote_browser_start()
         signing_key=key,
         key_id="host-inspector-prod",
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
-        expected_proxy_addresses=[PROXY_IP],
+        expected_proxy_addresses=PROXY_IPS,
         cleanup_wait_seconds=2,
     )
 
