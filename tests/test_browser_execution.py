@@ -1,5 +1,6 @@
 import ssl
 import time
+import threading
 
 import pytest
 
@@ -130,7 +131,7 @@ def test_audit_acceptance_failure_blocks_execution():
         raise OSError("audit store unavailable")
 
     coordinator = BrowserExecutionCoordinator(worker, audit=broken_audit)
-    with pytest.raises(OSError, match="audit store"):
+    with pytest.raises(BrowserExecutionError, match="Final browser audit"):
         coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
     assert worker.calls == []
 
@@ -183,3 +184,45 @@ def test_worker_result_must_be_mapping():
     with pytest.raises(BrowserExecutionError, match="invalid result"):
         coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
     assert events[-1]["event"] == "session_closed"
+
+
+
+def test_cancel_terminates_the_unique_worker_session():
+    started = threading.Event()
+    release = threading.Event()
+    terminated = []
+
+    class BlockingWorker(FakeWorker):
+        def run(self, job, *, session_id, cancellation, deadline_monotonic, pinned_destination):
+            started.set()
+            release.wait(timeout=3)
+            cancellation.raise_if_cancelled()
+            return {"text": "unexpected"}
+
+        def terminate(self, session_id):
+            terminated.append(session_id)
+            release.set()
+
+    events = []
+    coordinator = BrowserExecutionCoordinator(BlockingWorker(), audit=events.append)
+    errors = []
+
+    def execute():
+        try:
+            coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert started.wait(timeout=2)
+    assert coordinator.cancel("job_p74_123456") is True
+    thread.join(timeout=3)
+    assert not thread.is_alive()
+    assert len(terminated) == 1
+    assert terminated[0] != "job_p74_123456"
+    assert len(errors) == 1
+    assert isinstance(errors[0], BrowserCancelled)
+    assert [event["event"] for event in events] == [
+        "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
+    ]
