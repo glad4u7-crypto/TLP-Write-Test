@@ -1,5 +1,6 @@
 """Streamlit AppTest coverage for approval and per-session isolation."""
 from pathlib import Path
+import re
 
 from streamlit.testing.v1 import AppTest
 
@@ -46,10 +47,10 @@ def test_streamlit_project_creation_requires_review_then_explicit_confirm(
     _prepare_project(app)
 
     assert registry.list_projects() == []
-    assert app.session_state["pending_project"] == {
-        "name": "P06 UI test",
-        "description": "Approval integration test",
-    }
+    pending = app.session_state["pending_project"]
+    assert pending["name"] == "P06 UI test"
+    assert pending["description"] == "Approval integration test"
+    assert re.fullmatch(r"[0-9a-f]{48}", pending["idempotency_key"])
 
     _click(app, "Confirm and create project")
 
@@ -146,10 +147,10 @@ def test_streamlit_replacing_reviewed_details_confirms_only_latest_payload(
     app.text_area[0].set_value("Only these reviewed details may be created")
     _click(app, "Review project details")
 
-    assert app.session_state["pending_project"] == {
-        "name": "Latest draft",
-        "description": "Only these reviewed details may be created",
-    }
+    pending = app.session_state["pending_project"]
+    assert pending["name"] == "Latest draft"
+    assert pending["description"] == "Only these reviewed details may be created"
+    assert re.fullmatch(r"[0-9a-f]{48}", pending["idempotency_key"])
     assert registry.list_projects() == []
 
     _click(app, "Confirm and create project")
