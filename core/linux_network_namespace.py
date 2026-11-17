@@ -82,10 +82,10 @@ class LinuxNetworkNamespaceProvisioner:
             veth_created = True
             self._run(["ip", "link", "set", plan.worker_veth, "netns", plan.name])
             self._run(["ip", "addr", "add", plan.host_ipv4, "dev", plan.host_veth])
-            self._run(["ip", "-6", "addr", "add", plan.host_ipv6, "dev", plan.host_veth])
+            self._run(["ip", "-6", "addr", "add", plan.host_ipv6, "dev", plan.host_veth, "nodad"])
             self._run(["ip", "link", "set", plan.host_veth, "up"])
             self._run(["ip", "netns", "exec", plan.name, "ip", "addr", "add", plan.worker_ipv4, "dev", plan.worker_veth])
-            self._run(["ip", "netns", "exec", plan.name, "ip", "-6", "addr", "add", plan.worker_ipv6, "dev", plan.worker_veth])
+            self._run(["ip", "netns", "exec", plan.name, "ip", "-6", "addr", "add", plan.worker_ipv6, "dev", plan.worker_veth, "nodad"])
             self._run(["ip", "netns", "exec", plan.name, "ip", "link", "set", "lo", "up"])
             self._run(["ip", "netns", "exec", plan.name, "ip", "link", "set", plan.worker_veth, "up"])
             gateway4 = str(ipaddress.ip_interface(plan.host_ipv4).ip)
