@@ -6,6 +6,8 @@ import ipaddress
 import socket
 from typing import Callable, Sequence
 
+from core.browser_security import canonicalize_https_url
+
 
 class PinnedEgressError(RuntimeError):
     pass
@@ -18,17 +20,23 @@ class PinnedDestination:
     addresses: tuple[str, ...]
 
     def __post_init__(self):
-        if not self.hostname or type(self.port) is not int or not 1 <= self.port <= 65535:
+        if type(self.hostname) is not str or type(self.port) is not int or not 1 <= self.port <= 65535:
             raise ValueError("invalid pinned destination")
+        try:
+            canonical = canonicalize_https_url(f"https://{self.hostname}/").hostname
+        except ValueError as exc:
+            raise ValueError("pinned destination hostname is invalid") from exc
+        if canonical != self.hostname:
+            raise ValueError("pinned destination hostname must be canonical lowercase IDNA")
         if not self.addresses or len(self.addresses) > 16:
             raise ValueError("pinned destination must contain bounded IP answers")
-        canonical = []
+        canonical_addresses = []
         for value in self.addresses:
             address = ipaddress.ip_address(value)
             if not _public_unicast(address):
                 raise ValueError("pinned destination contains a non-public address")
-            canonical.append(address.compressed)
-        if len(set(canonical)) != len(canonical):
+            canonical_addresses.append(address.compressed)
+        if len(set(canonical_addresses)) != len(canonical_addresses):
             raise ValueError("duplicate pinned addresses are not accepted")
 
 
@@ -50,7 +58,10 @@ def resolve_and_pin(hostname: str, port: int, *, resolver: Resolver = socket.get
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("port is invalid")
     try:
-        records = resolver(hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+        canonical_hostname = canonicalize_https_url(f"https://{hostname}/").hostname
+        records = resolver(canonical_hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+    except ValueError as exc:
+        raise ValueError("hostname is invalid") from exc
     except OSError as exc:
         raise PinnedEgressError("DNS resolution failed") from exc
     if not records or len(records) > 64:
@@ -58,17 +69,23 @@ def resolve_and_pin(hostname: str, port: int, *, resolver: Resolver = socket.get
     addresses = []
     for record in records:
         try:
-            address = ipaddress.ip_address(record[4][0])
+            family, socktype, protocol, _canonical, sockaddr = record
+            address = ipaddress.ip_address(sockaddr[0])
+            answer_port = sockaddr[1]
         except (IndexError, TypeError, ValueError) as exc:
-            raise PinnedEgressError("DNS returned an invalid address") from exc
+            raise PinnedEgressError("DNS returned an invalid address record") from exc
+        expected_family = socket.AF_INET if address.version == 4 else socket.AF_INET6
+        if family != expected_family or socktype != socket.SOCK_STREAM or protocol not in (0, socket.IPPROTO_TCP):
+            raise PinnedEgressError("DNS returned an unexpected address family or transport")
+        if answer_port != port:
+            raise PinnedEgressError("DNS returned an unexpected destination port")
         if not _public_unicast(address):
-            # Reject the complete answer set; never silently discard a private answer.
             raise PinnedEgressError("DNS answer set contains a blocked address")
         addresses.append(address.compressed)
     unique = tuple(dict.fromkeys(addresses))
     if not unique:
         raise PinnedEgressError("DNS returned no usable addresses")
-    return PinnedDestination(hostname=hostname, port=port, addresses=unique)
+    return PinnedDestination(hostname=canonical_hostname, port=port, addresses=unique)
 
 
 def connect_pinned(
@@ -85,11 +102,13 @@ def connect_pinned(
     """
     if address not in destination.addresses:
         raise PinnedEgressError("dial target is not part of the pinned DNS answer set")
+    if type(timeout) not in (int, float) or not 0 < timeout <= 30:
+        raise ValueError("dial timeout is outside supported bounds")
     parsed = ipaddress.ip_address(address)
     family = socket.AF_INET if parsed.version == 4 else socket.AF_INET6
     sock = socket_factory(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
     try:
-        sock.settimeout(timeout)
+        sock.settimeout(float(timeout))
         target = (parsed.compressed, destination.port) if parsed.version == 4 else (parsed.compressed, destination.port, 0, 0)
         sock.connect(target)
         peer = sock.getpeername()[0]
