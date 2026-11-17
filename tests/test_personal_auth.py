@@ -81,3 +81,39 @@ def test_owner_auth_rejects_symlink_database(tmp_path):
     link.symlink_to(real)
     with pytest.raises(ValueError, match="symlinks"):
         LocalOwnerAuthStore(link)
+
+
+def test_owner_auth_security_events_are_payload_free_and_persisted(tmp_path):
+    store = _store(tmp_path)
+    store.configure("correct horse battery staple", "correct horse battery staple")
+    assert store.authenticate("wrong password", now=1000) is False
+    assert store.authenticate("correct horse battery staple", now=1001) is True
+    assert store.change_passphrase(
+        "wrong password", "a replacement owner passphrase",
+        "a replacement owner passphrase", now=1002,
+    ) is False
+    assert store.change_passphrase(
+        "correct horse battery staple", "a replacement owner passphrase",
+        "a replacement owner passphrase", now=1003,
+    ) is True
+    reopened = _store(tmp_path)
+    events = reopened.list_events()
+    assert events == (
+        ("passphrase_changed", 1003),
+        ("passphrase_change_failed", 1002),
+        ("login_success", 1001),
+        ("login_failed", 1000),
+        ("owner_setup", events[-1][1]),
+    )
+    raw = reopened.path.read_bytes()
+    assert b"correct horse battery staple" not in raw
+    assert b"wrong password" not in raw
+    assert b"replacement owner passphrase" not in raw
+
+
+def test_owner_auth_event_api_rejects_unknown_event_and_invalid_limit(tmp_path):
+    store = _store(tmp_path)
+    with pytest.raises(ValueError, match="Unsupported"):
+        store.record_event("password_was_secret")
+    with pytest.raises(ValueError, match="limit"):
+        store.list_events(limit=0)
