@@ -13,8 +13,7 @@ class UIActionAuditError(RuntimeError):
 
 
 def execute_audited_ui_mutation(
-    audit_log: Any, action: str, operation: Callable[[], Any], *,
-    approved: bool = False,
+    audit_log: Any, action: str, approved: bool, operation: Callable[[], Any]
 ) -> Any:
     """Persist intent before a user-confirmed UI mutation and completion after it.
 
