@@ -85,3 +85,15 @@ Automated viewport and Chromium tests are supplemental only. Physical Android A0
 5. Close remaining external protected-key, anti-rollback-anchor, real-host network and operational recovery gates required by the C01 closure checklist.
 
 **Current disposition:** P73 repository implementation and exact-head automated verification are PASS. S09 C01 remains OPEN / NOT COMPLETE because physical Android, live private HTTPS/OIDC, owner-operated recovery drill, independent key/anti-rollback and real-host review gates remain. C02 remains NOT STARTED.
+
+
+## 6. P74 preparation completed
+
+The following repository documents were added on the Personal Edition branch:
+- [P74 Browser Security Gate Design](APAA_PERSONAL_EDITION_P74_BROWSER_SECURITY_GATE_DESIGN.md) — specifies exact-origin, redirect, DNS rebinding, SSRF, TLS, session isolation, egress, cancellation, upload/download, approval and audit gates. This is a design contract only; Browser execution remains DISABLED.
+- [P74 Android Owner Acceptance Runbook](APAA_PERSONAL_EDITION_P74_ANDROID_ACCEPTANCE_RUNBOOK.md) — defines physical A01–A12 procedures, expected outcomes, evidence requirements and stop conditions. No physical Android tests are claimed as run.
+- [P74 Final Verification Matrix](APAA_PERSONAL_EDITION_P74_FINAL_VERIFICATION_MATRIX.md) — consolidates repository, Android, identity, key custody, anti-rollback and real-host evidence requirements.
+
+These additions complete the preparation/documentation work possible without a physical device, private HTTPS/OIDC environment, independent security reviewer or qualified network host. They do not implement a browser engine, create a native APK, or close C01.
+
+**Updated disposition:** Browser Security design contract = DOCUMENTED; secure Browser implementation = NOT IMPLEMENTED / DISABLED. Android A01–A12 = PROCEDURE READY / NOT RUN. Final verification matrix = DOCUMENTED; final acceptance = OPEN. C01 remains OPEN; C02 remains NOT STARTED.
