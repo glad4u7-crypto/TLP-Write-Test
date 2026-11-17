@@ -2,7 +2,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.attested_browser_runtime import AttestedBrowserRuntime
-from core.browser_inspector import collect_signed_inspector_evidence
+from core.browser_nftables import collect_signed_inspector_evidence
 from core.browser_isolation import validate_worker_profile
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_launcher import (
