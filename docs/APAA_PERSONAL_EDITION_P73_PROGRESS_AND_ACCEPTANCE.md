@@ -3,7 +3,7 @@
 **Checkpoint:** APAA-PERSONAL-P73  
 **Date:** 2026-11-17  
 **Branch:** `apaa-personal-edition-foundation`  
-**Status:** Repository implementation substantially complete; exact-head verification and external acceptance gates remain.  
+**Status:** Repository implementation and exact-head automated verification PASS; physical/external acceptance gates remain.  
 **PR:** #13 — Draft / Open / Unmerged.
 
 ## 1. Implemented repository work
@@ -50,12 +50,14 @@ The dedicated P73 GitHub Actions workflow runs:
 3. complete Python test suite, including owner isolation, approval/replay, durable audit, memory/checkpoint persistence, backup/restore and UI action-audit tests;
 4. Android/desktop Chromium responsive browser smoke tests.
 
-The exact latest-head result must be read from GitHub Actions. A pass on an earlier commit does not certify a later commit. The latest known completed baseline before the UI action-audit integration was:
-- Python suite: 1,373 passed, 9 skipped;
-- dependency audit: no known vulnerabilities found;
-- Chromium smoke: 9 passed.
+**Exact verified PR head:** `5962d0a94fe26ab3eb9db4c56e3c6702039e9611`  
+**GitHub Actions run:** [P73 Verification #43990846404](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/43990846404) — **PASS**.
 
-The final P73 head after the subsequent UI action-audit integration and documentation updates still requires its own completed CI run before a final PASS statement is made.
+- Python compile: PASS.
+- Dependency audit: `pip-audit -r requirements.txt` — no known vulnerabilities found.
+- Complete Python suite: **1,381 passed, 9 skipped**.
+- Android/desktop Chromium smoke: **9 passed**.
+- Both workflow jobs completed successfully on the exact PR head.
 
 ## 3. Android acceptance boundary
 
@@ -82,4 +84,4 @@ Automated viewport and Chromium tests are supplemental only. Physical Android A0
 4. Complete independent review of the redacted evidence and exact tested SHA.
 5. Close remaining external protected-key, anti-rollback-anchor, real-host network and operational recovery gates required by the C01 closure checklist.
 
-**Current disposition:** Repository implementation is substantially complete, but C01 remains OPEN / NOT COMPLETE while external acceptance and exact-head final verification remain. C02 remains NOT STARTED.
+**Current disposition:** P73 repository implementation and exact-head automated verification are PASS. S09 C01 remains OPEN / NOT COMPLETE because physical Android, live private HTTPS/OIDC, owner-operated recovery drill, independent key/anti-rollback and real-host review gates remain. C02 remains NOT STARTED.
