@@ -237,16 +237,20 @@ class SQLiteBrowserRecoveryLedger:
             raise RecoveryLedgerError("backup destination already exists; refusing overwrite") from exc
         os.close(fd)
         try:
-            with self._database() as source:
-                destination_db = sqlite3.connect(target, isolation_level=None)
-                try:
-                    source.backup(destination_db)
-                    result = destination_db.execute("PRAGMA integrity_check").fetchone()
-                    if not result or result[0] != "ok":
-                        raise RecoveryLedgerError("backup SQLite integrity check failed")
-                    self._verify_history_connection(destination_db)
-                finally:
-                    destination_db.close()
+            # sqlite3.Connection.backup() manages its own read snapshot. Do not
+            # wrap the source in _database()/BEGIN IMMEDIATE: a write transaction
+            # on the source can make the online-backup API wait indefinitely.
+            source = self._connect()
+            destination_db = sqlite3.connect(target, isolation_level=None)
+            try:
+                source.backup(destination_db)
+                result = destination_db.execute("PRAGMA integrity_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise RecoveryLedgerError("backup SQLite integrity check failed")
+                self._verify_history_connection(destination_db)
+            finally:
+                destination_db.close()
+                source.close()
             os.chmod(target, 0o600)
             return target
         except Exception:
@@ -262,8 +266,9 @@ class SQLiteBrowserRecoveryLedger:
         if not source_path.is_absolute() or source_path == self.path or source_path.parent != self.path.parent:
             raise ValueError("restore source must be a separate absolute file in the private ledger directory")
         info = source_path.lstat()
-        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
-            raise ValueError("restore source must be an owner-private regular file")
+        if (stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077):
+            raise ValueError("restore source must be an owner-owned private regular file")
         fd, temporary_name = tempfile.mkstemp(prefix=".apaa-restore-", dir=self.path.parent)
         os.close(fd)
         temporary_path = Path(temporary_name)
