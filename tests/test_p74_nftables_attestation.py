@@ -40,7 +40,7 @@ def fixture():
       rules=[
        rule("input",m(src,ip),m("tcp.sport",3128),m("ct.state",{"set":["established","related"]},"in")),
        rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state",{"set":["established","related"]},"in")),
-       rule("output",m(dst,ip),m("tcp.dport",3128)),
+       rule("output",m(dst,ip),m("tcp.dport",3128),m("ct.state","new")),
       ]
       items.extend(rules)
     return {"nftables":items}
@@ -114,3 +114,11 @@ def test_rejects_malformed_rule_or_unknown_match_fields(bad_rule):
     data["nftables"].append({"rule":bad_rule})
     with pytest.raises(NftablesAttestationError):
         attest_nftables_json(json.dumps(data),policy())
+
+
+def test_requires_explicit_conntrack_new_match_for_new_proxy_connections():
+    data=fixture()
+    # The live nft JSON represents "ct state new" as a scalar equality.
+    assert data["nftables"][14]["rule"]["expr"][2] == m("ct.state","new")
+    result=attest_nftables_json(json.dumps(data),policy())
+    assert result.accept_rule_count == 13
