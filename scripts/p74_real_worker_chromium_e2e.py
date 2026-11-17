@@ -164,7 +164,7 @@ def main() -> int:
     runtime = PodmanOCIRuntime(timeout_seconds=30)
     namespace = LinuxNetworkNamespaceProvisioner()
     firewall = NftablesFirewallProvisioner()
-    cgroups = CgroupV2Provisioner(os.environ.get("APAA_P74_CGROUP_ROOT", "/sys/fs/cgroup/apaa"))
+    cgroups = CgroupV2Provisioner("/sys/fs/cgroup/apaa")
 
     try:
         image = _required("APAA_P74_IMAGE_DIGEST")
