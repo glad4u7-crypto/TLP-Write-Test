@@ -11,9 +11,12 @@ from core.attestation_challenge_ledger import SQLiteChallengeLedger
 from core.browser_runtime import build_worker_launch_spec
 from core.browser_isolation import validate_worker_profile
 from core.browser_execution import CancellationToken
+from core.browser_nftables import _expected_dual_stack_rules
 
 
 PROXY_IP = "172.20.0.2"
+PROXY_IPV6 = "fd00::2"
+PROXY_IPS = [PROXY_IP, PROXY_IPV6]
 PROXY = "http://egress-proxy.internal:3128"
 
 
@@ -113,7 +116,7 @@ def make_adapter(monkeypatch, backend=None, *, challenge="a" * 64, challenge_led
         signing_key=key,
         key_id="host-inspector-prod",
         trusted_public_keys={"host-inspector-prod": key.public_key().public_bytes_raw()},
-        expected_proxy_addresses=[PROXY_IP],
+        expected_proxy_addresses=PROXY_IPS,
         challenge_factory=lambda size: challenge,
         challenge_ledger=challenge_ledger,
         cleanup_wait_seconds=2,
@@ -264,18 +267,21 @@ class RealSignedHost:
             "runtime_id": "runtime:real-test-01", "worker_id": "worker:real-test-01",
             "inode": 4026533001, "interface": "eth0",
         }
+        expected_rules = _expected_dual_stack_rules(tuple(sorted(PROXY_IPS)), 3128)
         self.rules = {"nftables": [
             {"metainfo": {"version": "1.0.9", "release_name": "test"}},
-            {"table": {"family": "inet", "name": "filter"}},
-            {"chain": {"family": "inet", "table": "filter", "name": "egress",
+            {"table": {"family": "inet", "name": "apaa"}},
+            {"chain": {"family": "inet", "table": "apaa", "name": "input",
+                       "type": "filter", "hook": "input", "prio": 0, "policy": "drop"}},
+            {"chain": {"family": "inet", "table": "apaa", "name": "output",
                        "type": "filter", "hook": "output", "prio": 0, "policy": "drop"}},
-            {"rule": {"family": "inet", "table": "filter", "chain": "egress", "expr": [
-                {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": "tcp"}},
-                {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": "daddr"}}, "right": PROXY_IP}},
-                {"match": {"op": "==", "left": {"payload": {"protocol": "tcp", "field": "dport"}}, "right": 3128}},
-                {"accept": None},
-            ]}},
         ]}
+        for chain_name, expressions in expected_rules.items():
+            for expression in expressions:
+                self.rules["nftables"].append({"rule": {
+                    "family": "inet", "table": "apaa", "chain": chain_name,
+                    "expr": expression,
+                }})
 
     def read_runtime_attestation(self): return self.runtime
     def read_network_namespace_identity(self): return self.namespace
@@ -321,7 +327,7 @@ def test_real_ed25519_and_nftables_evidence_gate_precedes_remote_browser_start()
     assert result == {"ok": True}
     assert backend.verified_evidence is not None
     assert backend.verified_evidence.firewall.default_egress_policy == "drop"
-    assert backend.verified_evidence.firewall.allowed_proxy_addresses == (PROXY_IP,)
+    assert backend.verified_evidence.firewall.allowed_proxy_addresses == tuple(sorted(PROXY_IPS))
     assert [call[0] for call in backend.calls] == ["provision", "snapshot", "start", "destroy"]
 
 
