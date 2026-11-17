@@ -150,6 +150,14 @@ class PodmanWorkerObserver:
         image_id = inspected.get("Image")
         if type(image_id) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
             raise WorkerObservationError("OCI runtime did not report a canonical immutable image ID")
+        if spec.image.startswith("sha256:") and image_id != spec.image:
+            raise WorkerObservationError("running container image ID differs from the immutable worker spec")
+        if "@sha256:" in spec.image:
+            repo_digests = inspected.get("ImageDigest") or inspected.get("RepoDigests") or []
+            if isinstance(repo_digests, str):
+                repo_digests = [repo_digests]
+            if spec.image not in repo_digests:
+                raise WorkerObservationError("running container repository digest differs from the immutable worker spec")
         return WorkerObservation(
             container_id=container_id,
             host_pid=pid,
