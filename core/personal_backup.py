@@ -141,6 +141,14 @@ def create_personal_backup(data_dir: str | Path, backup_path: str | Path) -> Pat
         security_snapshot = SQLiteSecurityStore(temporary_dir / "security.sqlite3")
         if not security_snapshot.verify_audit_chain():
             raise PersonalBackupError("The durable audit chain is invalid; backup was refused.")
+        # The local Owner login/security-event history is a separate database.
+        # Verify its full hash chain as well before including it in the archive.
+        try:
+            LocalOwnerAuthStore(temporary_dir / "owner-auth.sqlite3").verify_events()
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            raise PersonalBackupError(
+                "The Owner authentication audit chain is invalid; backup was refused."
+            ) from exc
 
         manifest = {
             "format": _FORMAT,
@@ -305,6 +313,13 @@ def restore_personal_backup(
             # Legacy backups predate the local Owner passphrase database. Create
             # an unconfigured store so the Owner must perform first-run setup.
             LocalOwnerAuthStore(stage / "owner-auth.sqlite3")
+        else:
+            try:
+                LocalOwnerAuthStore(stage / "owner-auth.sqlite3").verify_events()
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                raise PersonalBackupError(
+                    "Restored Owner authentication audit chain failed verification."
+                ) from exc
         # Deliberately rotate approval signing material: no pre-restore receipt
         # can be replayed after the recovery boundary.
         load_or_create_approval_signing_key(stage)

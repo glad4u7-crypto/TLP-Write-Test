@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -59,52 +58,9 @@ class LocalOwnerAuthStore:
                 """CREATE TABLE IF NOT EXISTS local_owner_auth_events (
                     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_type TEXT NOT NULL,
-                    occurred_at INTEGER NOT NULL,
-                    previous_hash TEXT,
-                    entry_hash TEXT
+                    occurred_at INTEGER NOT NULL
                 )"""
             )
-            db.execute("BEGIN IMMEDIATE")
-            try:
-                columns = {
-                    row[1] for row in db.execute(
-                        "PRAGMA table_info(local_owner_auth_events)"
-                    ).fetchall()
-                }
-                legacy_schema = (
-                    "previous_hash" not in columns or "entry_hash" not in columns
-                )
-                if "previous_hash" not in columns:
-                    db.execute(
-                        "ALTER TABLE local_owner_auth_events ADD COLUMN previous_hash TEXT"
-                    )
-                if "entry_hash" not in columns:
-                    db.execute(
-                        "ALTER TABLE local_owner_auth_events ADD COLUMN entry_hash TEXT"
-                    )
-                if legacy_schema:
-                    rows = db.execute(
-                        "SELECT event_id, event_type, occurred_at "
-                        "FROM local_owner_auth_events ORDER BY event_id"
-                    ).fetchall()
-                    previous = self._EVENT_GENESIS
-                    for event_id, event_type, occurred_at in rows:
-                        entry = self._event_hash(
-                            previous, int(event_id), str(event_type), int(occurred_at)
-                        )
-                        db.execute(
-                            "UPDATE local_owner_auth_events "
-                            "SET previous_hash=?, entry_hash=? WHERE event_id=?",
-                            (previous, entry, int(event_id)),
-                        )
-                        previous = entry
-                # Never auto-reseal a database that already has the hash-chain
-                # schema: NULL or invalid hashes are corruption, not migration.
-                self._verify_events(db)
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
         self._secure_path(create_parent=False)
 
     def _secure_path(self, *, create_parent: bool) -> None:
@@ -173,57 +129,6 @@ class LocalOwnerAuthStore:
         "logout", "passphrase_changed", "passphrase_change_failed",
     })
 
-    _ALLOWED_EVENTS = frozenset({
-        "owner_setup", "login_success", "login_failed", "login_locked",
-        "logout", "passphrase_changed", "passphrase_change_failed",
-    })
-    _EVENT_GENESIS = "0" * 64
-
-    @staticmethod
-    def _event_hash(previous_hash: str, event_id: int, event_type: str, occurred_at: int) -> str:
-        canonical = json.dumps(
-            {"event_id": event_id, "event_type": event_type,
-             "occurred_at": occurred_at, "previous_hash": previous_hash},
-            sort_keys=True, separators=(",", ":"),
-        ).encode("utf-8")
-        return hashlib.sha256(canonical).hexdigest()
-
-    @classmethod
-    def _verify_events(cls, db: sqlite3.Connection) -> str:
-        previous = cls._EVENT_GENESIS
-        rows = db.execute(
-            "SELECT event_id, event_type, occurred_at, previous_hash, entry_hash "
-            "FROM local_owner_auth_events ORDER BY event_id"
-        ).fetchall()
-        for event_id, event_type, occurred_at, stored_previous, stored_hash in rows:
-            if event_type not in cls._ALLOWED_EVENTS or type(occurred_at) is not int:
-                raise ValueError("Owner authentication audit chain contains an invalid event.")
-            expected = cls._event_hash(previous, int(event_id), str(event_type), int(occurred_at))
-            if stored_previous != previous or not isinstance(stored_hash, str) or not hmac.compare_digest(expected, stored_hash):
-                raise ValueError("Owner authentication audit chain integrity verification failed.")
-            previous = stored_hash
-        return previous
-
-    @classmethod
-    def _append_event(cls, db: sqlite3.Connection, event_type: str, timestamp: int) -> None:
-        cls._verify_events(db)
-        latest = db.execute(
-            "SELECT entry_hash FROM local_owner_auth_events ORDER BY event_id DESC LIMIT 1"
-        ).fetchone()
-        previous = str(latest[0]) if latest else cls._EVENT_GENESIS
-        cursor = db.execute(
-            "INSERT INTO local_owner_auth_events "
-            "(event_type, occurred_at, previous_hash, entry_hash) VALUES (?, ?, ?, ?)",
-            (event_type, timestamp, previous, ""),
-        )
-        event_id = int(cursor.lastrowid)
-        entry = cls._event_hash(previous, event_id, event_type, timestamp)
-        db.execute("UPDATE local_owner_auth_events SET entry_hash=? WHERE event_id=?", (entry, event_id))
-
-    def verify_events(self) -> str:
-        with self._connect() as db:
-            return self._verify_events(db)
-
     def record_event(self, event_type: str, *, occurred_at: int | None = None) -> None:
         """Append a payload-free local authentication security event."""
         if event_type not in self._ALLOWED_EVENTS:
@@ -232,20 +137,16 @@ class LocalOwnerAuthStore:
         if type(timestamp) is not int or timestamp < 0:
             raise ValueError("Owner authentication audit timestamp is invalid.")
         with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            try:
-                self._append_event(db, event_type, timestamp)
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
+            db.execute(
+                "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                (event_type, timestamp),
+            )
 
     def list_events(self, *, limit: int = 100) -> tuple[tuple[str, int], ...]:
         """Return newest payload-free authentication events for local review."""
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("Owner authentication audit limit is invalid.")
         with self._connect() as db:
-            self._verify_events(db)
             rows = db.execute(
                 """SELECT event_type, occurred_at FROM local_owner_auth_events
                    ORDER BY event_id DESC LIMIT ?""",
@@ -282,7 +183,10 @@ class LocalOwnerAuthStore:
                        VALUES (1, ?, ?, 0, 0, ?)""",
                     (salt, verifier, created_at),
                 )
-                self._append_event(db, "owner_setup", created_at)
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("owner_setup", created_at),
+                )
                 db.commit()
             except Exception:
                 db.rollback()
@@ -307,7 +211,10 @@ class LocalOwnerAuthStore:
                     db.commit()
                     return False
                 if current < int(row[3]):
-                    self._append_event(db, "login_locked", current)
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("login_locked", current),
+                    )
                     db.commit()
                     return False
                 actual = self._derive(candidate, bytes(row[0]))
@@ -319,7 +226,10 @@ class LocalOwnerAuthStore:
                            WHERE singleton_id = 1""",
                         (current,),
                     )
-                    self._append_event(db, "login_success", current)
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("login_success", current),
+                    )
                     db.commit()
                     return True
                 failures = int(row[2]) + 1
@@ -330,7 +240,10 @@ class LocalOwnerAuthStore:
                        WHERE singleton_id = 1""",
                     (0 if locked_until else failures, locked_until),
                 )
-                self._append_event(db, "login_locked" if locked_until else "login_failed", current)
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("login_locked" if locked_until else "login_failed", current),
+                )
                 db.commit()
                 return False
             except Exception:
@@ -360,7 +273,10 @@ class LocalOwnerAuthStore:
                     db.commit()
                     return False
                 if current < int(row[3]):
-                    self._append_event(db, "passphrase_change_failed", current)
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("passphrase_change_failed", current),
+                    )
                     db.commit()
                     return False
                 actual = self._derive(current_passphrase if isinstance(current_passphrase, str) else "", bytes(row[0]))
@@ -372,7 +288,10 @@ class LocalOwnerAuthStore:
                            WHERE singleton_id = 1""",
                         (0 if locked_until else failures, locked_until),
                     )
-                    self._append_event(db, "passphrase_change_failed", current)
+                    db.execute(
+                        "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                        ("passphrase_change_failed", current),
+                    )
                     db.commit()
                     return False
                 db.execute(
@@ -380,7 +299,10 @@ class LocalOwnerAuthStore:
                        failed_attempts = 0, locked_until = 0 WHERE singleton_id = 1""",
                     (salt, verifier),
                 )
-                self._append_event(db, "passphrase_changed", current)
+                db.execute(
+                    "INSERT INTO local_owner_auth_events (event_type, occurred_at) VALUES (?, ?)",
+                    ("passphrase_changed", current),
+                )
                 db.commit()
                 return True
             except Exception:
