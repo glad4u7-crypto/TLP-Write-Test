@@ -69,7 +69,7 @@ def test_create_uses_digest_pinned_image_and_hardening_flags():
 
 
 def test_create_uses_dedicated_cgroup_parent_when_supplied():
-    runner = FakeRunner([(0, "b" * 64 + "\\n")])
+    runner = FakeRunner([(0, "b" * 64 + "\n")])
     runtime = PodmanOCIRuntime(runner=runner)
     runtime.create(spec(cgroup_parent="/sys/fs/cgroup/apaa/worker-0001"))
     command = runner.calls[0][0]
