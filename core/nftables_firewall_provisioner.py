@@ -120,7 +120,7 @@ class NftablesFirewallProvisioner:
             )
             # render_ruleset lines begin with 'add rule'; retain the exact rule body.
             expected_accepts = Counter(
-                line[len("add rule inet apaa "):].removesuffix(" accept") + " accept"
+                line.removeprefix("add rule inet apaa input ").removeprefix("add rule inet apaa output ")
                 for line in expected_script.splitlines() if line.startswith("add rule ")
             )
             actual_accepts = _accept_rules(output)
