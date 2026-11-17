@@ -332,10 +332,10 @@ def test_chromium_exec_wrapper_closes_inherited_fds_and_preserves_stdio():
 def test_fd_ownership_crash_pid_and_stack_frames_are_extracted():
     stderr = (
         "[16:16:1117/183349.367321:ERROR:content/browser/network_service_instance_impl.cc:652] "
-        "Network service crashed or was terminated, restarting service.\\n"
-        "Crashing due to FD ownership violation:\\n"
-        "#0 0x55c81044543e <unknown>\\n"
-        "#1 0x55c81043c19c <unknown>\\n"
+        "Network service crashed or was terminated, restarting service.\n"
+        "Crashing due to FD ownership violation:\n"
+        "#0 0x55c81044543e <unknown>\n"
+        "#1 0x55c81043c19c <unknown>\n"
     )
     result = qualification._fd_ownership_crash_identity(stderr)
     assert result["detected"] is True
