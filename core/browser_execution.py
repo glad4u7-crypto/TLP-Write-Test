@@ -19,7 +19,9 @@ from typing import Any, Protocol
 from core.browser_security import (
     BrowserJob,
     BrowserPolicyError,
-    validate_live_browser_job,
+    canonicalize_https_url,
+    validate_browser_job,
+    validate_dns_answers,
 )
 
 
@@ -139,6 +141,7 @@ class BrowserWorker(Protocol):
         session_id: str,
         cancellation: CancellationToken,
         deadline_monotonic: float,
+        pinned_destination: PinnedDestination,
     ) -> Mapping[str, Any]: ...
 
     def terminate(self, session_id: str) -> None: ...
@@ -182,7 +185,7 @@ class BrowserExecutionCoordinator:
             "job_id": job_id,
             "session_id": session_id,
             "detail": detail,
-            "timestamp_monotonic": self._clock(),
+            "timestamp_unix": time.time(),
         }
         self._audit(record)
 
@@ -204,12 +207,23 @@ class BrowserExecutionCoordinator:
     def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
         if self._worker is None:
             raise BrowserExecutionError("No attested isolated worker adapter is configured; execution is disabled.")
-        # validate_live_browser_job enforces mandatory DNS resolution and returns
-        # a pinned destination contract; no unpinned BrowserJob entry is accepted.
+        # Live execution always resolves now, validates every answer, and passes
+        # the exact pin set to the worker.
         try:
-            job, pinned = validate_live_browser_job(raw_job, resolver=resolver)
-        except (BrowserPolicyError, TypeError, ValueError) as exc:
-            raise BrowserExecutionError("Browser job failed live destination validation.") from exc
+            job = validate_browser_job(raw_job)
+            target = canonicalize_https_url(job.url)
+            try:
+                literal = ipaddress.ip_address(target.hostname)
+                answers = [literal.compressed]
+            except ValueError:
+                answers = resolver(target.hostname)
+            pinned = PinnedDestination(
+                hostname=target.hostname,
+                port=target.port,
+                addresses=validate_dns_answers(target.hostname, answers),
+            )
+        except (BrowserPolicyError, TypeError, ValueError, OSError) as exc:
+            raise BrowserExecutionError("Browser job failed live DNS/IP pin validation.") from exc
 
         session_id = job.job_id
         token = CancellationToken()
@@ -227,6 +241,7 @@ class BrowserExecutionCoordinator:
                 session_id=session_id,
                 cancellation=token,
                 deadline_monotonic=deadline,
+                pinned_destination=pinned,
             )
             token.raise_if_cancelled()
             if self._clock() > deadline:
