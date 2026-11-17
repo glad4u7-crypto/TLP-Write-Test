@@ -24,4 +24,7 @@ echo "Keep this terminal session running. Press Ctrl+C to stop APAA."
 exec python -m streamlit run "$ROOT_DIR/app.py" \
   --server.address 127.0.0.1 \
   --server.port "$PORT" \
-  --server.headless true
+  --server.headless true \
+  --server.enableCORS true \
+  --server.enableXsrfProtection true \
+  --browser.gatherUsageStats false
