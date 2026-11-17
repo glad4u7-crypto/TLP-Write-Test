@@ -137,3 +137,11 @@ live ruleset as different from its declared policy. The attestor now requires
 the exact `ct.state == "new"` condition, and its dual-stack fixture/regression
 test models the live JSON representation. The real-host test must be rerun;
 no Chromium or bypass tests ran in #54.
+
+
+Run #58 retained the exact nft JSON and refined the diagnosis: nft 1.0.9
+encodes the scalar new-state condition with operator `in` and right operand
+`"new"` (not `==`). The policy verifier and regression fixture now require
+that exact operator/value pair. The firewall's semantics remain unchanged;
+this only makes the attestor match the actual kernel ruleset representation.
+A further disposable-host run is required to verify the correction.
