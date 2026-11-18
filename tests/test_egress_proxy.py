@@ -144,8 +144,8 @@ def test_proxy_server_serves_loopback_and_fails_closed_for_denied_connect():
         client = socket.create_connection(server.server_address, timeout=2)
         client.settimeout(2)
         client.sendall(
-            b"CONNECT denied.example:443 HTTP/1.1\\r\\n"
-            b"Host: denied.example:443\\r\\n\\r\\n"
+            b"CONNECT denied.example:443 HTTP/1.1\r\n"
+            b"Host: denied.example:443\r\n\r\n"
         )
         response = client.recv(1024)
         assert response.startswith(b"HTTP/1.1 502")
