@@ -81,3 +81,15 @@ def test_owner_launcher_rejects_http_oidc_metadata(tmp_path):
     secrets.write_text(valid_secrets(metadata="http://issuer.example/.well-known/openid-configuration"), encoding="utf-8")
     with pytest.raises(RuntimeError, match="HTTPS"):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
+
+
+def test_owner_launcher_accepts_termux_managed_debian_proot_environment(tmp_path):
+    secrets = tmp_path / "secrets.toml"
+    secrets.write_text(valid_secrets(), encoding="utf-8")
+    proot_env = {
+        "ANDROID_ROOT": "/system",
+        "ANDROID_DATA": "/data",
+        "PREFIX": "/data/data/com.termux/files/usr",
+        "HOME": "/home/apaa",
+    }
+    validate_android_owner_config(environ=proot_env, secrets_path=secrets)
