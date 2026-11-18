@@ -157,3 +157,104 @@ def test_proxy_server_serves_loopback_and_fails_closed_for_denied_connect():
         server.server_close()
         worker.join(timeout=2)
     assert not worker.is_alive()
+
+
+def test_proxy_establishes_authorized_pinned_tunnel_and_relays_bytes():
+    """A permitted CONNECT must dial only the authorized IP and relay opaque bytes."""
+    import socket
+    import threading
+
+    class ReportedPeerSocket:
+        def __init__(self, sock):
+            self.sock = sock
+
+        def getpeername(self):
+            return (PUBLIC, 443)
+
+        def settimeout(self, value):
+            self.sock.settimeout(value)
+
+        def recv(self, size):
+            return self.sock.recv(size)
+
+        def sendall(self, payload):
+            return self.sock.sendall(payload)
+
+        def close(self):
+            self.sock.close()
+
+    policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        resolver=lambda host: (PUBLIC,),
+    )
+    upstream_proxy, upstream_test = socket.socketpair()
+    dialed = []
+
+    def dialer(address, port, timeout):
+        dialed.append((address, port))
+        return ReportedPeerSocket(upstream_proxy)
+
+    proxy = EgressConnectProxy(
+        EgressDestinationAuthorizer(policy),
+        PinnedIPConnector(dialer),
+    )
+    client, server_side = socket.socketpair()
+    worker = threading.Thread(target=proxy.handle_client, args=(server_side,), daemon=True)
+    worker.start()
+    try:
+        client.settimeout(2)
+        upstream_test.settimeout(2)
+        client.sendall(
+            b"CONNECT example.com:443 HTTP/1.1\\r\\n"
+            b"Host: example.com:443\\r\\n\\r\\n"
+        )
+        response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 200 Connection Established")
+        assert dialed == [(PUBLIC, 443)]
+
+        client.sendall(b"client-tls-record")
+        assert upstream_test.recv(1024) == b"client-tls-record"
+        upstream_test.sendall(b"server-tls-record")
+        assert client.recv(1024) == b"server-tls-record"
+    finally:
+        client.close()
+        upstream_test.close()
+        worker.join(timeout=2)
+    assert not worker.is_alive()
+
+
+def test_proxy_returns_bad_gateway_when_all_pinned_upstream_dials_fail():
+    """A proxy connection failure must return 502, never attempt direct fallback."""
+    import socket
+    import threading
+
+    policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        resolver=lambda host: (PUBLIC,),
+    )
+    attempts = []
+
+    def dialer(address, port, timeout):
+        attempts.append((address, port))
+        raise OSError("simulated upstream outage")
+
+    proxy = EgressConnectProxy(
+        EgressDestinationAuthorizer(policy),
+        PinnedIPConnector(dialer),
+    )
+    client, server_side = socket.socketpair()
+    worker = threading.Thread(target=proxy.handle_client, args=(server_side,), daemon=True)
+    worker.start()
+    try:
+        client.settimeout(2)
+        client.sendall(
+            b"CONNECT example.com:443 HTTP/1.1\\r\\n"
+            b"Host: example.com:443\\r\\n\\r\\n"
+        )
+        response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 502 Bad Gateway")
+        assert attempts == [(PUBLIC, 443)]
+    finally:
+        client.close()
+        worker.join(timeout=2)
+    assert not worker.is_alive()
