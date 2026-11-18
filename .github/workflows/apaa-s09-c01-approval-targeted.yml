@@ -1,0 +1,39 @@
+name: APAA S09-C01 Owner approval bridge targeted tests
+
+on:
+  push:
+    branches:
+      - feature/apaa-s09-c01-approval-coordinator-gate
+  pull_request:
+    branches:
+      - feature/apaa-s09-c01-action-history-clean
+
+permissions:
+  contents: read
+
+jobs:
+  owner-approval-bridge:
+    name: Owner approval and recovery integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest cryptography
+      - name: Run Owner approval, browser coordinator and recovery tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_browser_execution.py \
+            tests/test_browser_recovery_integration.py \
+            tests/test_browser_control_coordinator.py \
+            tests/test_attested_browser_runtime.py \
+            tests/test_safety.py
