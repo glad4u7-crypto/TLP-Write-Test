@@ -235,3 +235,13 @@ New helper: `scripts/symbolicate_chromium_fd_evidence.py`; tests: `tests/test_sy
 - P74 now records the exact Debian package version/architecture from the worker and the symbolicator falls back to downloading this exact `chromium-dbgsym` package if debuginfod has no result. It extracts the build-ID debug file and verifies the embedded ELF Build-ID with `eu-readelf` before using `eu-addr2line`. A mismatched or missing debug file is rejected; the downloaded package/debug file is not uploaded.
 - New tests cover exact package URL construction, package extraction, Build-ID verification, symbol resolution, missing symbols and timeout behavior.
 - Exact-head Security CI/P93 validation and a new real OCI run using the package fallback are pending. No symbols have been resolved yet; the next run will determine whether the archive's debug package matches the exact runtime ELF Build-ID.
+
+
+## Exact-build package fallback hardening — 2026-11-18
+
+- Captures the runtime Debian package version and architecture with `dpkg-query` so debug-package lookup cannot guess the version.
+- Tries Debian debuginfod first; when unavailable, downloads the exact `chromium-dbgsym` package from Debian's security-debug pool, with a 100 MB download cap.
+- Verifies the extracted ELF debug file's Build-ID against the runtime Chromium executable before symbolication. The package and extracted debug file stay inside a temporary directory and are not uploaded; only a SHA-256, size, Build-ID and bounded resolved frames are written to sanitized evidence.
+- Exact-head targeted symbolication tests: [run 44221205575](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44221205575) — **PASS**.
+- Exact pinned-source patch/parser validation: [run 44221211676](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44221211676) — **PASS**.
+- Full APAA Security CI on this exact head is still running. Real OCI execution remains intentionally skipped by the workflow's explicit owner gate; this is not a runtime qualification.
