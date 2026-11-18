@@ -152,6 +152,8 @@ def test_fd_disappearing_between_listing_and_readlink_is_ignored(tmp_path):
 @pytest.mark.parametrize(
     ("cmdline", "expected"),
     [
+        (b"/usr/bin/chromium\0--type=crashpad-handler\0", "crashpad-handler"),
+        (b"/usr/bin/chromium\0--type=broker\0", "broker"),
         (b"/usr/bin/chromium\0--type=zygote\0", "zygote"),
         (b"/usr/bin/chromium\0--type=renderer\0", "renderer"),
         (b"/usr/bin/chromium\0--type=gpu-process\0", "gpu"),
