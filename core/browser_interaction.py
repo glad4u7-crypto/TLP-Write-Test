@@ -54,6 +54,8 @@ def _validate_id(value: object, label: str) -> str:
 
 
 def _validate_origin_url(url: object, origins: Sequence[str]) -> str:
+    if type(url) is str and _PROHIBITED_TERMS.search(url):
+        raise InteractionPolicyError("Financial or purchase-related destinations are out of scope.")
     try:
         return validate_destination(url, origins).url
     except (BrowserPolicyError, TypeError) as exc:
