@@ -141,3 +141,32 @@ def test_policy_rejects_non_string_scheme_and_non_callable_resolver():
 def test_policy_rejects_non_string_allowlist_host():
     with pytest.raises(NavigationPolicyError, match="hostname"):
         policy(hosts=(7,))
+
+@pytest.mark.parametrize("url", [
+    " https://example.com/",
+    "https://example.com/has space",
+    "https://example.com/\tpath",
+    "https://example.com:/",
+    "https://exa_mple.com/",
+    "https://[not-an-ipv6-address]/",
+])
+def test_rejects_ambiguous_whitespace_and_malformed_authority(url):
+    with pytest.raises(NavigationPolicyError):
+        policy().validate_url(url)
+
+
+def test_rejects_resolver_returning_string_instead_of_address_collection():
+    p = policy(resolver=lambda host: PUBLIC)
+    with pytest.raises(NavigationPolicyError, match="iterable of IP"):
+        p.validate_url("https://example.com")
+
+
+def test_dns_answers_must_all_be_public_even_when_first_answer_is_public():
+    p = policy(resolver=lambda host: (PUBLIC, "0.0.0.0"))
+    with pytest.raises(NavigationPolicyError, match="private or special-use"):
+        p.validate_url("https://example.com")
+
+
+def test_allowlist_host_normalization_is_case_and_trailing_dot_insensitive():
+    p = policy(hosts=("EXAMPLE.COM.",))
+    assert p.validate_url("https://example.com/") == "https://example.com/"
