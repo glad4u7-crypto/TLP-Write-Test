@@ -243,3 +243,117 @@ def test_blocks_secret_form_controls_and_hidden_targets():
             hidden_intent,
             allowed_origins=["https://example.com"],
         ))
+
+
+from core.browser_interaction import validate_search_intent
+from core.browser_dom_inspector import extract_visible_search_results
+
+
+class FakeResultLink:
+    def __init__(self, href, title, *, visible=True, enabled=True):
+        self.href, self.title = href, title
+        self.visible, self.enabled = visible, enabled
+
+    async def count(self):
+        return 1
+
+    async def is_visible(self):
+        return self.visible
+
+    async def is_enabled(self):
+        return self.enabled
+
+    async def get_attribute(self, name):
+        assert name == "href"
+        return self.href
+
+    async def inner_text(self, timeout):
+        return self.title
+
+
+class FakeResultCard:
+    def __init__(self, link, text, *, visible=True):
+        self.link, self.text, self.visible = link, text, visible
+
+    async def is_visible(self):
+        return self.visible
+
+    def locator(self, selector):
+        assert selector == "a[href]"
+        return FakeLinkCollection([self.link])
+
+    async def inner_text(self, timeout):
+        return self.text
+
+
+class FakeResultsCollection:
+    def __init__(self, cards):
+        self.cards = cards
+
+    async def count(self):
+        return len(self.cards)
+
+    def nth(self, index):
+        return self.cards[index]
+
+
+class FakeSearchPage:
+    def __init__(self, cards, url="https://example.com/search"):
+        self.cards, self.url = cards, url
+
+    def locator(self, selector):
+        assert selector in {".result", "article"}
+        return FakeResultsCollection(self.cards)
+
+
+def make_search_intent():
+    return validate_search_intent({
+        "interaction_id": "search_0001",
+        "page_id": "page_0000001",
+        "origin": "https://example.com/search",
+        "query": "public reports",
+        "filters": [],
+        "max_results": 10,
+    }, allowed_origins=["https://example.com"])
+
+
+def test_extracts_only_visible_same_origin_search_results_and_redacts_pii():
+    page = FakeSearchPage([
+        FakeResultCard(FakeResultLink("/one", "First result"), "First result user@example.com"),
+        FakeResultCard(FakeResultLink("https://offsite.example/two", "Offsite"), "Offsite"),
+        FakeResultCard(FakeResultLink("/hidden", "Hidden"), "Hidden", visible=False),
+    ])
+    results = asyncio.run(extract_visible_search_results(
+        page, make_search_intent(), allowed_origins=["https://example.com"],
+        result_selector=".result",
+    ))
+    assert len(results) == 1
+    assert results[0].title == "First result"
+    assert results[0].url == "https://example.com/one"
+    assert "[redacted-email]" in results[0].snippet
+
+
+def test_search_extraction_rejects_complex_selector_and_unbounded_scan():
+    page = FakeSearchPage([
+        FakeResultCard(FakeResultLink("/one", "One"), "One"),
+        FakeResultCard(FakeResultLink("/two", "Two"), "Two"),
+    ])
+    with pytest.raises(DOMInspectionError):
+        asyncio.run(extract_visible_search_results(
+            page, make_search_intent(), allowed_origins=["https://example.com"],
+            result_selector="div >> text=secret",
+        ))
+    with pytest.raises(DOMInspectionError):
+        asyncio.run(extract_visible_search_results(
+            page, make_search_intent(), allowed_origins=["https://example.com"],
+            result_selector=".result", max_scan=1,
+        ))
+
+
+def test_search_extraction_rejects_cross_origin_page_and_cancels_on_deadline():
+    intent = make_search_intent()
+    with pytest.raises(DOMInspectionError):
+        asyncio.run(extract_visible_search_results(
+            FakeSearchPage([], url="https://evil.example/search"), intent,
+            allowed_origins=["https://example.com"], result_selector=".result",
+        ))
