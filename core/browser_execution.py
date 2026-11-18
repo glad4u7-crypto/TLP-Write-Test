@@ -590,6 +590,7 @@ class BrowserExecutionCoordinator:
             def invoke_worker() -> None:
                 try:
                     self._require_owner_session()
+                    outcome["worker_started"] = True
                     outcome["result"] = self._worker.run(
                         job,
                         session_id=session_id,
@@ -728,6 +729,8 @@ class BrowserExecutionCoordinator:
                 self._active.pop(job.job_id, None)
             if termination_confirmed.is_set() and completed.is_set():
                 cleanup_mode = "worker_process_exit_confirmed"
+            elif completed.is_set() and outcome.get("worker_started") is not True:
+                cleanup_mode = "worker_not_started_owner_session_revoked"
             elif token.cancelled:
                 # Give the cancelling controller a bounded opportunity to
                 # confirm OS process exit before emitting the cleanup audit.
