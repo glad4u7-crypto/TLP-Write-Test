@@ -7,7 +7,7 @@
 
 ## Executive result
 
-The Python security CI for the previous PR head `db0eb1dad2d7aa34f7db72f31ef7006f77ced62b` passed (run `44144494609`). That verifies the checked-in contract tests, not the production isolation boundary.
+The exact-head APAA Security CI for commit `44031533331d7152734e263d960b9ee49aa828b7` passed in run #1322 / ID `44236702192`. This run includes syntax, Chromium TLS, controller policy/lifecycle, worker attestation/lifecycle contract, Linux host-inspector contract, and the remaining security suite. This verifies the checked-in contract tests, not the production isolation boundary.
 
 The gated real-host Chromium qualification failed in run `44144480688`: Chromium reported an FD ownership violation and timed out. This remains a release blocker. The run's recorded preparation and cleanup success do not turn the browser execution failure into a pass.
 
@@ -49,14 +49,19 @@ Commits:
 - `8ac633fa48dcd5b05c599d2fc02b64d532e360ca` — collector race fix
 - `e70046da26c05fb5729bc6a4743d4c53903ce152` — regression test
 
-CI for these two latest commits has not yet been retrieved/verified. Do not claim this fix is CI-passing until an exact-head run succeeds.
+### F-06 — URL authority and resolver validation (Closed by exact-head CI)
+
+The navigation policy now rejects an explicit empty URL port (for example, `https://example.com:/`) and validates resolver output before tuple conversion, preventing a bare string from being treated as a sequence of address characters.
+
+Commit: `44031533331d7152734e263d960b9ee49aa828b7`  
+Exact-head APAA Security CI: run #1322 / `44236702192` — **SUCCESS**.
 
 ## OCI qualification status
 
 - Last recorded disposable-host run: `44144480688` — **FAILED** during Chromium execution (FD ownership violation / worker timeout).
 - No root cause is established by this report.
 - No Chromium-native compiled regression test has yet demonstrated the failure and the fix.
-- No rerun is authorized by this review packet; the existing explicit Owner acceptance gate must remain in place.
+- Owner has now approved proceeding with a disposable-host OCI qualification in this conversation. The workflow requires an exact HTTPS test URL and matching allowed origin on an owner-approved test origin; that origin must be confirmed before dispatch.
 - Do not weaken sandbox, FD ownership, seccomp, namespace, cgroup, or default-DROP network controls to obtain a green run.
 
 ## Independent review checklist
@@ -79,7 +84,7 @@ Required outcome: written findings, severity, remediation references, reviewer i
 - [ ] Concrete production `IsolatedWorkerBackend` implemented and independently reviewed.
 - [ ] Authenticated runtime observation provider implemented and independently reviewed.
 - [ ] OCI launch settings proven to match `WorkerLaunchSpec` by runtime readback.
-- [ ] Latest exact-head Python/security CI passes, including the PID-race regression.
+- [x] Latest exact-head Python/security CI passes, including the URL-policy fix.
 - [ ] Chromium FD ownership root cause identified from exact-build evidence.
 - [ ] Chromium-native compiled regression test passes after the fix.
 - [ ] Complete gated disposable-host OCI Chromium qualification passes, including hostile-network, timeout, crash and cleanup tests.
