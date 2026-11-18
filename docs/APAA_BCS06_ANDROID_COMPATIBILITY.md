@@ -53,7 +53,7 @@ All checks below require the actual target handset. Desktop emulation, CI viewpo
 | ID | Test | Expected result |
 |---|---|---|
 | A01 | Install supported Termux distribution and update packages | Installation succeeds; record app/package versions |
-| A01a | Run `python scripts/android_device_acceptance.py` | D01–D07 diagnostics all PASS; retain redacted output |
+| A01a | Run `python scripts/android_device_acceptance.py` | D01–D08 diagnostics all PASS; retain redacted output |
 | A02 | Start APAA from Termux | App starts without root |
 | A03 | Verify bind address | Listener is loopback only |
 | A04 | Open local URL in Android Chrome | Owner login page loads on same phone |
@@ -92,3 +92,8 @@ Draft only. No merge, deployment, public exposure, Auto-Run, browser dispatch, p
 - Android Owner UI is now explicitly considered supported only when the Android Termux environment is detected.
 - Added a complete Termux + Debian PRoot setup guide. PRoot is not treated as a security sandbox; the Android browser worker remains disabled.
 - Corrected A06 from the obsolete passphrase wording to the actual OIDC login contract.
+
+
+## BCS-07 storage guard update
+
+Android Owner startup and handset diagnostics now reject symlinked final .streamlit/secrets.toml components and require private POSIX permissions. The secret TOML is opened through a pinned directory descriptor and parsed from the same file descriptor. D08 reports storage safety without exposing credentials. See docs/APAA_BCS07_ANDROID_PRIVATE_STORAGE.md. This does not encrypt credentials at rest and does not qualify PRoot as a security sandbox.
