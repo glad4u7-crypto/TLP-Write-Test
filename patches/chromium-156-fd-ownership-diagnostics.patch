@@ -9,7 +9,8 @@ index f911af6..0000000 100644
  
  #include <algorithm>
  #include <array>
-@@ -31,9 +33,20 @@
+ #include <atomic>
+@@ -31,8 +31,19 @@
  std::atomic_bool g_is_ownership_enforced{false};
  std::array<std::atomic_bool, kMaxTrackedFds> g_is_fd_owned;
  
@@ -29,7 +30,8 @@ index f911af6..0000000 100644
    RAW_LOG(ERROR, "Crashing due to FD ownership violation:\n");
    base::debug::StackTrace().Print();
    base::ImmediateCrash();
-@@ -44,11 +57,17 @@
+ }
+@@ -44,7 +55,11 @@
  void UpdateAndCheckFdOwnership(int fd, bool owned) {
 -  if (CanTrack(fd) &&
 -      g_is_fd_owned[static_cast<size_t>(fd)].exchange(owned) == owned &&
@@ -45,7 +47,7 @@ index f911af6..0000000 100644
 +                                previous_owned, owned);
    }
  }
-@@ -107,7 +126,8 @@
+@@ -107,5 +122,6 @@
  __attribute__((visibility("default"), noinline)) int close(int fd) {
    static LibcCloseFuncPtr libc_close = LoadCloseSymbol();
    if (base::IsFDOwned(fd) && g_is_ownership_enforced) {
