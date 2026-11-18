@@ -19,6 +19,7 @@ from typing import Mapping
 from core.android_owner_config import (
     AndroidOwnerConfigError, load_owner_secrets,
     validate_oidc_config, validate_approval_signing_config,
+    validate_private_secret_storage,
 )
 
 
@@ -40,6 +41,18 @@ def run_diagnostics(*, environ: Mapping[str, str], secrets_path: Path) -> list[d
         _check("D03", sys.version_info >= (3, 11), f"Python {sys.version_info.major}.{sys.version_info.minor}"),
         _check("D04", hasattr(os, "geteuid") and os.geteuid() != 0, "Non-root process" if hasattr(os, "geteuid") and os.geteuid() != 0 else "Root or effective UID unavailable"),
     ]
+
+    private_storage_ok = False
+    try:
+        validate_private_secret_storage(secrets_path)
+        private_storage_ok = True
+    except AndroidOwnerConfigError:
+        pass
+    results.append(_check(
+        "D08", private_storage_ok,
+        "Owner secrets directory/file are non-symlink and private"
+        if private_storage_ok else "Owner secrets storage missing, symlinked, or not private (0700/0600)",
+    ))
 
     oidc_ok = False
     signing_ok = False
