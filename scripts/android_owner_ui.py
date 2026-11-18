@@ -8,9 +8,10 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Mapping
+
+from core.android_owner_config import validate_android_owner_secrets
 
 
 def validate_android_owner_config(
@@ -24,18 +25,10 @@ def validate_android_owner_config(
     termux = "com.termux" in prefix or "com.termux" in home
     if not (android and termux):
         raise RuntimeError("This launcher is restricted to Android/Termux.")
-    if not secrets_path.is_file():
-        raise RuntimeError("Owner OIDC secrets.toml is required; local prototype mode is unsafe.")
     try:
-        config = tomllib.loads(secrets_path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise RuntimeError("Owner secrets.toml could not be read safely.") from exc
-    apaa = config.get("apaa")
-    auth = config.get("auth")
-    if not isinstance(apaa, dict) or apaa.get("require_auth") is not True:
-        raise RuntimeError("Set [apaa].require_auth = true before starting the Owner UI.")
-    if not isinstance(auth, dict) or not auth:
-        raise RuntimeError("Configure Streamlit [auth] OIDC settings before starting.")
+        validate_android_owner_secrets(secrets_path)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def owner_ui_command(
