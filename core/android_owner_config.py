@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tomllib
+from urllib.parse import urlsplit
 
 
 class AndroidOwnerConfigError(ValueError):
@@ -40,6 +41,31 @@ def validate_oidc_config(config: dict) -> None:
         raise AndroidOwnerConfigError("Streamlit [auth] OIDC configuration is incomplete.")
     if len(auth["cookie_secret"]) < 32:
         raise AndroidOwnerConfigError("Streamlit OIDC cookie_secret must contain at least 32 characters.")
+    redirect = urlsplit(auth["redirect_uri"])
+    if (
+        redirect.scheme != "http"
+        or redirect.hostname not in {"localhost", "127.0.0.1"}
+        or redirect.port != 8501
+        or redirect.path != "/oauth2callback"
+        or redirect.username is not None
+        or redirect.password is not None
+        or redirect.query
+        or redirect.fragment
+    ):
+        raise AndroidOwnerConfigError(
+            "OIDC redirect_uri must be the local loopback callback on port 8501."
+        )
+    metadata = urlsplit(auth["server_metadata_url"])
+    if (
+        metadata.scheme != "https"
+        or not metadata.hostname
+        or metadata.username is not None
+        or metadata.password is not None
+        or metadata.fragment
+    ):
+        raise AndroidOwnerConfigError(
+            "OIDC server_metadata_url must be an HTTPS URL without credentials."
+        )
 
 
 def validate_approval_signing_config(config: dict) -> None:
