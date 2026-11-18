@@ -256,7 +256,7 @@ def test_snapshot_retains_only_safe_chromium_argv_identity(tmp_path):
     )
     result = snapshot_cgroup(cgroup, proc_root=proc)
     process = result["processes"][0]
-    assert process["argv0_basename"] == "chromium"
+    assert process["argv0_basename"] == "chromium", process
     assert process["process_type"] == "crashpad-helper"
     assert process["utility_subtype"] == "vendor.internal.Helper"
     encoded = json.dumps(process)
