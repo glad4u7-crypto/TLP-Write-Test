@@ -171,6 +171,10 @@ def test_proxy_establishes_authorized_pinned_tunnel_and_relays_bytes():
         def getpeername(self):
             return (PUBLIC, 443)
 
+        def fileno(self):
+            # select.select() requires the underlying OS socket descriptor.
+            return self.sock.fileno()
+
         def settimeout(self, value):
             self.sock.settimeout(value)
 
