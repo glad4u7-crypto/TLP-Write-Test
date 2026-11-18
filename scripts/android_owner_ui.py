@@ -40,7 +40,7 @@ def owner_ui_command(
         python_executable, "-m", "streamlit", "run", str(app_path),
         "--server.address=127.0.0.1",
         f"--server.port={port}",
-        "--server.headless=true",
+        "--server.headless=true",\n        "--server.enableCORS=true",\n        "--server.enableXsrfProtection=true",
         "--browser.gatherUsageStats=false",
     ]
 
@@ -53,7 +53,7 @@ def main() -> int:
     command = owner_ui_command(
         python_executable=sys.executable, app_path=root / "app.py"
     )
-    print("APAA Owner UI: http://127.0.0.1:8501")
+    print("APAA Owner UI: http://localhost:8501")
     print("Loopback only. Browser/Worker dispatch remains disabled.")
     return subprocess.call(command, cwd=root)
 
