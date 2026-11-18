@@ -341,6 +341,9 @@ def test_fd_ownership_crash_pid_and_stack_frames_are_extracted():
     assert result["detected"] is True
     assert result["log_pid"] == 16
     assert result["log_tid"] == 16
+    assert result["preceding_log_pid"] == 16
+    assert result["preceding_log_tid"] == 16
+    assert result["pid_attribution"] == "preceding_prefixed_log_line_only"
     assert result["stack_frames"] == [
         {"frame": 0, "address": "0x55c81044543e"},
         {"frame": 1, "address": "0x55c81043c19c"},
@@ -526,3 +529,42 @@ def test_disassembly_helper_is_bounded_and_uses_only_chromium_offsets(monkeypatc
     assert len(commands) == 2
     assert all("objdump" in command for command in commands)
     assert all("--start-address=" in " ".join(command) for command in commands)
+
+
+def test_fd_ownership_failure_does_not_claim_preceding_log_pid_is_crash_pid():
+    from subprocess import CompletedProcess
+
+    stderr = (
+        "[19:19:1118/014149.894302:ERROR:network_service.cc:652] "
+        "Network service crashed or was terminated.\\n"
+        "Crashing due to FD ownership violation:\\n"
+        "#0 0x55b8e346843e <unknown>\\n"
+    )
+    details = qualification._chromium_failure_details(
+        CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
+    )
+    assert details["fd_ownership_preceding_log_pid"] == 19
+    assert details["fd_ownership_preceding_log_tid"] == 19
+    assert details["fd_ownership_pid_attribution"] == "preceding_prefixed_log_line_only"
+    assert details["fd_ownership_crash_pid_proven"] is False
+    assert details["fd_ownership_instrumentation_present"] is False
+
+
+def test_fd_ownership_structured_diagnostic_proves_fatal_process_identity():
+    from subprocess import CompletedProcess
+
+    stderr = (
+        "APAA_FD_OWNERSHIP_DIAG fd=7 operation=close previous_owned=1 "
+        "requested_owned=0 pid=288 tid=288\\n"
+        "Crashing due to FD ownership violation:\\n"
+        "#0 0x55b8e346843e <unknown>\\n"
+    )
+    details = qualification._chromium_failure_details(
+        CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
+    )
+    assert details["fd_ownership_instrumentation_present"] is True
+    assert details["fd_ownership_crash_pid_proven"] is True
+    assert details["fd_ownership_diagnostics"] == [{
+        "fd": 7, "operation": "close", "previous_owned": True,
+        "requested_owned": False, "pid": 288, "tid": 288,
+    }]
