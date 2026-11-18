@@ -107,3 +107,37 @@ def test_policy_rejects_empty_allowlist_and_invalid_configuration():
         NavigationPolicy(allowed_hosts=frozenset())
     with pytest.raises(ValueError):
         NavigationPolicy(allowed_hosts=frozenset({"example.com"}), max_redirects=11)
+
+def test_policy_normalises_scheme_case_and_rejects_mutable_configuration():
+    p = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        allowed_schemes=frozenset({"HTTPS"}),
+        resolver=lambda host: (PUBLIC,),
+    )
+    assert p.validate_url("https://example.com") == "https://example.com"
+
+    with pytest.raises(ValueError, match="frozenset"):
+        NavigationPolicy(allowed_hosts={"example.com"})
+    with pytest.raises(ValueError, match="frozenset"):
+        NavigationPolicy(
+            allowed_hosts=frozenset({"example.com"}),
+            allowed_schemes={"https"},
+        )
+
+
+def test_policy_rejects_non_string_scheme_and_non_callable_resolver():
+    with pytest.raises(TypeError, match="scheme must be a string"):
+        NavigationPolicy(
+            allowed_hosts=frozenset({"example.com"}),
+            allowed_schemes=frozenset({"https", 7}),
+        )
+    with pytest.raises(TypeError, match="resolver must be callable"):
+        NavigationPolicy(
+            allowed_hosts=frozenset({"example.com"}),
+            resolver=None,
+        )
+
+
+def test_policy_rejects_non_string_allowlist_host():
+    with pytest.raises(NavigationPolicyError, match="hostname"):
+        policy(hosts=(7,))
