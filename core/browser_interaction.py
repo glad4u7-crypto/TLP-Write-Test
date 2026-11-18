@@ -344,8 +344,9 @@ _NAMED_SECRET_PATTERN = re.compile(
     r"(?i)\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\\s*[:=]\\s*[^\\s,;]{6,}"
 )
 _SENSITIVE_QUERY_KEYS = frozenset({
-    "access_token", "auth", "authorization", "code", "key", "otp",
-    "password", "refresh_token", "secret", "session", "token",
+    "access_token", "apikey", "api_key", "auth", "auth_token", "authorization",
+    "client_secret", "code", "csrf", "key", "otp", "password",
+    "refresh_token", "secret", "session", "session_id", "signature", "token", "xsrf",
 })
 
 
@@ -362,11 +363,16 @@ def _sanitize_result_url(value: object, allowed_origins: Sequence[str]) -> str:
     canonical = _validate_origin_url(value, allowed_origins)
     parsed = urlsplit(canonical)
     safe_query = []
-    for key, item in parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=100):
+    try:
+        query_items = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=100)
+    except ValueError as exc:
+        raise InteractionPolicyError("Search result URL has too many query parameters.") from exc
+    for key, item in query_items:
         normalized_key = re.sub(r"[^a-z0-9_]", "", key.lower())
         if normalized_key in _SENSITIVE_QUERY_KEYS:
             continue
-        if _EMAIL_PATTERN.search(item) or _PHONE_PATTERN.search(item) or _BEARER_PATTERN.search(item):
+        if (_EMAIL_PATTERN.search(item) or _PHONE_PATTERN.search(item)
+                or _BEARER_PATTERN.search(item) or _NAMED_SECRET_PATTERN.search(item)):
             continue
         safe_query.append((key, item))
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_query), ""))
@@ -387,15 +393,23 @@ def validate_search_results(
     if type(intent) is not SearchIntent:
         raise InteractionPolicyError("Search results require a validated search intent.")
     # Revalidate dataclass values; frozen records may be directly constructed.
+    if type(intent.filters) is not tuple or len(intent.filters) > 10:
+        raise InteractionPolicyError("Search intent filters are malformed or exceed their limit.")
+    filter_items = []
+    for filter_item in intent.filters:
+        if type(filter_item) is not SearchFilter:
+            raise InteractionPolicyError("Search intent contains an invalid filter record.")
+        filter_items.append({
+            "field": filter_item.field,
+            "operator": filter_item.operator,
+            "value": filter_item.value,
+        })
     intent = validate_search_intent({
         "interaction_id": intent.interaction_id,
         "page_id": intent.page_id,
         "origin": intent.origin,
         "query": intent.query,
-        "filters": [
-            {"field": f.field, "operator": f.operator, "value": f.value}
-            for f in intent.filters
-        ],
+        "filters": filter_items,
         "max_results": intent.max_results,
     }, allowed_origins=allowed_origins)
     if not isinstance(raw_results, Sequence) or isinstance(raw_results, (str, bytes)):
