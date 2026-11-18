@@ -51,3 +51,19 @@ def test_owner_ui_accepts_loopback_only(host):
 @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com", ""])
 def test_owner_ui_rejects_non_loopback_bind(host):
     assert validate_local_owner_bind(host) is False
+
+
+def test_termux_managed_debian_proot_is_recognized_as_android_owner_host():
+    result = assess_android_compatibility(
+        platform="linux",
+        environ={
+            "ANDROID_ROOT": "/system",
+            "ANDROID_DATA": "/data",
+            "PREFIX": "/data/data/com.termux/files/usr",
+            "HOME": "/home/apaa",
+        },
+    )
+    assert result.android is True
+    assert result.termux is True
+    assert result.owner_ui_supported is True
+    assert result.browser_worker_supported is False
