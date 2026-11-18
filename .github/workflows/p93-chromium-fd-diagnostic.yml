@@ -38,8 +38,11 @@ jobs:
           tmp="$(mktemp -d)"
           mkdir -p "$tmp/base/files"
           curl --fail --silent --show-error --location \
-            "https://raw.githubusercontent.com/chromium/chromium/$CHROMIUM_REVISION/base/files/scoped_file_linux.cc" \
-            -o "$tmp/base/files/scoped_file_linux.cc"
+            "https://chromium.googlesource.com/chromium/src/+/$CHROMIUM_REVISION/base/files/scoped_file_linux.cc?format=TEXT" \
+            -o "$tmp/scoped_file_linux.cc.b64"
+          base64 --decode "$tmp/scoped_file_linux.cc.b64" > "$tmp/base/files/scoped_file_linux.cc"
+          test -s "$tmp/base/files/scoped_file_linux.cc"
+          rm "$tmp/scoped_file_linux.cc.b64"
           echo "$CHROMIUM_REVISION" > "$tmp/CHROMIUM_REVISION"
           git -C "$tmp" init -q
           git -C "$tmp" config user.name "APAA CI"
