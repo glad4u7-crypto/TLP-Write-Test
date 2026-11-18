@@ -154,6 +154,10 @@ def _parse_status(raw: str) -> dict:
 def _process_role(cmdline: bytes) -> str:
     """Classify Chromium process role without retaining command-line values."""
     tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\0") if part]
+    if "--type=crashpad-handler" in tokens:
+        return "crashpad-handler"
+    if "--type=broker" in tokens:
+        return "broker"
     if "--type=zygote" in tokens:
         return "zygote"
     if "--type=renderer" in tokens:
@@ -206,7 +210,7 @@ def _read_process(
     role = _process_role(cmdline)
     tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\0") if part]
     allowed_process_types = {
-        "browser", "zygote", "renderer", "gpu-process", "utility",
+        "browser", "crashpad-handler", "zygote", "renderer", "gpu-process", "utility",
         "ppapi", "plugin", "broker",
     }
     process_type = next(
