@@ -72,7 +72,8 @@ Record only redacted facts: handset model, Android version, Termux source/versio
 
 ## Acceptance status
 
-- Automated contract tests: added in `tests/test_android_compatibility.py` and `tests/test_android_owner_ui.py`; exact-head CI must pass.\n- Android launcher: `scripts/android_owner_ui.py` requires OIDC auth and binds Streamlit to `127.0.0.1`.
+- Automated contract tests: added in `tests/test_android_compatibility.py` and `tests/test_android_owner_ui.py`; exact-head CI must pass.
+- Android launcher: `scripts/android_owner_ui.py` requires OIDC auth and binds Streamlit to `127.0.0.1`.
 - Existing Android/Desktop browser viewport tests: useful UI regression evidence only.
 - Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone. The exact Termux + Debian PRoot setup is documented in `docs/APAA_ANDROID_TERMUX_QUICKSTART.md`; the diagnostic script is ready but has not been run on the handset.
 - Android browser-worker runtime: **NOT SUPPORTED / DISABLED**.
@@ -81,4 +82,13 @@ Record only redacted facts: handset model, Android version, Termux source/versio
 ## Safety / release state
 
 Draft only. No merge, deployment, public exposure, Auto-Run, browser dispatch, payment, purchase, trading, or money movement. No device mutation is performed by the assessment module.
-\n\n## Android implementation update — 2026-11-18\n\n- Added a dedicated Android dependency set (`requirements-android.txt`) that excludes Playwright/Chromium.\n- Added `scripts/android_termux_setup.py` to collect OIDC client settings without echoing the client secret, generate fresh signing/cookie secrets, and create a private `secrets.toml` without overwriting an existing file.\n- Tightened OIDC validation: callback must be the local loopback callback on port 8501 and discovery metadata must use HTTPS.\n- Android Owner UI is now explicitly considered supported only when the Android Termux environment is detected.\n- Added a complete Termux + Debian PRoot setup guide. PRoot is not treated as a security sandbox; the Android browser worker remains disabled.\n- Corrected A06 from the obsolete passphrase wording to the actual OIDC login contract.\n
+
+
+## Android implementation update — 2026-11-18
+
+- Added a dedicated Android dependency set (`requirements-android.txt`) that excludes Playwright/Chromium.
+- Added `scripts/android_termux_setup.py` to collect OIDC client settings without echoing the client secret, generate fresh signing/cookie secrets, and create a private `secrets.toml` without overwriting an existing file.
+- Tightened OIDC validation: callback must be the local loopback callback on port 8501 and discovery metadata must use HTTPS.
+- Android Owner UI is now explicitly considered supported only when the Android Termux environment is detected.
+- Added a complete Termux + Debian PRoot setup guide. PRoot is not treated as a security sandbox; the Android browser worker remains disabled.
+- Corrected A06 from the obsolete passphrase wording to the actual OIDC login contract.
