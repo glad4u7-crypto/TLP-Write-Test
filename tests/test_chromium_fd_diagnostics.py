@@ -244,3 +244,20 @@ def test_snapshot_discards_process_if_pid_is_recycled_mid_capture(tmp_path, monk
     result = snapshot_cgroup(cgroup, proc_root=proc)
     assert result["process_count_observed"] == 0
     assert result["processes"] == []
+
+
+
+def test_snapshot_retains_only_safe_chromium_argv_identity(tmp_path):
+    proc, cgroup = _proc_fixture(tmp_path)
+    (proc / "4242" / "cmdline").write_bytes(
+        b"/usr/lib/chromium/chromium\\0--type=crashpad-helper\\0"
+        b"--utility-sub-type=vendor.internal.Helper\\0"
+    )
+    result = snapshot_cgroup(cgroup, proc_root=proc)
+    process = result["processes"][0]
+    assert process["argv0_basename"] == "chromium"
+    assert process["process_type"] == "crashpad-helper"
+    assert process["utility_subtype"] == "vendor.internal.Helper"
+    encoded = json.dumps(process)
+    assert "/usr/lib/chromium/chromium" not in encoded
+    assert "vendor.internal.Helper" in encoded
