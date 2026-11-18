@@ -250,8 +250,12 @@ def test_snapshot_discards_process_if_pid_is_recycled_mid_capture(tmp_path, monk
 def test_snapshot_retains_only_safe_chromium_argv_identity(tmp_path):
     proc, cgroup = _proc_fixture(tmp_path)
     (proc / "4242" / "cmdline").write_bytes(
-        b"/usr/lib/chromium/chromium\\0--type=crashpad-helper\\0"
-        b"--utility-sub-type=vendor.internal.Helper\\0"
+        b"\\0".join([
+            b"/usr/lib/chromium/chromium",
+            b"--type=crashpad-helper",
+            b"--utility-sub-type=vendor.internal.Helper",
+            b"",
+        ])
     )
     result = snapshot_cgroup(cgroup, proc_root=proc)
     process = result["processes"][0]
