@@ -102,6 +102,7 @@ def test_symbolicator_records_debuginfod_not_found_without_matching_dbgsym(tmp_p
     result = symbolicator.symbolicate_evidence_file(evidence_path)
     assert result["status"] == "debug_info_not_found"
     assert result["debuginfod_status"] == "debuginfod-not-found"
+    assert result["security_dbgsym_status"] == "invalid_package_metadata"
 
 
 def test_symbolicator_falls_back_to_exact_debian_security_dbgsym_package(tmp_path, monkeypatch):
@@ -139,6 +140,7 @@ def test_symbolicator_falls_back_to_exact_debian_security_dbgsym_package(tmp_pat
 
     assert result["status"] == "symbols_resolved"
     assert result["source"] == "debian-security-debug-package"
+    assert result["security_dbgsym_status"] == "exact_build_id_verified"
     assert result["security_dbgsym_package_version"] == PACKAGE_VERSION
     assert result["security_dbgsym_architecture"] == "amd64"
     curl_call = next(command for command, _kwargs in calls if command[0] == "curl")
