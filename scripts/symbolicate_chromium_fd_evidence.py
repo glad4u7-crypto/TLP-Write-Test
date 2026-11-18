@@ -45,10 +45,13 @@ def _verify_build_id(debug_file: Path, build_id: str) -> bool:
     readelf = shutil.which("eu-readelf") or shutil.which("readelf")
     if not readelf:
         return False
-    result = subprocess.run(
-        [readelf, "-n", str(debug_file)],
-        capture_output=True, text=True, timeout=30, check=False,
-    )
+    try:
+        result = subprocess.run(
+            [readelf, "-n", str(debug_file)],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     if result.returncode != 0:
         return False
     match = re.search(r"Build ID:\s*([0-9a-f]+)", result.stdout, re.IGNORECASE)
@@ -99,21 +102,27 @@ def _fetch_security_dbgsym(
         + quote(package_name, safe="~._-")
     )
     package_path = temp_root / package_name
-    downloaded = subprocess.run(
-        [
-            curl, "-fL", "--retry", "2", "--connect-timeout", "10",
-            "--max-time", "120", "-o", str(package_path), url,
-        ],
-        capture_output=True, text=True, timeout=130, check=False,
-    )
+    try:
+        downloaded = subprocess.run(
+            [
+                curl, "-fL", "--retry", "2", "--connect-timeout", "10",
+                "--max-time", "120", "-o", str(package_path), url,
+            ],
+            capture_output=True, text=True, timeout=130, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if downloaded.returncode != 0 or not package_path.is_file():
         return None
 
     extract_root = temp_root / "dbgsym"
-    extracted = subprocess.run(
-        [dpkg_deb, "-x", str(package_path), str(extract_root)],
-        capture_output=True, text=True, timeout=120, check=False,
-    )
+    try:
+        extracted = subprocess.run(
+            [dpkg_deb, "-x", str(package_path), str(extract_root)],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if extracted.returncode != 0:
         return None
 
@@ -193,6 +202,7 @@ def symbolicate_evidence_file(evidence_path: str | Path) -> dict[str, Any]:
             return _write_result(path, evidence, failure, {
                 "status": "debug_info_not_found",
                 "build_id": build_id,
+                "debuginfod_status": source,
                 "debuginfod_exit_code": debuginfod_exit_code,
                 "security_dbgsym_package_version": package_version,
                 "security_dbgsym_architecture": architecture,
