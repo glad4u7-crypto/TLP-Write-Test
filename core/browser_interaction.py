@@ -378,7 +378,8 @@ def _sanitize_result_url(value: object, allowed_origins: Sequence[str]) -> str:
         raise InteractionPolicyError("Search result URL has too many query parameters.") from exc
     for key, item in query_items:
         normalized_key = re.sub(r"[^a-z0-9_]", "", key.lower())
-        if normalized_key in _SENSITIVE_QUERY_KEYS:
+        if (normalized_key in _SENSITIVE_QUERY_KEYS
+                or "csrf" in normalized_key or "xsrf" in normalized_key):
             continue
         if (_EMAIL_PATTERN.search(item) or _PHONE_PATTERN.search(item)
                 or _BEARER_PATTERN.search(item) or _NAMED_SECRET_PATTERN.search(item)):
