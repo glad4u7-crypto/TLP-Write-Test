@@ -45,8 +45,10 @@ def assess_android_compatibility(
         return AndroidCompatibility(
             android=True,
             termux=termux,
-            owner_ui_supported=True,
-            owner_ui_origin="http://127.0.0.1:<configured-port>",
+            owner_ui_supported=termux,
+            owner_ui_origin=(
+                "http://127.0.0.1:<configured-port>" if termux else ""
+            ),
             local_app_host="127.0.0.1",
             browser_worker_supported=False,
             browser_worker_reason=reason,
