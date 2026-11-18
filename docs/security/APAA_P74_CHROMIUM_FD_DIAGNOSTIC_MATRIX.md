@@ -205,3 +205,15 @@ The upstream source pin is not proof of Debian source equivalence. The diagnosti
 The current P93 patch validation only verifies that the diagnostic source patch applies and its parser tests pass. It does not instrument the Debian Chromium executable used by P74. The next diagnostic iteration must either (a) build a Chromium worker binary from the exact matching source with the diagnostic patch compiled in, or (b) obtain exact-build debug symbols and a separately validated mechanism for identifying the fatal FD transition. Do not treat a patch-validation PASS as runtime instrumentation.
 
 **Current result: FAILED / NO-GO.** The real-host run reproduced the FD ownership crash and improved process attribution, but the exact FD, operation and source call site remain unproven. No sandbox, seccomp, namespace, cgroup or egress policy was weakened.
+
+
+## Follow-up evidence — real disposable OCI run #44219112836
+
+- Tested diagnostic collector head: `fee04e710f2293c8d0758fc4a86f850852aaaa0f`; GitHub Actions [run 44219112836](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44219112836).
+- Same Debian Chromium 156.0.8078.79 build ID reproduced the FD ownership fatal marker during local `data:` `--dump-dom`: exit code 0, stdout 0 bytes, stderr 64,194 bytes.
+- Updated collector recorded 147 snapshots, 8 marker-triggered snapshots, and **zero diagnostic collection errors** at the new 250 KB per-snapshot cap.
+- The preceding prefixed log PID/TID remained 19:19, but is explicitly marked as preceding-log context only. The stack-matched process candidate was container PID 259 (host PID 16251), direct child of container PID 19 (host PID 8563); the candidate child had 12 FDs and its parent had 148 FDs.
+- Parent/child same-inode candidates were parent FD 1 → child FD 1 (pipe), parent FD 2 → child FD 2 (pipe), parent FD 36 → child FD 6 (memfd), and parent FD 42 → child FD 10 (memfd). These describe shared kernel-object candidates only; no evidence proves any of them is the offending FD or an invalid ownership transition.
+- The structured diagnostic record remains absent and crash PID remains unproven because the Debian runtime executable is still uninstrumented. Symbolication remains unavailable. Cleanup was confirmed.
+
+The second run validates the improved snapshot/attribution collector and reproduces the same failure. It does **not** identify the FD number or operation. Current status remains **FAILED / NO-GO**; no isolation control was relaxed.
