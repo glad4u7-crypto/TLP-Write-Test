@@ -309,6 +309,8 @@ class BrowserExecutionCoordinator:
                 raise BrowserExecutionError("Authenticated Owner identity does not match the browser tenant.")
             if not isinstance(approval_authority, ApprovalAuthority):
                 raise TypeError("A trusted ApprovalAuthority is required.")
+            if approval_authority.durable_nonce_store is not True:
+                raise TypeError("Owner-approved browser execution requires durable approval nonce storage.")
             if type(session_scope) is not str or not 8 <= len(session_scope) <= 256:
                 raise ValueError("A bounded Owner session scope is required.")
             if not callable(owner_session_check):
@@ -369,6 +371,7 @@ class BrowserExecutionCoordinator:
             raise TypeError("Production browser dispatch requires a durable SQLite recovery ledger.")
         if (
             not isinstance(approval_authority, ApprovalAuthority)
+            or approval_authority.durable_nonce_store is not True
             or not isinstance(owner_principal, Principal)
             or not isinstance(owner_tenant, TenantKey)
             or type(session_scope) is not str
