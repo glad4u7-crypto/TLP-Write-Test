@@ -393,6 +393,9 @@ class BrowserExecutionCoordinator:
             owner_session_check=owner_session_check,
         )
 
+    def _require_owner_session(self) -> None:
+        self._require_owner_session()
+
     def _consume_owner_approval(self, job: BrowserJob, receipt: ApprovalReceipt | None) -> tuple[str, str, str]:
         """Re-check Owner identity/session and consume the exact one-time job receipt."""
         if (self._approval_authority is None or self._owner_principal is None or
@@ -586,6 +589,7 @@ class BrowserExecutionCoordinator:
             token.raise_if_cancelled()
             def invoke_worker() -> None:
                 try:
+                    self._require_owner_session()
                     outcome["result"] = self._worker.run(
                         job,
                         session_id=session_id,
