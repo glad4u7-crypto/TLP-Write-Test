@@ -66,8 +66,8 @@ This is evidence for the exact commit above only. It does not prove live browser
 
 | Checkpoint | Controller foundation | Full acceptance status |
 |---|---|---|
-| C02-P01 — Click and Form Filling | Intent validators plus offline unique/fresh target-evidence gate implemented | NOT COMPLETE: no real DOM adapter/target preview, cryptographic evidence attestation, approval binding/consumption, or real adapter qualification |
-| C02-P02 — Search and Filtering | Bounded intent plus visible-result normalization/redaction gate verified by exact-head CI | NOT COMPLETE: no real DOM extraction, pagination/deadline enforcement, adapter visibility proof, or site-semantic side-effect classification |
+| C02-P01 — Click and Form Filling | Intent validators plus read-only unique/fresh DOM target preview implemented in stacked PR #26 | NOT COMPLETE: no cryptographic browser/page attestation, production approval binding/consumption, or qualified live execution adapter |
+| C02-P02 — Search and Filtering | Bounded intent, visible-result normalizer, and bounded rendered-body text extraction implemented across PRs #24/#26 | NOT COMPLETE: no search-result DOM extraction, pagination/deadline orchestration, adapter visibility proof for result records, or site-semantic side-effect classification |
 | C02-P03 — Multi-page Navigation | IMPLEMENTED; exact-head CI passed | NOT COMPLETE: no redirect/popup/frame enforcement at runtime, page lineage, cancellation/recovery proof, or egress qualification |
 | C02 overall | CONTROLLER FOUNDATION VERIFIED | BLOCKED FOR EXECUTION by C01 and missing C02 runtime acceptance evidence |
 
@@ -77,8 +77,8 @@ This is evidence for the exact commit above only. It does not prove live browser
 
 1. Complete S09-C01: fix and re-qualify real-host Chromium FD ownership; connect production one-time approval receipt consumption to BrowserExecutionCoordinator; complete Android physical-device qualification; obtain independent security review.
 2. Reconcile C02 intent records and target evidence with the production BrowserJob, Owner/session/tenant/job identity, action-history and approval-correlation contracts. Avoid a parallel permission system. The new target-evidence validator is not a replacement for these contracts.
-3. Add a reviewed execution contract for P01 that proves locator uniqueness, page identity/freshness, safe preview, exact approval binding, and fill-without-submit.
-4. Add P02 browser-adapter extraction from visible DOM only, bounded pagination/deadlines, deterministic normalization, adapter visibility proof, and no-hidden-submit proof. The new normalizer is not itself an extractor.
+3. Harden the P01 preview adapter with cryptographic browser/page attestation and reconcile its evidence with the production Owner/session/tenant/job approval receipt; preserve fill-without-submit.
+4. Add P02 search-result extraction from visible DOM only, bounded pagination/deadlines, deterministic normalization, adapter visibility proof for each result, and no-hidden-submit proof. The body-text inspector and result normalizer are not themselves a search-result extractor.
 5. Add P03 runtime redirect/popup/frame re-authorization, page lineage, stop-on-first-failure, cancellation, and no-replay-after-uncertain-outcome proof.
 6. Run exact-head CI and independent security review for each integration milestone. Keep live execution disabled until C01 and Owner acceptance gates pass.
 
@@ -93,3 +93,12 @@ No PR merge, deployment, default-branch modification, payment, purchase, Auto-Ru
 - APAA Security CI: [run 44217405295](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44217405295) — **success**.
 - This exact-head pass includes P01 target-evidence hardening, P02 result normalization and redaction (including URL path PII/secret handling), P03 bounded navigation-plan validation, and the full repository security suite.
 - This verifies controller-level validation only. It does not qualify a live DOM adapter, production Owner approval/worker dispatch, Android runtime or Chromium OCI host isolation. S09-C01 remains NO-GO.
+
+
+## Additional implementation update — 2026-11-18
+
+- Stacked PR #26 adds a bounded read-only visible DOM body-text inspector and target-preview evidence adapter for unique visible links and supported native form controls.
+- Target evidence is passed through the existing C02 validator for interaction/page correlation, same-origin destination, uniqueness, control type and five-second freshness.
+- Timeout cancellation, sensitive-value redaction, duplicate target rejection and unsupported/password input rejection have adversarial fake-page tests.
+- PR #26 exact-head Security CI is running separately; do not treat the earlier PR #24 run as verification of PR #26.
+- PR #26 does not perform clicks/fills, does not consume Owner approval, and does not dispatch jobs. BCS-01's current BrowserJob schema/handler is not a C02 execution authorization path.
