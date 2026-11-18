@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** STARTED — design contract only; implementation and verification pending.  
+**Status:** IMPLEMENTATION IN PROGRESS — offline intent validators and adversarial tests added; exact-head CI pending.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -92,7 +92,7 @@ Acceptance tests:
 - Verify no replay of uncertain steps after restart.
 - Verify each page transition is bounded and recorded without sensitive page content.
 
-## 5. Shared typed interaction contract — planned
+## 5. Shared typed interaction contract — initial offline implementation
 
 The implementation should introduce immutable typed intent records with a closed schema. Suggested conceptual fields:
 - `interaction_id`, `job_id`, `step_index`
@@ -104,7 +104,7 @@ The implementation should introduce immutable typed intent records with a closed
 - `approval_reference` (opaque reference; never an approval secret)
 - `expires_at`, `max_runtime_seconds`
 
-These are design fields, not a finalized API. Final schema must be reconciled with the existing BrowserJob closed schema and approval-correlation implementation before code is added. Do not expand existing allowlists merely to make tests pass.
+The first offline API is implemented in `core/browser_interaction.py` with immutable `ClickIntent`, `FillIntent`, `SearchIntent`, `NavigationPlan` and related records. It exposes validators only; it does not launch a browser, perform I/O, execute selectors, consume approval receipts or dispatch jobs. Clicks are restricted to explicit link navigation; buttons and submit controls are rejected. Form filling is draft-only and rejects secret field types. Search filters and navigation steps are closed-schema and bounded. The API remains a controller-side validation layer and must be reconciled with the existing BrowserJob and approval-correlation interfaces before any executor is considered. Do not expand existing allowlists merely to make tests pass.
 
 ## 6. Verification and evidence policy
 
