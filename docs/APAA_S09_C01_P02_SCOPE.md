@@ -1,6 +1,6 @@
 # APAA-S09-C01-P02 — Website Navigation
 
-**Status:** Core navigation-policy and controller implementation present; latest branch CI not verified.
+**Status:** Implementation present and exact-head repository CI verified PASS on 2026-11-18; real isolated-worker and Android qualification remain pending.
 **Branch:** `feature/apaa-s09-c01-p01-browser-launch`
 **PR:** #10 (Draft; unmerged)
 
@@ -36,3 +36,21 @@ Provide an explicit, bounded, fail-closed way for the browser controller to navi
 ## Current status
 
 P02 implementation is present in the branch and has focused test coverage, including a controller-level redirect-hop-limit regression case. The scope is not marked fully verified until latest-head CI is observed and the tests execute successfully. No public-site browsing is enabled by this document. Browser/Worker dispatch remains disabled; Auto-Run remains OFF.
+
+## Exact-head CI verification — 2026-11-18
+
+- GitHub Actions APAA Security CI run **#1417** completed with conclusion **SUCCESS**.
+- Verified PR #10 branch head: `3c019ff048bee4e69f0d7ce23f9a8bc5e82fea85`.
+- The workflow's Python security test job passed, including Python syntax, Chromium TLS acceptance/rejection, live-browsing controller policy/lifecycle, real Chromium through the restricted local proxy, production worker-adapter attestation/lifecycle contract, Linux host-inspector procfs/nftables snapshot contract, and the remaining security test suite.
+- P02 source and focused tests present at this exact head: `core/browser_navigation.py`, `core/safe_navigation.py`, `tests/test_browser_navigation.py`, and `tests/test_safe_navigation.py`.
+- This verifies repository CI and test contracts at the exact commit. It does **not** prove navigation inside a genuinely provisioned production-isolated worker, connection-time DNS pinning, complete browser-process egress containment, or Android/Termux compatibility.
+
+## Current completion decision
+
+- [x] Navigation policy and bounded browser navigation controller implemented.
+- [x] Exact-head repository CI successful on the current branch head.
+- [ ] Independently attested production worker and host network boundary qualification.
+- [ ] Physical Android/Termux qualification.
+- [ ] End-to-end live navigation qualification in the approved isolated runtime.
+
+**P02 status: IMPLEMENTATION + CI VERIFIED; FINAL RUNTIME QUALIFICATION PENDING.** Browser/Worker dispatch remains disabled and Auto-Run remains OFF. No merge, deployment, public-site browsing, or production-readiness claim is authorized by this verification.
