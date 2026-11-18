@@ -115,3 +115,45 @@ def test_proxy_denies_non_allowlisted_host_before_opening_upstream_socket():
         client.close()
         worker.join(timeout=2)
         assert not worker.is_alive()
+
+
+def test_proxy_server_serves_loopback_and_fails_closed_for_denied_connect():
+    """Exercise the real TCP server lifecycle without opening an upstream socket."""
+    import socket
+    import threading
+
+    policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        resolver=lambda host: (PUBLIC,),
+    )
+    dial_attempts = []
+
+    def dialer(address, port, timeout):
+        dial_attempts.append((address, port))
+        raise AssertionError("denied destination must never reach the upstream dialer")
+
+    proxy = EgressConnectProxy(
+        EgressDestinationAuthorizer(policy),
+        PinnedIPConnector(dialer),
+    )
+    server = proxy.make_server()
+    worker = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
+    worker.start()
+    client = None
+    try:
+        client = socket.create_connection(server.server_address, timeout=2)
+        client.settimeout(2)
+        client.sendall(
+            b"CONNECT denied.example:443 HTTP/1.1\\r\\n"
+            b"Host: denied.example:443\\r\\n\\r\\n"
+        )
+        response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 502")
+        assert dial_attempts == []
+    finally:
+        if client is not None:
+            client.close()
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=2)
+    assert not worker.is_alive()
