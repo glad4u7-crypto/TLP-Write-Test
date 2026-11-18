@@ -90,7 +90,11 @@ def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
     marker = "Crashing due to FD ownership violation:"
     marker_at = stderr.rfind(marker)
     if marker_at < 0:
-        return {"detected": False, "log_pid": None, "log_tid": None, "stack_frames": []}
+        return {
+            "detected": False, "log_pid": None, "log_tid": None,
+            "preceding_log_pid": None, "preceding_log_tid": None,
+            "pid_attribution": "unavailable", "stack_frames": [],
+        }
     prefix = stderr[:marker_at]
     log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+:", prefix))
     identity = log_lines[-1] if log_lines else None
@@ -100,14 +104,19 @@ def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
     ][:64]
     return {
         "detected": True,
+        # This is only the last prefixed log line before Chromium's unprefixed
+        # fatal marker. It is not proof that this PID emitted the fatal stack.
         "log_pid": int(identity.group(1)) if identity else None,
         "log_tid": int(identity.group(2)) if identity else None,
+        "preceding_log_pid": int(identity.group(1)) if identity else None,
+        "preceding_log_tid": int(identity.group(2)) if identity else None,
+        "pid_attribution": "preceding_prefixed_log_line_only" if identity else "unavailable",
         "stack_frames": stack_frames,
     }
 
 
 def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None:
-    log_pid = failure.get("fd_ownership_log_pid")
+    log_pid = failure.get("fd_ownership_preceding_log_pid", failure.get("fd_ownership_log_pid"))
     source_frames = failure.get("fd_ownership_stack_frames", [])
     pid_matches = []
     pc_matches = []
@@ -190,7 +199,10 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
         return None
     result = dict(primary)
     result["log_pid"] = log_pid
+    result["preceding_log_pid"] = log_pid
+    result["crash_pid_proven"] = failure.get("fd_ownership_crash_pid_proven") is True
     result["log_process_mapping"] = log_process
+    result["preceding_log_process_mapping"] = log_process
     result["stack_process_mapping"] = stack_process
     if stack_process and stack_process["stack_frame_match_count"] == len(source_frames) and source_frames:
         result["mapping_confidence"] = "all_stack_frames_match_candidate_process_image"
@@ -217,8 +229,13 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "fd_ownership_violation": fd_crash["detected"],
         "fd_ownership_log_pid": fd_crash["log_pid"],
         "fd_ownership_log_tid": fd_crash["log_tid"],
+        "fd_ownership_preceding_log_pid": fd_crash["preceding_log_pid"],
+        "fd_ownership_preceding_log_tid": fd_crash["preceding_log_tid"],
+        "fd_ownership_pid_attribution": fd_crash["pid_attribution"],
         "fd_ownership_stack_frames": fd_crash["stack_frames"],
         "fd_ownership_diagnostics": parse_fd_ownership_diagnostics(stderr),
+        "fd_ownership_instrumentation_present": bool(parse_fd_ownership_diagnostics(stderr)),
+        "fd_ownership_crash_pid_proven": bool(parse_fd_ownership_diagnostics(stderr)),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
@@ -547,7 +564,7 @@ def _run_chromium_with_fd_snapshots(
                     snap = snapshot_cgroup(
                         cgroup_dir, max_processes=96, max_fds_per_process=192,
                     )
-                    safe_snapshot = snapshot_json_safe(snap, max_bytes=180_000)
+                    safe_snapshot = snapshot_json_safe(snap, max_bytes=250_000)
                     if marker_seen:
                         safe_snapshot["capture_reason"] = "fd-ownership-marker"
                         marker_trigger_snapshots += 1
@@ -590,7 +607,7 @@ def _run_chromium_with_fd_snapshots(
             final_snapshot = snapshot_cgroup(
                 cgroup_dir, max_processes=96, max_fds_per_process=192,
             )
-            final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=180_000)
+            final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=250_000)
             if fd_marker_event.is_set():
                 final_safe_snapshot["capture_reason"] = "fd-ownership-marker-post-exit"
                 marker_trigger_snapshots += 1
