@@ -357,3 +357,14 @@ def test_search_extraction_rejects_cross_origin_page_and_cancels_on_deadline():
             FakeSearchPage([], url="https://evil.example/search"), intent,
             allowed_origins=["https://example.com"], result_selector=".result",
         ))
+
+
+def test_search_extraction_rejects_oversized_result_text_instead_of_truncating():
+    page = FakeSearchPage([
+        FakeResultCard(FakeResultLink("/large", "Large result"), "x" * 1001),
+    ])
+    with pytest.raises(DOMInspectionError, match="text-size"):
+        asyncio.run(extract_visible_search_results(
+            page, make_search_intent(), allowed_origins=["https://example.com"],
+            result_selector=".result",
+        ))
