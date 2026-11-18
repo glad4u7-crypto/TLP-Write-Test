@@ -254,7 +254,7 @@ async def extract_visible_search_results(
         raise DOMInspectionError("timeout_seconds must be between 0.05 and 10.")
     selector_pattern = re.compile(
         r"^(?:[A-Za-z][A-Za-z0-9_-]*|\\.[A-Za-z_][A-Za-z0-9_-]*|#[A-Za-z_][A-Za-z0-9_-]*|"
-        r"\\[[A-Za-z_:][A-Za-z0-9_:.-]*(?:=(?:\\"[^\\"]{0,80}\\"|'[^']{0,80}'))?\\])$"
+        r"\\[[A-Za-z_:][A-Za-z0-9_:.-]*\\])$"
     )
     if type(result_selector) is not str or len(result_selector) > 120 or not selector_pattern.fullmatch(result_selector):
         raise DOMInspectionError("Result selector must be one simple CSS selector.")
