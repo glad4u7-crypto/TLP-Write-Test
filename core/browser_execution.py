@@ -19,8 +19,11 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
+from core.approvals import ApprovalAuthority, ApprovalReceipt
 from core.attested_browser_runtime import AttestedBrowserRuntime
 from core.browser_recovery import BrowserDispatchBlocked, RecoveryLedgerError, SQLiteBrowserRecoveryLedger
+from core.identity import Principal, require_authenticated
+from core.storage import TenantKey
 from core.browser_security import (
     BrowserJob,
     BrowserPolicyError,
@@ -251,6 +254,12 @@ class BrowserWorker(Protocol):
 AuditWriter = Callable[[Mapping[str, Any]], None]
 
 
+def _approval_job_payload(job: BrowserJob) -> dict[str, Any]:
+    payload = asdict(job)
+    payload["allowed_origins"] = list(job.allowed_origins)
+    return payload
+
+
 def _validate_json_tree(value: Any, *, depth: int = 0) -> None:
     """Reject non-JSON objects, non-string object keys, and excessive nesting."""
     if depth > 64:
@@ -283,7 +292,31 @@ class BrowserExecutionCoordinator:
         audit: AuditWriter,
         clock: Callable[[], float] = time.monotonic,
         recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
+        approval_authority: ApprovalAuthority | None = None,
+        owner_principal: Principal | None = None,
+        owner_tenant: TenantKey | None = None,
+        session_scope: str | None = None,
+        owner_session_check: Callable[[], bool] | None = None,
     ) -> None:
+        approval_config = (approval_authority, owner_principal, owner_tenant, session_scope, owner_session_check)
+        if any(value is not None for value in approval_config) and not all(value is not None for value in approval_config):
+            raise TypeError("Owner approval authority, principal, tenant, session and validator must be configured together.")
+        if all(value is not None for value in approval_config):
+            verified_principal = require_authenticated(owner_principal)
+            if not isinstance(owner_tenant, TenantKey) or (
+                verified_principal.issuer, verified_principal.subject
+            ) != (owner_tenant.issuer, owner_tenant.subject):
+                raise BrowserExecutionError("Authenticated Owner identity does not match the browser tenant.")
+            if not isinstance(approval_authority, ApprovalAuthority):
+                raise TypeError("A trusted ApprovalAuthority is required.")
+            if approval_authority.durable_nonce_store is not True:
+                raise TypeError("Owner-approved browser execution requires durable approval nonce storage.")
+            if type(session_scope) is not str or not 8 <= len(session_scope) <= 256:
+                raise ValueError("A bounded Owner session scope is required.")
+            if not callable(owner_session_check):
+                raise TypeError("An Owner session validator is required.")
+            if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
+                raise TypeError("Owner-approved browser execution requires a durable recovery/approval-correlation ledger.")
         if worker is not None and not callable(getattr(worker, "run", None)):
             raise TypeError("worker must implement run().")
         if not callable(audit):
@@ -294,6 +327,11 @@ class BrowserExecutionCoordinator:
             raise TypeError("recovery_ledger must provide durable atomic job claims.")
         self._clock = clock
         self._recovery_ledger = recovery_ledger
+        self._approval_authority = approval_authority
+        self._owner_principal = owner_principal
+        self._owner_tenant = owner_tenant
+        self._session_scope = session_scope
+        self._owner_session_check = owner_session_check
         self._audit_failed = False
         self._active: dict[str, tuple[CancellationToken, str, threading.Event, threading.Event]] = {}
         self._lock = threading.RLock()
@@ -309,23 +347,37 @@ class BrowserExecutionCoordinator:
         audit: AuditWriter,
         clock: Callable[[], float] = time.monotonic,
         recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
+        approval_authority: ApprovalAuthority | None = None,
+        owner_principal: Principal | None = None,
+        owner_tenant: TenantKey | None = None,
+        session_scope: str | None = None,
+        owner_session_check: Callable[[], bool] | None = None,
     ) -> "BrowserExecutionCoordinator":
         """Fail closed until trusted Owner approval is consumed by this execution path.
 
-        BCS-01 currently keeps its browser handler disabled and the recovery
-        ledger does not yet persist a verified approval-to-job correlation.
-        A valid host attestation alone is therefore insufficient authority to
-        launch a browser worker. Keep this gate closed until that integration
-        is implemented and independently tested.
+        The coordinator now verifies and consumes an exact Owner approval and
+        persists opaque approval-to-job correlation when a recovery ledger is
+        configured. Dispatch nevertheless remains disabled until real-host
+        Chromium/FD qualification, Android acceptance and independent security
+        review pass. A valid attestation or approval alone is not release approval.
         """
         raise BrowserExecutionError(
-            "Browser dispatch is disabled: trusted Owner approval consumption "
-            "and durable approval correlation are not integrated."
+            "Browser dispatch is disabled: real-host Chromium/FD qualification, "
+            "Android acceptance and independent security review remain outstanding."
         )
         if type(runtime_gate) is not AttestedBrowserRuntime:
             raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
         if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
             raise TypeError("Production browser dispatch requires a durable SQLite recovery ledger.")
+        if (
+            not isinstance(approval_authority, ApprovalAuthority)
+            or approval_authority.durable_nonce_store is not True
+            or not isinstance(owner_principal, Principal)
+            or not isinstance(owner_tenant, TenantKey)
+            or type(session_scope) is not str
+            or not callable(owner_session_check)
+        ):
+            raise BrowserExecutionError("Production browser dispatch requires the complete trusted Owner approval boundary.")
         # This factory is a process-start boundary. Interrupted jobs are made
         # terminal and retained for owner review; they are never auto-replayed.
         interrupted = recovery_ledger.recover_interrupted()
@@ -337,7 +389,67 @@ class BrowserExecutionCoordinator:
         worker = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
         if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
             raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
-        return cls(worker, audit=audit, clock=clock, recovery_ledger=recovery_ledger)
+        return cls(
+            worker, audit=audit, clock=clock, recovery_ledger=recovery_ledger,
+            approval_authority=approval_authority, owner_principal=owner_principal,
+            owner_tenant=owner_tenant, session_scope=session_scope,
+            owner_session_check=owner_session_check,
+        )
+
+    def matches_approval_context(
+        self,
+        *,
+        approval_authority: ApprovalAuthority,
+        owner_principal: Principal,
+        owner_tenant: TenantKey,
+        session_scope: str,
+        owner_session_check: Callable[[], bool],
+    ) -> bool:
+        """Verify a trusted UI boundary shares this coordinator's exact Owner/session capability."""
+        try:
+            principal = require_authenticated(owner_principal)
+        except Exception:
+            return False
+        return (
+            self._approval_authority is approval_authority
+            and self._owner_principal is not None
+            and (self._owner_principal.issuer, self._owner_principal.subject)
+                == (principal.issuer, principal.subject)
+            and self._owner_tenant == owner_tenant
+            and self._session_scope == session_scope
+            and self._owner_session_check is owner_session_check
+        )
+
+    def _require_owner_session(self) -> None:
+        if (self._approval_authority is None or self._owner_principal is None or
+                self._owner_tenant is None or self._session_scope is None or
+                self._owner_session_check is None):
+            raise BrowserExecutionError("Trusted Owner approval boundary is not configured; dispatch is blocked.")
+        try:
+            principal = require_authenticated(self._owner_principal)
+            if (principal.issuer, principal.subject) != (self._owner_tenant.issuer, self._owner_tenant.subject):
+                raise BrowserExecutionError("Owner identity changed; browser dispatch is blocked.")
+            if self._owner_session_check() is not True:
+                raise BrowserExecutionError("Owner session is inactive or expired; browser dispatch is blocked.")
+        except BrowserExecutionError:
+            raise
+        except Exception as exc:
+            raise BrowserExecutionError("Owner session validation failed; browser dispatch is blocked.") from exc
+
+    def _consume_owner_approval(self, job: BrowserJob, receipt: ApprovalReceipt | None) -> tuple[str, str, str]:
+        """Re-check Owner identity/session and consume the exact one-time job receipt."""
+        self._require_owner_session()
+        if not self._approval_authority.consume(
+            receipt, "browser_read", _approval_job_payload(job),
+            tenant=self._owner_tenant, session_scope=self._session_scope,
+        ):
+            raise BrowserExecutionError("Owner approval is missing, expired, mismatched or already consumed.")
+        if not isinstance(receipt, ApprovalReceipt):
+            raise BrowserExecutionError("Consumed Owner approval receipt is malformed.")
+        approval_ref = hashlib.sha256((receipt.nonce + "\n" + receipt.signature).encode("utf-8")).hexdigest()
+        owner_ref = hashlib.sha256((self._owner_tenant.issuer + "\n" + self._owner_tenant.subject).encode("utf-8")).hexdigest()
+        session_ref = hashlib.sha256(self._session_scope.encode("utf-8")).hexdigest()
+        return approval_ref, owner_ref, session_ref
 
     def recover_interrupted_jobs(self) -> list[str]:
         """Explicit process-start recovery; returned jobs require owner review."""
@@ -433,7 +545,13 @@ class BrowserExecutionCoordinator:
             raise BrowserExecutionError("Cancellation audit write failed or recovery state could not be persisted after worker termination.") from audit_error
         return changed
 
-    def execute(self, raw_job: object, *, resolver: Callable[[str], list[str]]) -> Mapping[str, Any]:
+    def execute(
+        self,
+        raw_job: object,
+        *,
+        resolver: Callable[[str], list[str]],
+        approval_receipt: ApprovalReceipt | None = None,
+    ) -> Mapping[str, Any]:
         if self._audit_failed:
             raise BrowserExecutionError("Audit integrity previously failed; browser dispatch remains blocked.")
         if self._recovery_ledger is not None:
@@ -447,10 +565,15 @@ class BrowserExecutionCoordinator:
                 raise BrowserExecutionError("Recovery/audit state unavailable; dispatch refused.") from exc
         if self._worker is None:
             raise BrowserExecutionError("No attested isolated worker adapter is configured; execution is disabled.")
-        # Live execution always resolves now, validates every answer, and passes
-        # the exact pin set to the worker.
+        if self._worker is None:
+            raise BrowserExecutionError("No attested isolated worker adapter is configured; execution is disabled.")
+        # Consume Owner approval before DNS resolution or any browser-side operation.
         try:
             job = validate_browser_job(raw_job)
+            approval_refs = self._consume_owner_approval(job, approval_receipt)
+        except (BrowserPolicyError, TypeError, ValueError) as exc:
+            raise BrowserExecutionError("Browser job or Owner approval failed validation.") from exc
+        try:
             target, pinned = resolve_pinned_destination(job.url, resolver=resolver)
         except (BrowserPolicyError, TypeError, ValueError, OSError) as exc:
             raise BrowserExecutionError("Browser job failed live DNS/IP pin validation.") from exc
@@ -467,7 +590,25 @@ class BrowserExecutionCoordinator:
                 self._recovery_ledger.claim(job.job_id, request_digest, session_id=session_id)
                 ledger_state = "accepted"
             except (RecoveryLedgerError, TypeError, ValueError) as exc:
-                raise BrowserExecutionError("Browser job was already consumed or could not be durably claimed.") from exc
+                raise BrowserExecutionError(
+                    "Browser job was already consumed or could not be durably claimed."
+                ) from exc
+            try:
+                self._recovery_ledger.record_approval_correlation(
+                    job.job_id, approval_ref=approval_refs[0], owner_ref=approval_refs[1],
+                    session_ref=approval_refs[2], request_digest=request_digest,
+                )
+            except (RecoveryLedgerError, TypeError, ValueError) as exc:
+                try:
+                    self._recovery_ledger.transition(
+                        job.job_id, "failed", outcome_code="approval_correlation_failure"
+                    )
+                    self._recovery_ledger.latch_dispatch_block("approval_correlation_failure")
+                except Exception:
+                    pass
+                raise BrowserExecutionError(
+                    "Browser approval correlation failed; dispatch is blocked."
+                ) from exc
         token = CancellationToken()
         termination_confirmed = threading.Event()
         completed = threading.Event()
@@ -475,6 +616,7 @@ class BrowserExecutionCoordinator:
         deadline = self._clock() + job.max_runtime_seconds
         cleanup_mode: str | None = None
         try:
+            self._record("approval_consumed", job_id=job.job_id, session_id=session_id, detail="owner_job_session_bound")
             self._record("job_accepted", job_id=job.job_id, session_id=session_id, detail="policy_validated")
             if self._recovery_ledger is not None:
                 self._recovery_ledger.transition(job.job_id, "running")
@@ -482,6 +624,8 @@ class BrowserExecutionCoordinator:
             token.raise_if_cancelled()
             def invoke_worker() -> None:
                 try:
+                    self._require_owner_session()
+                    outcome["worker_started"] = True
                     outcome["result"] = self._worker.run(
                         job,
                         session_id=session_id,
@@ -620,6 +764,8 @@ class BrowserExecutionCoordinator:
                 self._active.pop(job.job_id, None)
             if termination_confirmed.is_set() and completed.is_set():
                 cleanup_mode = "worker_process_exit_confirmed"
+            elif completed.is_set() and outcome.get("worker_started") is not True:
+                cleanup_mode = "worker_not_started_owner_session_revoked"
             elif token.cancelled:
                 # Give the cancelling controller a bounded opportunity to
                 # confirm OS process exit before emitting the cleanup audit.

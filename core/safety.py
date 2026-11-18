@@ -17,6 +17,8 @@ _READ_ONLY_ACTIONS = {
 }
 
 # Only reviewed mutations may be approved or added to Auto-Run.
+_APPROVAL_REQUIRED_READ_ACTIONS = {"browser_read"}
+
 _APPROVABLE_MUTATIONS = {
     "create_project", "update_project", "delete_project",
     "write_file", "edit_file", "delete_file", "create_folder",
@@ -79,6 +81,12 @@ def authorize_action(
 
     if normalized in _READ_ONLY_ACTIONS:
         return SafetyDecision(True, "Read-only action is allowed.")
+
+    if normalized in _APPROVAL_REQUIRED_READ_ACTIONS:
+        approved = _normalize(approved_action)
+        if approved != normalized:
+            return SafetyDecision(False, "This read-only browser action requires exact Owner approval.")
+        return SafetyDecision(True, "Exact Owner approval supplied for read-only browser access.")
 
     if normalized not in _APPROVABLE_MUTATIONS:
         return SafetyDecision(False, "Unknown or unregistered action is blocked by default.")

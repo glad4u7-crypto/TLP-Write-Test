@@ -1,8 +1,20 @@
 import ssl
 import time
 import threading
+import hashlib
+import json
+import tempfile
+from dataclasses import asdict
+from pathlib import Path
 
 import pytest
+
+from core.approvals import ApprovalAuthority
+from core.identity import Principal
+from core.storage import TenantKey
+from core.browser_security import validate_browser_job
+from core.browser_recovery import SQLiteBrowserRecoveryLedger
+from core.sqlite_security_store import SQLiteSecurityStore
 
 from core.browser_execution import (
     BrowserCancelled,
@@ -14,6 +26,60 @@ from core.browser_execution import (
     PinnedHTTPSConnection,
     authorize_redirect_and_pin,
 )
+
+
+
+_ProductionBrowserExecutionCoordinator = BrowserExecutionCoordinator
+
+
+class BrowserExecutionCoordinator(_ProductionBrowserExecutionCoordinator):
+    """Test harness that models trusted Owner UI approval for each ordinary test call."""
+
+    def __init__(self, worker, *, audit, clock=time.monotonic, recovery_ledger=None):
+        self._test_tempdir = tempfile.TemporaryDirectory()
+        private_dir = Path(self._test_tempdir.name)
+        private_dir.chmod(0o700)
+        ledger = recovery_ledger or SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+        self._test_tenant = TenantKey("https://apaa.test", "owner-1")
+        self._test_principal = Principal(
+            subject="owner-1", issuer="https://apaa.test",
+            authenticated=True, roles=("owner",),
+        )
+        self._test_session = "owner-session-test-001"
+        self._test_authority = ApprovalAuthority(
+            nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+            signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+        )
+        self._test_owner_active = {"value": True}
+        super().__init__(
+            worker, audit=audit, clock=clock, recovery_ledger=ledger,
+            approval_authority=self._test_authority,
+            owner_principal=self._test_principal,
+            owner_tenant=self._test_tenant,
+            session_scope=self._test_session,
+            owner_session_check=lambda: self._test_owner_active["value"],
+        )
+
+    def _issue_test_receipt(self, raw_job):
+        job = validate_browser_job(raw_job)
+        payload = asdict(job)
+        payload["allowed_origins"] = list(job.allowed_origins)
+        ttl = min(60, job.expires_at - int(time.time()))
+        return self._test_authority.issue(
+            "browser_read", payload, ttl_seconds=ttl,
+            tenant=self._test_tenant, session_scope=self._test_session,
+        )
+
+    def execute(self, raw_job, *, resolver, approval_receipt=None):
+        if approval_receipt is None:
+            try:
+                approval_receipt = self._issue_test_receipt(raw_job)
+            except (TypeError, ValueError):
+                # Let the production validator return the authoritative error.
+                pass
+        return super().execute(
+            raw_job, resolver=resolver, approval_receipt=approval_receipt,
+        )
 
 
 def valid_job(**overrides):
@@ -107,7 +173,7 @@ def test_execution_requires_live_dns_and_passes_pins_to_worker():
     assert result == {"text": "safe"}
     assert worker.calls[0][2].addresses == ("93.184.216.34",)
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_completed", "session_closed"
+        "approval_consumed", "job_accepted", "job_completed", "session_closed"
     ]
 
 
@@ -167,7 +233,7 @@ def test_worker_failure_is_audited_and_session_closed():
     with pytest.raises(RuntimeError, match="worker crash"):
         coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_failed", "session_cleanup_unconfirmed"
+        "approval_consumed", "job_accepted", "job_failed", "session_cleanup_unconfirmed"
     ]
 
 
@@ -236,7 +302,7 @@ def test_cancel_terminates_the_unique_worker_session():
     assert len(errors) == 1
     assert isinstance(errors[0], BrowserCancelled)
     assert [event["event"] for event in events] == [
-        "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
+        "approval_consumed", "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
     ]
 
 
@@ -268,7 +334,7 @@ def test_hard_deadline_terminates_worker_and_audits_timeout():
     assert started.is_set()
     assert len(terminated) == 1
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_timed_out", "session_closed"
+        "approval_consumed", "job_accepted", "job_timed_out", "session_closed"
     ]
 
 
@@ -283,7 +349,7 @@ def test_attested_runtime_factory_rejects_duck_typed_bypass():
 
     # The stronger fail-closed approval gate runs before runtime type checks.
     # A duck-typed gate must never be invoked while Owner approval binding is absent.
-    with pytest.raises(BrowserExecutionError, match="trusted Owner approval"):
+    with pytest.raises(BrowserExecutionError, match="real-host Chromium/FD qualification"):
         BrowserExecutionCoordinator.from_attested_runtime(
             FakeGate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
             audit=lambda event: None,
@@ -547,3 +613,210 @@ def test_pinned_connection_rejects_socket_peer_outside_pin_set(monkeypatch):
 
     assert raw.closed is True
     assert context.server_names == []
+
+
+
+def test_production_coordinator_fails_closed_without_owner_approval_configuration():
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        FakeWorker(), audit=lambda event: None,
+    )
+    with pytest.raises(BrowserExecutionError, match="Owner approval boundary"):
+        coordinator.execute(
+            valid_job(), resolver=lambda host: ["93.184.216.34"],
+        )
+
+
+def test_owner_approval_is_exact_job_bound_one_time_and_durably_correlated(tmp_path):
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o700)
+    private_dir.chmod(0o700)
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    principal = Principal(
+        subject="owner-1", issuer="https://apaa.test",
+        authenticated=True, roles=("owner",),
+    )
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA durable test approval secret at least 32 bytes",
+    )
+    ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+    worker = FakeWorker()
+    session = {"active": True}
+    events = []
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        worker, audit=events.append, recovery_ledger=ledger,
+        approval_authority=authority, owner_principal=principal,
+        owner_tenant=tenant, session_scope="owner-session-test-001",
+        owner_session_check=lambda: session["active"],
+    )
+    job = valid_job(job_id="job_approval_0001")
+    validated = validate_browser_job(job)
+    payload = asdict(validated)
+    payload["allowed_origins"] = list(validated.allowed_origins)
+    receipt = authority.issue(
+        "browser_read", payload, ttl_seconds=60,
+        tenant=tenant, session_scope="owner-session-test-001",
+    )
+
+    assert coordinator.execute(
+        job, resolver=lambda host: ["93.184.216.34"],
+        approval_receipt=receipt,
+    ) == {"text": "safe"}
+    correlations = ledger.list_approval_correlations(job["job_id"])
+    assert len(correlations) == 1
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            payload, sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert correlations[0]["request_digest"] == expected_digest
+    assert len(correlations[0]["approval_ref"]) == 64
+    assert len(correlations[0]["owner_ref"]) == 64
+    assert len(correlations[0]["session_ref"]) == 64
+    assert ledger.verify_history()
+
+    with pytest.raises(BrowserExecutionError, match="already consumed"):
+        coordinator.execute(
+            job, resolver=lambda host: ["93.184.216.34"],
+            approval_receipt=receipt,
+        )
+    assert len(worker.calls) == 1
+
+
+def test_owner_approval_mismatch_is_rejected_before_dns_or_worker():
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
+    ledger_dir = tempfile.TemporaryDirectory()
+    private_dir = Path(ledger_dir.name)
+    private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
+    ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+    worker = FakeWorker()
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        worker, audit=lambda event: None, recovery_ledger=ledger,
+        approval_authority=authority, owner_principal=principal,
+        owner_tenant=tenant, session_scope="owner-session-test-001",
+        owner_session_check=lambda: True,
+    )
+    job = valid_job(job_id="job_approval_0002")
+    receipt = authority.issue(
+        "browser_read",
+        {"job_id": "different-job"},
+        ttl_seconds=60, tenant=tenant, session_scope="owner-session-test-001",
+    )
+    dns_calls = []
+    with pytest.raises(BrowserExecutionError, match="mismatched"):
+        coordinator.execute(
+            job, resolver=lambda host: dns_calls.append(host) or ["93.184.216.34"],
+            approval_receipt=receipt,
+        )
+    assert dns_calls == []
+    assert worker.calls == []
+    ledger_dir.cleanup()
+
+
+def test_owner_session_is_rechecked_before_consuming_approval():
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
+    ledger_dir = tempfile.TemporaryDirectory()
+    private_dir = Path(ledger_dir.name)
+    private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
+    ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+    session = {"active": True}
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        FakeWorker(), audit=lambda event: None, recovery_ledger=ledger,
+        approval_authority=authority, owner_principal=principal,
+        owner_tenant=tenant, session_scope="owner-session-test-001",
+        owner_session_check=lambda: session["active"],
+    )
+    job = valid_job(job_id="job_approval_0003")
+    validated = validate_browser_job(job)
+    payload = asdict(validated)
+    payload["allowed_origins"] = list(validated.allowed_origins)
+    receipt = authority.issue(
+        "browser_read", payload, ttl_seconds=60,
+        tenant=tenant, session_scope="owner-session-test-001",
+    )
+    session["active"] = False
+    with pytest.raises(BrowserExecutionError, match="inactive or expired"):
+        coordinator.execute(
+            job, resolver=lambda host: ["93.184.216.34"],
+            approval_receipt=receipt,
+        )
+    session["active"] = True
+    # The first denial did not consume the receipt; a newly active session can
+    # still use it once while the same signed session scope remains valid.
+    assert coordinator.execute(
+        job, resolver=lambda host: ["93.184.216.34"],
+        approval_receipt=receipt,
+    ) == {"text": "safe"}
+    ledger_dir.cleanup()
+
+
+def test_owner_principal_must_match_tenant_before_coordinator_creation(tmp_path):
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o700)
+    private_dir.chmod(0o700)
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    other = Principal("owner-2", "https://apaa.test", True, ("owner",))
+    with pytest.raises(BrowserExecutionError, match="does not match"):
+        _ProductionBrowserExecutionCoordinator(
+            FakeWorker(), audit=lambda event: None,
+            recovery_ledger=SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3"),
+            approval_authority=ApprovalAuthority(
+                nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+                signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+            ),
+            owner_principal=other, owner_tenant=tenant,
+            session_scope="owner-session-test-001", owner_session_check=lambda: True,
+        )
+
+
+def test_owner_session_revoked_during_dns_is_blocked_before_worker_start():
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
+    tempdir = tempfile.TemporaryDirectory()
+    private_dir = Path(tempdir.name)
+    private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
+    ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+    session = {"active": True}
+    worker = FakeWorker()
+    events = []
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        worker, audit=events.append, recovery_ledger=ledger,
+        approval_authority=authority, owner_principal=principal,
+        owner_tenant=tenant, session_scope="owner-session-test-001",
+        owner_session_check=lambda: session["active"],
+    )
+    job = valid_job(job_id="job_approval_0004")
+    validated = validate_browser_job(job)
+    payload = asdict(validated)
+    payload["allowed_origins"] = list(validated.allowed_origins)
+    receipt = authority.issue(
+        "browser_read", payload, ttl_seconds=60,
+        tenant=tenant, session_scope="owner-session-test-001",
+    )
+
+    def revoke_during_dns(host):
+        session["active"] = False
+        return ["93.184.216.34"]
+
+    with pytest.raises(BrowserExecutionError, match="inactive or expired"):
+        coordinator.execute(job, resolver=revoke_during_dns, approval_receipt=receipt)
+
+    assert worker.calls == []
+    assert ledger.list_history(job["job_id"])[-1]["state"] == "failed"
+    assert events[-1]["event"] == "session_closed"
+    tempdir.cleanup()
