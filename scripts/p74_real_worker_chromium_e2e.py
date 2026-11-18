@@ -37,6 +37,7 @@ from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimi
 from core.oci_runtime_observer import PodmanWorkerObserver
 from core.pinned_connect_proxy import PinnedConnectProxy
 from core.chromium_fd_diagnostics import snapshot_cgroup, snapshot_json_safe
+from core.chromium_fd_ownership_log import parse_fd_ownership_diagnostics
 
 
 def _required(name: str) -> str:
@@ -217,6 +218,7 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "fd_ownership_log_pid": fd_crash["log_pid"],
         "fd_ownership_log_tid": fd_crash["log_tid"],
         "fd_ownership_stack_frames": fd_crash["stack_frames"],
+        "fd_ownership_diagnostics": parse_fd_ownership_diagnostics(stderr),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
