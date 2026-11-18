@@ -325,3 +325,103 @@ def validate_target_evidence(
         interaction_id, page_id, locator_kind, locator_value,
         element_type, href, observed_at,
     )
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    """Normalized visible search result with sensitive text/query values redacted."""
+
+    title: str
+    url: str
+    snippet: str
+    source_page_id: str
+
+
+_EMAIL_PATTERN = re.compile(r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b")
+_PHONE_PATTERN = re.compile(r"(?<!\\w)\\+?\\d[\\d\\s().-]{7,}\\d(?!\\w)")
+_BEARER_PATTERN = re.compile(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}")
+_NAMED_SECRET_PATTERN = re.compile(
+    r"(?i)\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\\s*[:=]\\s*[^\\s,;]{6,}"
+)
+_SENSITIVE_QUERY_KEYS = frozenset({
+    "access_token", "auth", "authorization", "code", "key", "otp",
+    "password", "refresh_token", "secret", "session", "token",
+})
+
+
+def _redact_result_text(value: str) -> str:
+    value = _EMAIL_PATTERN.sub("[redacted-email]", value)
+    value = _PHONE_PATTERN.sub("[redacted-phone]", value)
+    value = _BEARER_PATTERN.sub("Bearer [redacted]", value)
+    return _NAMED_SECRET_PATTERN.sub("[redacted-secret]", value)
+
+
+def _sanitize_result_url(value: object, allowed_origins: Sequence[str]) -> str:
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    canonical = _validate_origin_url(value, allowed_origins)
+    parsed = urlsplit(canonical)
+    safe_query = []
+    for key, item in parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=100):
+        normalized_key = re.sub(r"[^a-z0-9_]", "", key.lower())
+        if normalized_key in _SENSITIVE_QUERY_KEYS:
+            continue
+        if _EMAIL_PATTERN.search(item) or _PHONE_PATTERN.search(item) or _BEARER_PATTERN.search(item):
+            continue
+        safe_query.append((key, item))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_query), ""))
+
+
+def validate_search_results(
+    raw_results: object,
+    *,
+    intent: SearchIntent,
+    allowed_origins: Sequence[str],
+) -> tuple[SearchResult, ...]:
+    """Normalize a bounded list of adapter-reported visible results.
+
+    This is a data-validation/redaction boundary, not a DOM extractor. The
+    browser adapter must independently prove that each record came from
+    visible page content; this function rejects records not marked visible.
+    """
+    if type(intent) is not SearchIntent:
+        raise InteractionPolicyError("Search results require a validated search intent.")
+    # Revalidate dataclass values; frozen records may be directly constructed.
+    intent = validate_search_intent({
+        "interaction_id": intent.interaction_id,
+        "page_id": intent.page_id,
+        "origin": intent.origin,
+        "query": intent.query,
+        "filters": [
+            {"field": f.field, "operator": f.operator, "value": f.value}
+            for f in intent.filters
+        ],
+        "max_results": intent.max_results,
+    }, allowed_origins=allowed_origins)
+    if not isinstance(raw_results, Sequence) or isinstance(raw_results, (str, bytes)):
+        raise InteractionPolicyError("Search results must be a bounded sequence.")
+    if len(raw_results) > intent.max_results:
+        raise InteractionPolicyError("Adapter returned more results than the approved limit.")
+
+    normalized: list[SearchResult] = []
+    seen_urls: set[str] = set()
+    total_bytes = 0
+    fields = frozenset({"title", "url", "snippet", "source_page_id", "visible"})
+    for raw_result in raw_results:
+        item = _closed_mapping(raw_result, fields, "search result")
+        if item["visible"] is not True or type(item["visible"]) is not bool:
+            raise InteractionPolicyError("Only explicitly visible page results may be normalized.")
+        source_page_id = _validate_id(item["source_page_id"], "source_page_id")
+        if source_page_id != intent.page_id:
+            raise InteractionPolicyError("Search result came from an unexpected page.")
+        title = _redact_result_text(_bounded_string(item["title"], "result title", 200))
+        snippet = _redact_result_text(_bounded_string(item["snippet"], "result snippet", 1000, allow_empty=True))
+        url = _sanitize_result_url(item["url"], allowed_origins)
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        total_bytes += len(title.encode("utf-8")) + len(snippet.encode("utf-8")) + len(url.encode("utf-8"))
+        if total_bytes > 256_000:
+            raise InteractionPolicyError("Normalized search results exceed the total byte budget.")
+        normalized.append(SearchResult(title, url, snippet, source_page_id))
+    return tuple(normalized)
