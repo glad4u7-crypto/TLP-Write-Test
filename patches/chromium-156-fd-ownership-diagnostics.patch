@@ -10,6 +10,7 @@ index f911af6..0000000 100644
  #include <algorithm>
  #include <array>
  #include <atomic>
+ 
 @@ -31,8 +31,19 @@
  std::atomic_bool g_is_ownership_enforced{false};
  std::array<std::atomic_bool, kMaxTrackedFds> g_is_fd_owned;
@@ -47,7 +48,7 @@ index f911af6..0000000 100644
 +                                previous_owned, owned);
    }
  }
-@@ -107,5 +122,6 @@
+@@ -107,6 +122,7 @@
  __attribute__((visibility("default"), noinline)) int close(int fd) {
    static LibcCloseFuncPtr libc_close = LoadCloseSymbol();
    if (base::IsFDOwned(fd) && g_is_ownership_enforced) {
