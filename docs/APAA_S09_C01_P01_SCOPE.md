@@ -1,6 +1,6 @@
 # APAA-S09-C01-P01 — Browser Launch
 
-**Status:** Implementation complete; exact-head CI verification PASS (2026-11-17).  
+**Status:** Implementation and focused tests complete; latest-head CI verification is not yet observable through the available GitHub workflow lookup.  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c01-p01-browser-launch`  
 **Base:** `feature/apaa-s08-completion`
@@ -42,7 +42,12 @@ The repository currently targets a Python/Streamlit prototype. This change does 
 
 A local isolated harness run against a mirror of the committed launcher, domain model and focused test cases completed successfully: **8 focused tests passed**, and Python `compileall` passed. This validates the adapter's unit-level policy, lifecycle and failure-cleanup behavior in that harness; it is not a substitute for running the full repository suite or GitHub Actions against the exact PR head.
 
-The earlier exact-head PASS belongs to commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da` (run #1300). The currently inspected PR #10 head is `893f433c42cef6dd2a261e4d5db8e523f582a04b`; its commit-workflow lookup and combined-status lookup returned no records. The historical PASS must not be carried forward to this later head. CI for the current head is **PENDING / NOT VERIFIED** until a new push-triggered run completes successfully.
+Historical CI records:
+- APAA Security CI run #836 (44112730503) passed on exact commit `47e60a0ff0caf68425e569e909508379f86d62d4` on 2026-11-17.
+- APAA Security CI run #1300 (44227113185) passed on exact commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da`.
+- These are historical exact-commit results, not a claim that later documentation commits were tested.
+
+The workflow file `.github/workflows/apaa-security-ci.yml` declares both `push` and `pull_request` triggers. Its pull-request branch filter includes `main`, `master`, and `feature/apaa-s09-c01-p01-browser-launch`; PR #10 currently targets `feature/apaa-s08-completion`, so that PR base does not match the listed pull-request filters. A push to the feature branch is the configured trigger relevant to this branch. The available `fetch_commit_workflow_runs` integration returns only pull-request-triggered runs, so its empty result cannot establish whether a push-triggered run exists. The combined-status lookup also returned no status records for current head `91090198cce2d3b01e0ab4dd701e305afafe0ad5`. Therefore latest-head CI is **NOT VERIFIED / NOT OBSERVABLE with the current integration**; do not report it as PASS or as a confirmed missing run.
 
 
 ## Exact-head verification — 2026-11-17
@@ -68,4 +73,9 @@ The earlier exact-head PASS belongs to commit `3a3f03a7fc22e63fa3c2b070151852b80
 - **Owner authorization, live URL navigation, and real website interaction are not part of P01.** They remain gated by the later security/authorization work.
 
 ### Final status
-P01 implementation and focused-test scope are **COMPLETE**; exact-head CI is **PASS only for historical commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da`** and **PENDING for current PR head `893f433c42cef6dd2a261e4d5db8e523f582a04b`**. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
+P01 implementation and focused-test scope are **COMPLETE**; historical exact-head CI PASS is recorded for commits `47e60a0ff0caf68425e569e909508379f86d62d4` and `3a3f03a7fc22e63fa3c2b070151852b80671f2da`. CI for current PR head `91090198cce2d3b01e0ab4dd701e305afafe0ad5` is **NOT VERIFIED / NOT OBSERVABLE** through the available PR-only workflow-run lookup. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
+
+
+## Latest audit correction — 2026-11-18
+
+The prior wording treated an empty PR-triggered workflow lookup as proof that no run existed. That inference was too strong: the workflow also runs on branch pushes, while the available lookup filters to pull-request-triggered runs only. PR #10's base branch also does not match the workflow's pull-request branch filter. The latest commit status lookup returned no statuses. Current-head CI therefore remains unverified; use GitHub Actions UI or an Actions API integration that can list push-triggered runs to close this evidence gap. No code test result is inferred from this lookup limitation.
