@@ -133,3 +133,19 @@ Diagnostic phase is complete only when the evidence identifies (a) the first fai
 5. Do not change or close FDs as a workaround until the exact ownership transition is identified and a deterministic regression test reproduces it.
 
 **Current result: process-level attribution improved; exact offending FD and source call site remain unproven. Release remains FAILED / NO-GO.**
+
+
+## Evidence update — high-frequency event-triggered capture (run #340)
+
+- The real OCI Chromium qualification still reproduces the explicit `Crashing due to FD ownership violation` marker; the local `data:` smoke exits 0 but returns no HTML, so this remains a failed qualification.
+- The latest event-triggered capture recorded the fatal log PID/TID as container PID `19:19`. The stack-matched candidate was a different process: host PID `16122`, container PID `281`, PPID `8867`, NSpid `8867 19`, 12 FDs observed, seccomp mode 2. The PID namespace mapping does not match the fatal log PID, so the candidate association remains partial, not definitive.
+- Ten of eleven stack frames matched the candidate Chromium executable image. The first three bounded disassembly windows were collected. Frame 0 is at module offset `0x9c6343e`; its nearby instructions include an indirect tail jump into the executable's delete operator. Frame 1 is at `0x9c5a19c` in a region that calls `strerror_r` and formats an error string. The stripped/aliased ELF symbol labels (for example `mallopt@@Base+...`) are not reliable source-level function names.
+- The current evidence does **not** demonstrate that the fatal frame is Chromium's `close()` wrapper. The earlier exported-symbol proximity heuristic returned no matches and is not evidence of a close-path failure. Do not treat it as root cause.
+- The snapshot reports 12 descriptors for the stack-matched candidate, but the available log excerpt does not establish a specific descriptor ownership transition or a mismatched acquire/release/close operation. No FD workaround is justified.
+- Chromium still restarts its Network Service immediately before the fatal ownership marker. This is temporal correlation only; it does not prove that the Network Service or its IPC descriptors caused the violation.
+
+### Final diagnostic status
+
+**Reproduction: CONFIRMED. Exact process: PARTIAL. Exact FD: NOT IDENTIFIED. Exact source call site: NOT IDENTIFIED. Safe fix: NOT JUSTIFIED. Regression test for the actual Chromium defect: NOT YET POSSIBLE. Release: FAILED / NO-GO.**
+
+The diagnostic matrix and collector changes are useful and preserve the existing OCI isolation, non-root identity, seccomp, cgroup, and network controls. Do not weaken those controls or close inherited descriptors speculatively. The next valid step is a dedicated diagnostic Chromium build with narrowly scoped logging at the ownership-check failure path (FD number, operation, ownership state, PID/TID, and a bounded stack), followed by a deterministic regression reproducer. Until that evidence exists, this task cannot honestly be marked as root-caused or fixed.
