@@ -1,6 +1,6 @@
 # APAA-S09-C01-P01 — Browser Launch
 
-**Status:** Implementation added; exact-head CI verification pending.  
+**Status:** Implementation complete; exact-head CI verification PASS (2026-11-17).  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c01-p01-browser-launch`  
 **Base:** `feature/apaa-s08-completion`
@@ -43,3 +43,10 @@ The repository currently targets a Python/Streamlit prototype. This change does 
 A local isolated harness run against a mirror of the committed launcher, domain model and focused test cases completed successfully: **8 focused tests passed**, and Python `compileall` passed. This validates the adapter's unit-level policy, lifecycle and failure-cleanup behavior in that harness; it is not a substitute for running the full repository suite or GitHub Actions against the exact PR head.
 
 The GitHub commit status and PR-associated workflow lookup currently return no checks/runs for the latest branch head. Therefore CI remains **PENDING / NOT VERIFIED**. Do not mark P01 complete until the repository's required checks are visible and successful.
+
+
+## Exact-head verification — 2026-11-17
+
+- PR #10 head `47e60a0ff0caf68425e569e909508379f86d62d4` completed APAA Security CI run #836 (`44112730503`) with **SUCCESS**.
+- All 14 workflow steps passed, including Python syntax compilation, Chromium TLS acceptance/rejection cases, live-browsing controller lifecycle, real Chromium through the restricted local proxy, worker-adapter attestation/lifecycle contract, Linux host-inspector contract, and the remaining security test suite.
+- This verifies the repository code and CI fixtures at that exact commit. It does not qualify physical Android/Termux Chromium, a production OCI host boundary, or authorize live browsing. Android launch remains fail-closed until device qualification; Browser/Worker dispatch remains disabled.
