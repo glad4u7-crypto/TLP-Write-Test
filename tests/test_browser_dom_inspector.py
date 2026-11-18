@@ -17,7 +17,11 @@ class FakeBody:
 
     async def inner_text(self, timeout):
         if self.delay:
-            await asyncio.sleep(self.delay)
+            try:
+                await asyncio.sleep(self.delay)
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
         return self.text
 
 
@@ -66,3 +70,28 @@ def test_enforces_deadline_and_rejects_bad_bounds():
         run(FakePage(body=FakeBody(delay=0.1)), timeout_seconds=0.05)
     with pytest.raises(DOMInspectionError):
         run(FakePage(), max_chars=True)
+
+
+def test_rejects_malformed_page_id_and_invalid_timeout():
+    with pytest.raises(DOMInspectionError):
+        asyncio.run(extract_visible_dom_text(
+            FakePage(), page_id="short", allowed_origins=["https://example.com"]
+        ))
+    with pytest.raises(DOMInspectionError):
+        run(FakePage(), timeout_seconds=True)
+
+
+def test_timeout_cancels_pending_dom_read():
+    body = FakeBody(delay=0.2)
+    with pytest.raises(DOMInspectionError):
+        run(FakePage(body=body), timeout_seconds=0.05)
+    assert body.cancelled is True
+
+
+def test_reuses_sensitive_value_redaction_for_tokens_and_labelled_secrets():
+    snapshot = run(FakePage(body=FakeBody(
+        "api_key=abcdef0123456789 Bearer abcdefghijklmnop"
+    )))
+    assert "[redacted-secret]" in snapshot.text
+    assert "Bearer [redacted]" in snapshot.text
+    assert "abcdef0123456789" not in snapshot.text
