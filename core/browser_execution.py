@@ -396,6 +396,30 @@ class BrowserExecutionCoordinator:
             owner_session_check=owner_session_check,
         )
 
+    def matches_approval_context(
+        self,
+        *,
+        approval_authority: ApprovalAuthority,
+        owner_principal: Principal,
+        owner_tenant: TenantKey,
+        session_scope: str,
+        owner_session_check: Callable[[], bool],
+    ) -> bool:
+        """Verify a trusted UI boundary shares this coordinator's exact Owner/session capability."""
+        try:
+            principal = require_authenticated(owner_principal)
+        except Exception:
+            return False
+        return (
+            self._approval_authority is approval_authority
+            and self._owner_principal is not None
+            and (self._owner_principal.issuer, self._owner_principal.subject)
+                == (principal.issuer, principal.subject)
+            and self._owner_tenant == owner_tenant
+            and self._session_scope == session_scope
+            and self._owner_session_check is owner_session_check
+        )
+
     def _require_owner_session(self) -> None:
         if (self._approval_authority is None or self._owner_principal is None or
                 self._owner_tenant is None or self._session_scope is None or
