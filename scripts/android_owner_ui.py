@@ -41,7 +41,8 @@ def owner_ui_command(
         "--server.address=127.0.0.1",
         f"--server.port={port}",
         "--server.headless=true",
-        "--server.enableCORS=true",\n        "--server.enableXsrfProtection=true",
+        "--server.enableCORS=true",
+        "--server.enableXsrfProtection=true",
         "--browser.gatherUsageStats=false",
     ]
 
