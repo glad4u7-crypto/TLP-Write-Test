@@ -88,6 +88,24 @@ def test_linux_source_rejects_pid_reuse_before_running_nft(tmp_path):
     assert calls == []
 
 
+def test_linux_source_rejects_pid_reuse_during_namespace_snapshot(tmp_path, monkeypatch):
+    source, calls = make_source(tmp_path)
+    original = source._observed_start_ticks
+    reads = {"count": 0}
+
+    def recycle_between_reads(stat_path):
+        reads["count"] += 1
+        if reads["count"] == 1:
+            return original(stat_path)
+        return START_TICKS + 1
+
+    monkeypatch.setattr(source, "_observed_start_ticks", recycle_between_reads)
+    with pytest.raises(HostCollectionError, match="changed during namespace snapshot"):
+        source.read_network_namespace_identity()
+    assert reads["count"] == 2
+    assert calls == []
+
+
 def test_linux_source_requires_exactly_one_non_loopback_interface(tmp_path):
     source, calls = make_source(tmp_path, interfaces=("lo", "eth0", "eth1"))
     with pytest.raises(HostCollectionError, match="exactly one"):
