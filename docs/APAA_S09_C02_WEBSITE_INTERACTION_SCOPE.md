@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** CONTROLLER FOUNDATION IMPLEMENTED; REDACTION REGEX FIX AND FORGED-INTENT HARDENING COMMITTED; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
+**Status:** CONTROLLER FOUNDATION IMPLEMENTED; REDACTION REGEX AND FORGED-INTENT HARDENING COMMITTED; LATEST CI FOUND ONE XSRF ALIAS EDGE CASE (1277 PASSED / 1 FAILED); FIX COMMITTED; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -53,7 +53,7 @@ File: `tests/test_browser_interaction.py`
 
 ## 5. Verification evidence
 
-Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commits: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448` (redaction regex correction), `c0392701ccd8801248af262819ddd6335e6bb39b` (forged form-intent validation hardening), `7812704d177ef4ebe55fb4e9f9cfcc76ad0233d9` (adversarial forged-intent tests), and `7c4603b2e7132d5a7493e9266b55c99afcda027e` / `c607380e7dc74a190db5873deda4d5ebc35e883b` (broader auth-query redaction and tests). The first combined run (`44216224292`) reported 1261 passed / 1 failed because regex boundaries were double-escaped; corrected in the follow-up commit. Exact-head CI for the follow-up commits remains required.
+Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commits: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448` (redaction regex correction), `c0392701ccd8801248af262819ddd6335e6bb39b` (forged form-intent validation hardening), `7812704d177ef4ebe55fb4e9f9cfcc76ad0233d9` (adversarial forged-intent tests), `7c4603b2e7132d5a7493e9266b55c99afcda027e` / `c607380e7dc74a190db5873deda4d5ebc35e883b` (auth-query redaction), and `2138594dca5ba7c28d575dc3612ab54a2e453702` (prefix-insensitive CSRF/XSRF query redaction). Run `44217027903` completed with 1277 passed / 1 failed: the test exposed `x-xsrf-token` not being removed because the key prefix survived normalization. The redaction gate now rejects any normalized query key containing `csrf` or `xsrf`; exact-head CI is required to verify this correction.
 
 - GitHub Actions workflow: **APAA Security CI**
 - Run: [44214923346](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44214923346)
