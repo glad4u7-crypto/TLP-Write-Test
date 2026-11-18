@@ -254,8 +254,22 @@ def validate_target_evidence(
         "visible", "enabled", "element_type", "href", "observed_at",
     })
     item = _closed_mapping(raw, fields, "target evidence")
-    if not isinstance(intent, (ClickIntent, FillIntent)):
+    if type(intent) not in (ClickIntent, FillIntent):
         raise InteractionPolicyError("Target evidence requires a validated click or fill intent.")
+    # Frozen dataclasses can still be constructed directly with invalid values.
+    # Re-check their security-relevant fields at this boundary.
+    _validate_id(intent.interaction_id, "intent interaction_id")
+    _validate_id(intent.page_id, "intent page_id")
+    _validate_origin_url(intent.origin, allowed_origins)
+    _validate_locator({"kind": intent.locator_kind, "value": intent.locator_value})
+    if type(intent) is ClickIntent:
+        if intent.locator_kind != "role" or intent.locator_value.lower() != "link":
+            raise InteractionPolicyError("Click intent is not a link-only operation.")
+        _validate_origin_url(intent.destination_url, allowed_origins)
+    else:
+        if intent.field_type not in _ALLOWED_FIELD_TYPES:
+            raise InteractionPolicyError("Fill intent field type is unsupported.")
+        _bounded_string(intent.value, "intent form value", 2048, allow_empty=True)
     interaction_id = _validate_id(item["interaction_id"], "interaction_id")
     page_id = _validate_id(item["page_id"], "page_id")
     if interaction_id != intent.interaction_id or page_id != intent.page_id:
