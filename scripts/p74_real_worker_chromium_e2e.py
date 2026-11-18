@@ -217,6 +217,7 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
     stdout = page.stdout or ""
     stderr = page.stderr or ""
     fd_crash = _fd_ownership_crash_identity(stderr)
+    fd_diagnostics = parse_fd_ownership_diagnostics(stderr)
     return {
         "family": family,
         "exit_code": page.returncode,
@@ -233,9 +234,9 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "fd_ownership_preceding_log_tid": fd_crash["preceding_log_tid"],
         "fd_ownership_pid_attribution": fd_crash["pid_attribution"],
         "fd_ownership_stack_frames": fd_crash["stack_frames"],
-        "fd_ownership_diagnostics": parse_fd_ownership_diagnostics(stderr),
-        "fd_ownership_instrumentation_present": bool(parse_fd_ownership_diagnostics(stderr)),
-        "fd_ownership_crash_pid_proven": bool(parse_fd_ownership_diagnostics(stderr)),
+        "fd_ownership_diagnostics": fd_diagnostics,
+        "fd_ownership_instrumentation_present": bool(fd_diagnostics),
+        "fd_ownership_crash_pid_proven": bool(fd_diagnostics),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
