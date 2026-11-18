@@ -13,7 +13,7 @@ injected page object.
 - Enforces a hard asynchronous deadline and a strict character ceiling; it
   fails closed rather than silently truncating oversized content.
 - Redacts common email, phone, bearer-token and labelled-secret patterns.
-- Builds read-only target evidence for a unique visible/enabled same-origin link or a unique labelled native text/email/number/date/select control. It scans a bounded number of links, rejects duplicates and secret/unsupported input types, and never clicks or fills.
+- Builds read-only target evidence for a unique visible/enabled same-origin link or a unique labelled native text/email/number/date/select control. It scans a bounded number of links, rejects duplicates and secret/unsupported input types, and never clicks or fills.\n- Extracts bounded visible search-result cards using a single simple CSS selector, requires one visible/enabled link per card, ignores off-origin links, enforces a deadline, and routes records through the existing normalizer for page binding, deduplication, URL allowlisting and PII/secret redaction.
 - Performs no navigation, click, form fill, submit, download, upload, network
   dispatch, approval lookup, or job execution.
 
@@ -32,3 +32,4 @@ and Owner approval integration remain mandatory before live execution.
 surface to test visible-body requirement, exact-origin rejection, bounds,
 deadline cancellation, malformed inputs, sensitive-text redaction, unique link matching, native form-control type checks, duplicate-target rejection and no-action preview behavior. These tests do not replace
 real Chromium or Android qualification.
+\n\n## Search extraction constraints\n\n`extract_visible_search_results` accepts only a validated `SearchIntent`. Its selector grammar is intentionally narrow (tag, `.class`, `#id`, or a bare attribute selector); XPath, text selectors, selector chains and arbitrary page scripts are rejected. The result-card count is capped, each card must be visible, and only a single visible/enabled anchor is considered. This is a read-only preview adapter: it does not execute the search query, apply filters, paginate, click a result, or navigate. Search submission and pagination remain separate future work behind approval and host-egress qualification.\n
