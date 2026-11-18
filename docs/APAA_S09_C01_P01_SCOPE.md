@@ -42,7 +42,7 @@ The repository currently targets a Python/Streamlit prototype. This change does 
 
 A local isolated harness run against a mirror of the committed launcher, domain model and focused test cases completed successfully: **8 focused tests passed**, and Python `compileall` passed. This validates the adapter's unit-level policy, lifecycle and failure-cleanup behavior in that harness; it is not a substitute for running the full repository suite or GitHub Actions against the exact PR head.
 
-The GitHub commit status and PR-associated workflow lookup currently return no checks/runs for the latest branch head. Therefore CI remains **PENDING / NOT VERIFIED**. Do not mark P01 complete until the repository's required checks are visible and successful.
+The earlier exact-head PASS belongs to commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da` (run #1300). The currently inspected PR #10 head is `893f433c42cef6dd2a261e4d5db8e523f582a04b`; its commit-workflow lookup and combined-status lookup returned no records. The historical PASS must not be carried forward to this later head. CI for the current head is **PENDING / NOT VERIFIED** until a new push-triggered run completes successfully.
 
 
 ## Exact-head verification — 2026-11-17
@@ -56,8 +56,9 @@ The GitHub commit status and PR-associated workflow lookup currently return no c
 
 ### Repository implementation and CI
 - P01 implementation is complete on the branch named above.
-- Current PR head: `3a3f03a7fc22e63fa3c2b070151852b80671f2da`.
-- Exact-head APAA Security CI run #1300 (run ID `44227113185`) completed with **SUCCESS** on this exact commit.
+- Historical verified commit: `3a3f03a7fc22e63fa3c2b070151852b80671f2da`.
+- Exact-head APAA Security CI run #1300 (run ID `44227113185`) completed with **SUCCESS** on that exact commit.
+- Current PR #10 head at the latest audit: `893f433c42cef6dd2a261e4d5db8e523f582a04b`; no associated workflow run or combined status was returned for this newer head.
 - All 14 workflow steps passed, including syntax validation, Chromium TLS acceptance/rejection, browsing-controller lifecycle, restricted-proxy Chromium integration, worker-adapter contract, Linux host-inspector contract, and the remaining security regression suite.
 - The CI result verifies the repository code and its test fixtures. It is not evidence of Android device compatibility or a production OS/OCI isolation boundary.
 
@@ -67,4 +68,4 @@ The GitHub commit status and PR-associated workflow lookup currently return no c
 - **Owner authorization, live URL navigation, and real website interaction are not part of P01.** They remain gated by the later security/authorization work.
 
 ### Final status
-P01 is **COMPLETE for repository implementation, focused tests, and exact-head CI**. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
+P01 implementation and focused-test scope are **COMPLETE**; exact-head CI is **PASS only for historical commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da`** and **PENDING for current PR head `893f433c42cef6dd2a261e4d5db8e523f582a04b`**. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
