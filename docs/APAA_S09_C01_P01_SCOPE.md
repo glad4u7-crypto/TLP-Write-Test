@@ -59,22 +59,21 @@ The workflow file `.github/workflows/apaa-security-ci.yml` declares both `push` 
 
 ## Final P01 completion audit — 2026-11-18
 
-### Repository implementation and CI
-- P01 implementation is complete on the branch named above.
-- Historical verified commit: `3a3f03a7fc22e63fa3c2b070151852b80671f2da`.
-- Exact-head APAA Security CI run #1300 (run ID `44227113185`) completed with **SUCCESS** on that exact commit.
-- Current PR #10 head at the latest audit: `893f433c42cef6dd2a261e4d5db8e523f582a04b`; no associated workflow run or combined status was returned for this newer head.
-- All 14 workflow steps passed, including syntax validation, Chromium TLS acceptance/rejection, browsing-controller lifecycle, restricted-proxy Chromium integration, worker-adapter contract, Linux host-inspector contract, and the remaining security regression suite.
-- The CI result verifies the repository code and its test fixtures. It is not evidence of Android device compatibility or a production OS/OCI isolation boundary.
+### Repository implementation and CI evidence
+- P01 launcher implementation and focused-test scope are present on this branch.
+- Historical exact-commit CI PASS records are retained above for commits `47e60a0ff0caf68425e569e909508379f86d62d4` (run #836) and `3a3f03a7fc22e63fa3c2b070151852b80671f2da` (run #1300). These results apply only to those exact commits.
+- PR #10 currently points to head `beb033901dba789e2031d3da593f712ec6fe791c`. This is 15 commits ahead of the historical #836 commit and 14 commits ahead of the historical #1300 commit; historical CI success does not verify the current head.
+- The workflow has `push`, `pull_request`, and `workflow_dispatch` triggers. Its pull-request base-branch filter does not include PR #10's base branch `feature/apaa-s08-completion`. A push to the feature head is the applicable configured automatic trigger.
+- The available workflow-run connector returns only pull-request-triggered runs. It returned no runs for the current head; the combined-status lookup returned no statuses. It also returned no historical runs when queried again, so this connector cannot independently reproduce the earlier recorded run details in this audit.
+- No Actions-run listing or workflow-dispatch action is exposed in the available GitHub tools. Therefore current-head CI is **NOT VERIFIED / NOT OBSERVABLE**, not PASS and not proven absent.
 
-### Remaining external qualification (not a P01 code defect)
-- **Android/Termux physical-device qualification: NOT RUN.** It requires testing on the actual Android device and must not be inferred from desktop/Linux CI. Until that is performed, Android-specific browser launch stays unsupported/fail-closed.
-- **Production sandbox/egress qualification: OUT OF P01 SCOPE.** P01 is a controller-level launcher, not an OS sandbox. No live browsing or Browser/Worker dispatch is enabled by this completion.
-- **Owner authorization, live URL navigation, and real website interaction are not part of P01.** They remain gated by the later security/authorization work.
+### Remaining qualification
+- **Android/Termux physical-device qualification: NOT RUN.** Android browser launch remains unsupported/fail-closed until tested on the actual device.
+- **Production sandbox/egress qualification: NOT CLAIMED.** P01 is a controller-level launcher, not an OS sandbox. Live Browser/Worker dispatch remains disabled.
+- Owner authorization, live URL navigation and website interaction are separate scope items.
 
 ### Final status
-P01 implementation and focused-test scope are **COMPLETE**; historical exact-head CI PASS is recorded for commits `47e60a0ff0caf68425e569e909508379f86d62d4` and `3a3f03a7fc22e63fa3c2b070151852b80671f2da`. CI for current PR head `91090198cce2d3b01e0ab4dd701e305afafe0ad5` is **NOT VERIFIED / NOT OBSERVABLE** through the available PR-only workflow-run lookup. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
-
+P01 code and focused-test implementation are present, but the full P01 checkpoint remains **IN PROGRESS / CI UNVERIFIED** until a successful Actions run is observed on current head `beb033901dba789e2031d3da593f712ec6fe791c`. Android and production host-boundary qualifications remain pending. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
 
 ## Latest audit correction — 2026-11-18
 
