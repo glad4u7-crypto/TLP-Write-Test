@@ -36,7 +36,7 @@ The repository currently targets a Python/Streamlit prototype. This change does 
 - Session close and idempotent cleanup.
 - Launch failure cleanup.
 - Context creation failure cleanup.
-- Exact-head Agent Foundation CI and Python Demo CI must both pass before P01 is marked verified.
+- The APAA Security CI workflow must pass on the exact current PR head before repository-level P01 verification is marked complete. Separate platform qualification remains a distinct gate.
 
 ## Verification update
 
@@ -50,3 +50,21 @@ The GitHub commit status and PR-associated workflow lookup currently return no c
 - PR #10 head `47e60a0ff0caf68425e569e909508379f86d62d4` completed APAA Security CI run #836 (`44112730503`) with **SUCCESS**.
 - All 14 workflow steps passed, including Python syntax compilation, Chromium TLS acceptance/rejection cases, live-browsing controller lifecycle, real Chromium through the restricted local proxy, worker-adapter attestation/lifecycle contract, Linux host-inspector contract, and the remaining security test suite.
 - This verifies the repository code and CI fixtures at that exact commit. It does not qualify physical Android/Termux Chromium, a production OCI host boundary, or authorize live browsing. Android launch remains fail-closed until device qualification; Browser/Worker dispatch remains disabled.
+
+
+## Final P01 completion audit — 2026-11-18
+
+### Repository implementation and CI
+- P01 implementation is complete on the branch named above.
+- Current PR head: `3a3f03a7fc22e63fa3c2b070151852b80671f2da`.
+- Exact-head APAA Security CI run #1300 (run ID `44227113185`) completed with **SUCCESS** on this exact commit.
+- All 14 workflow steps passed, including syntax validation, Chromium TLS acceptance/rejection, browsing-controller lifecycle, restricted-proxy Chromium integration, worker-adapter contract, Linux host-inspector contract, and the remaining security regression suite.
+- The CI result verifies the repository code and its test fixtures. It is not evidence of Android device compatibility or a production OS/OCI isolation boundary.
+
+### Remaining external qualification (not a P01 code defect)
+- **Android/Termux physical-device qualification: NOT RUN.** It requires testing on the actual Android device and must not be inferred from desktop/Linux CI. Until that is performed, Android-specific browser launch stays unsupported/fail-closed.
+- **Production sandbox/egress qualification: OUT OF P01 SCOPE.** P01 is a controller-level launcher, not an OS sandbox. No live browsing or Browser/Worker dispatch is enabled by this completion.
+- **Owner authorization, live URL navigation, and real website interaction are not part of P01.** They remain gated by the later security/authorization work.
+
+### Final status
+P01 is **COMPLETE for repository implementation, focused tests, and exact-head CI**. Physical Android qualification and production host-boundary qualification are explicitly **PENDING / NOT CLAIMED**. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
