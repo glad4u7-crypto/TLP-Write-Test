@@ -16,7 +16,7 @@ from core.approvals import ApprovalAuthority, ApprovalReceipt
 from core.audit import JsonlAuditLog, create_audit_event
 from core.browser_security import BrowserJob, validate_browser_job
 from core.browser_execution import BrowserExecutionCoordinator
-from core.execution import ActionHandlerDisabled, ExecutionGateway, ExecutionResult
+from core.execution import ExecutionGateway, ExecutionResult
 from core.identity import Principal, require_authenticated
 from core.storage import TenantKey
 
@@ -240,7 +240,7 @@ class BrowserControlBoundary:
     ) -> ExecutionResult:
         """Consume the exact Owner receipt and audit a blocked disabled-handler dispatch.
 
-        A guarded handler is registered, but it raises ActionHandlerDisabled
+        A guarded handler is registered, but it raises BrowserControlSecurityError
         before any side effect. A valid receipt is consumed once and the gateway
         records a denied disabled outcome. This is not browser execution.
         """
