@@ -149,3 +149,24 @@ Diagnostic phase is complete only when the evidence identifies (a) the first fai
 **Reproduction: CONFIRMED. Exact process: PARTIAL. Exact FD: NOT IDENTIFIED. Exact source call site: NOT IDENTIFIED. Safe fix: NOT JUSTIFIED. Regression test for the actual Chromium defect: NOT YET POSSIBLE. Release: FAILED / NO-GO.**
 
 The diagnostic matrix and collector changes are useful and preserve the existing OCI isolation, non-root identity, seccomp, cgroup, and network controls. Do not weaken those controls or close inherited descriptors speculatively. The next valid step is a dedicated diagnostic Chromium build with narrowly scoped logging at the ownership-check failure path (FD number, operation, ownership state, PID/TID, and a bounded stack), followed by a deterministic regression reproducer. Until that evidence exists, this task cannot honestly be marked as root-caused or fixed.
+
+
+
+## Evidence update — APAA P93 diagnostic build instrumentation prepared
+
+- Added a separate Chromium source patch at `patches/chromium-156-fd-ownership-diagnostics.patch`.
+- The fatal ownership path now emits a structured diagnostic record immediately before the existing stack trace and immediate crash:
+  `fd`, `operation` (`acquire` / `release` / `close`), `previous_owned`, `requested_owned`, process `pid`, and Linux `tid`.
+- The instrumentation is deliberately fatal-path-only and does not open, close, duplicate, transfer, or otherwise mutate descriptors. The existing ownership check and crash remain intact.
+- Added a separate pinned-source build recipe at `scripts/build_chromium_fd_diagnostic.sh`, plus parser and parser regression tests at `core/chromium_fd_ownership_log.py` and `tests/test_chromium_fd_ownership_log.py`.
+- The real-worker evidence writer now includes validated structured ownership records when emitted by an instrumented binary.
+- The expected Chromium source revision must be independently reviewed and pinned. The patch has **not** yet been applied to or compiled against the exact Debian 156.0.8078.79-1~deb12u1 source tree. A successful patch-context check and build are still required.
+- APAA Security CI run `44210785772` was created for commit `dfab90aeb580ae001d42587e85bdba164474a575`; at the time of this update its run was pending and had no job records available.
+
+### What is and is not complete
+
+**Complete:** diagnostic source patch authored; separate build recipe authored; bounded parser and deterministic parser tests added; qualification evidence integration added.
+
+**Not yet complete:** exact Debian source revision mapping; patch application validation; diagnostic Chromium compilation; execution inside disposable OCI worker; capture of an actual failing FD/operation/PID/TID; causal root-cause proof; behavior fix; Chromium-native regression test reproducing the identified defect.
+
+No behavioral workaround or speculative FD lifecycle change has been made. The prior hypotheses remain unproven. Release remains **FAILED / NO-GO**; Browser/Worker dispatch remains disabled and Auto-Run remains OFF. Security invariants are unchanged.
