@@ -296,7 +296,7 @@ def test_inspect_elements_returns_bounded_read_only_metadata(monkeypatch):
 
 def test_element_inspection_obeys_response_byte_limit(monkeypatch):
     controller, context, session, launches, events = setup_controller(monkeypatch)
-    with pytest.raises(LiveBrowsingError, match="element inspection metadata"):
+    with pytest.raises(LiveBrowsingError, match="(?i)element inspection metadata"):
         controller.execute(
             valid_job(action="inspect_elements", max_response_bytes=1),
             signed_evidence={}, challenge="c" * 64,
