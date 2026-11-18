@@ -271,7 +271,7 @@ def test_proxy_tcp_preflight_builds_valid_multiline_python(monkeypatch):
     assert result["connected"] is True
     code = captured["command"][-1]
     assert "import socket,sys\n" in code
-    assert "\n" not in code
+    assert "\\n" not in code
 
 
 def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch, tmp_path):
