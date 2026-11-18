@@ -442,3 +442,24 @@ def test_search_result_url_removes_hyphenated_and_common_auth_parameters(secret_
     assert secret_key not in result.url
     assert "private123456" not in result.url
     assert "topic=public" in result.url
+
+
+@pytest.mark.parametrize("private_path", [
+    "/profiles/user%40example.com",
+    "/records/202-555-0199",
+    "/reset/password=supersecretvalue",
+])
+def test_search_result_url_redacts_sensitive_identifiers_from_path(private_path):
+    from urllib.parse import quote
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(), allowed_origins=ORIGINS)
+    result = validate_search_results(
+        [_search_result(url=f"https://example.com{private_path}?topic=public")],
+        intent=intent, allowed_origins=ORIGINS,
+    )[0]
+    assert "[redacted-path]" in result.url
+    assert "topic=public" in result.url
+    assert "user%40example.com" not in result.url
+    assert "202-555-0199" not in result.url
+    assert "supersecretvalue" not in result.url
