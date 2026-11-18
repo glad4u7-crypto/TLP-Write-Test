@@ -80,3 +80,19 @@ def test_android_device_diagnostics_reject_symlinked_secrets_file(tmp_path):
     by_id = {item["id"]: item for item in results}
     assert by_id["D08"]["status"] == "FAIL"
     assert by_id["D05"]["status"] == "FAIL"
+
+
+def test_android_device_diagnostics_reject_symlinked_streamlit_directory(tmp_path):
+    target_dir = tmp_path / "real-streamlit"
+    target_dir.mkdir(mode=0o700)
+    secrets_target = target_dir / "secrets.toml"
+    _write_private_secrets(secrets_target)
+    link_dir = tmp_path / ".streamlit"
+    link_dir.symlink_to(target_dir, target_is_directory=True)
+    results = run_diagnostics(
+        environ={"ANDROID_ROOT": "/system", "PREFIX": "/data/data/com.termux/files/usr"},
+        secrets_path=link_dir / "secrets.toml",
+    )
+    by_id = {item["id"]: item for item in results}
+    assert by_id["D08"]["status"] == "FAIL"
+    assert by_id["D05"]["status"] == "FAIL"
