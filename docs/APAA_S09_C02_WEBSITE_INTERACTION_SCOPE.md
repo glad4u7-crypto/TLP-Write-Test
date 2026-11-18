@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** CONTROLLER FOUNDATION IMPLEMENTED; PREVIOUS EXACT-HEAD CI PASSED; TARGET-EVIDENCE AND SEARCH-RESULT EXTENSIONS AWAITING EXACT-HEAD CI; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
+**Status:** CONTROLLER FOUNDATION IMPLEMENTED; EARLIER CI PASSED; LATEST REDACTION REGEX FIX COMMITTED AFTER ONE TEST FAILURE; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -53,7 +53,7 @@ File: `tests/test_browser_interaction.py`
 
 ## 5. Verification evidence
 
-Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commit: `d19c05a8377861c93ece7babeda754653e21b394`. Exact-head CI for the target-evidence and search-result extensions is pending and must pass before these extensions are marked verified.
+Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commit: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448`. The first combined run (`44216224292`) passed all TLS, controller/lifecycle, worker-adapter and host-inspector stages but failed one new search-redaction test: regex boundaries were double-escaped. This was corrected in the latest commit; a new exact-head CI run must pass before the extensions are marked verified.
 
 - GitHub Actions workflow: **APAA Security CI**
 - Run: [44214923346](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44214923346)
