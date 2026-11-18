@@ -385,3 +385,43 @@ def test_search_results_reject_malformed_forged_filter_tuple():
         validate_search_results(
             [_search_result()], intent=forged, allowed_origins=ORIGINS
         )
+
+
+@pytest.mark.parametrize("forged", [
+    ("field_type", ["text"]),
+    ("field_type", None),
+    ("value", ["draft"]),
+    ("value", "Please buy now"),
+])
+def test_target_evidence_rejects_malformed_or_prohibited_forged_fill_intent(forged):
+    from core.browser_interaction import FillIntent, validate_target_evidence
+
+    field, value = forged
+    values = {
+        "interaction_id": "fill_0000001",
+        "page_id": "page_0000001",
+        "origin": "https://example.com/form",
+        "locator_kind": "label",
+        "locator_value": "Display name",
+        "field_type": "text",
+        "value": "Sample User",
+    }
+    values[field] = value
+    intent = FillIntent(**values)
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _fill_evidence(), intent=intent,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
+
+
+@pytest.mark.parametrize("element_type", [None, [], {}, 1])
+def test_target_evidence_rejects_non_string_element_type(element_type):
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_click_intent(click(), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _click_evidence(element_type=element_type), intent=intent,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
