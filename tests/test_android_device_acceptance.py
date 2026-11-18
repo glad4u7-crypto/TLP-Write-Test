@@ -3,9 +3,24 @@ from pathlib import Path
 from scripts.android_device_acceptance import run_diagnostics
 
 
+def _write_private_secrets(path: Path) -> None:
+    path.write_text(
+        "[apaa]\nrequire_auth = true\napproval_signing_secret_hex = "
+        "\"abababababababababababababababababababababababababababababababab\"\n"
+        "[auth]\nredirect_uri = \"http://localhost:8501/oauth2callback\"\n"
+        "cookie_secret = \"cccccccccccccccccccccccccccccccccccccccc\"\n"
+        "client_id = \"test-client\"\nclient_secret = \"test-secret\"\n"
+        "server_metadata_url = \"https://issuer.example/.well-known/openid-configuration\"\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o600)
+    path.parent.chmod(0o700)
+
+
 def test_android_device_diagnostics_report_termux_and_private_auth_config(tmp_path):
-    secrets = tmp_path / "secrets.toml"
-    secrets.write_text("[apaa]\nrequire_auth = true\napproval_signing_secret_hex = \"abababababababababababababababababababababababababababababababab\"\n[auth]\nredirect_uri = \"http://localhost:8501/oauth2callback\"\ncookie_secret = \"cccccccccccccccccccccccccccccccccccccccc\"\nclient_id = \"test-client\"\nclient_secret = \"test-secret\"\nserver_metadata_url = \"https://issuer.example/.well-known/openid-configuration\"\n", encoding="utf-8")
+    secrets = tmp_path / ".streamlit" / "secrets.toml"
+    secrets.parent.mkdir(mode=0o700)
+    _write_private_secrets(secrets)
     env = {
         "ANDROID_ROOT": "/system",
         "ANDROID_DATA": "/data",
@@ -13,12 +28,13 @@ def test_android_device_diagnostics_report_termux_and_private_auth_config(tmp_pa
         "HOME": "/data/data/com.termux/files/home",
     }
     results = run_diagnostics(environ=env, secrets_path=secrets)
-    assert [item["id"] for item in results] == ["D01", "D02", "D03", "D04", "D05", "D07", "D06"]
-    assert results[0]["status"] == "PASS"
-    assert results[1]["status"] == "PASS"
-    assert results[4]["status"] == "PASS"
-    assert results[5]["status"] == "PASS"
-    assert results[6]["status"] == "PASS"
+    by_id = {item["id"]: item for item in results}
+    assert set(by_id) == {"D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08"}
+    assert by_id["D01"]["status"] == "PASS"
+    assert by_id["D02"]["status"] == "PASS"
+    assert by_id["D05"]["status"] == "PASS"
+    assert by_id["D07"]["status"] == "PASS"
+    assert by_id["D08"]["status"] == "PASS"
 
 
 def test_android_device_diagnostics_do_not_accept_missing_owner_auth(tmp_path):
@@ -28,8 +44,39 @@ def test_android_device_diagnostics_do_not_accept_missing_owner_auth(tmp_path):
             "PREFIX": "/data/data/com.termux/files/usr",
             "HOME": "/data/data/com.termux/files/home",
         },
-        secrets_path=tmp_path / "missing.toml",
+        secrets_path=tmp_path / ".streamlit" / "missing.toml",
     )
-    assert results[4]["status"] == "FAIL"
-    assert results[5]["status"] == "FAIL"
-    assert "secret values not displayed" in results[4]["detail"]
+    by_id = {item["id"]: item for item in results}
+    assert by_id["D05"]["status"] == "FAIL"
+    assert by_id["D07"]["status"] == "FAIL"
+    assert by_id["D08"]["status"] == "FAIL"
+    assert "secret values not displayed" in by_id["D05"]["detail"]
+
+
+def test_android_device_diagnostics_reject_group_or_world_readable_secrets(tmp_path):
+    secrets = tmp_path / ".streamlit" / "secrets.toml"
+    secrets.parent.mkdir(mode=0o700)
+    _write_private_secrets(secrets)
+    secrets.chmod(0o644)
+    results = run_diagnostics(
+        environ={"ANDROID_ROOT": "/system", "PREFIX": "/data/data/com.termux/files/usr"},
+        secrets_path=secrets,
+    )
+    by_id = {item["id"]: item for item in results}
+    assert by_id["D08"]["status"] == "FAIL"
+    assert by_id["D05"]["status"] == "FAIL"
+
+
+def test_android_device_diagnostics_reject_symlinked_secrets_file(tmp_path):
+    secrets = tmp_path / ".streamlit" / "secrets.toml"
+    secrets.parent.mkdir(mode=0o700)
+    target = tmp_path / "outside.toml"
+    _write_private_secrets(target)
+    secrets.symlink_to(target)
+    results = run_diagnostics(
+        environ={"ANDROID_ROOT": "/system", "PREFIX": "/data/data/com.termux/files/usr"},
+        secrets_path=secrets,
+    )
+    by_id = {item["id"]: item for item in results}
+    assert by_id["D08"]["status"] == "FAIL"
+    assert by_id["D05"]["status"] == "FAIL"
