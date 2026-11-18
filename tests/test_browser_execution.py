@@ -685,12 +685,15 @@ def test_owner_approval_is_exact_job_bound_one_time_and_durably_correlated(tmp_p
 
 
 def test_owner_approval_mismatch_is_rejected_before_dns_or_worker():
-    authority = ApprovalAuthority(signing_secret=b"APAA test approval signing secret 32 bytes minimum")
     tenant = TenantKey("https://apaa.test", "owner-1")
     principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
     ledger_dir = tempfile.TemporaryDirectory()
     private_dir = Path(ledger_dir.name)
     private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
     ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
     worker = FakeWorker()
     coordinator = _ProductionBrowserExecutionCoordinator(
@@ -765,19 +768,25 @@ def test_owner_principal_must_match_tenant_before_coordinator_creation(tmp_path)
         _ProductionBrowserExecutionCoordinator(
             FakeWorker(), audit=lambda event: None,
             recovery_ledger=SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3"),
-            approval_authority=ApprovalAuthority(signing_secret=b"APAA test approval signing secret 32 bytes minimum"),
+            approval_authority=ApprovalAuthority(
+                nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+                signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+            ),
             owner_principal=other, owner_tenant=tenant,
             session_scope="owner-session-test-001", owner_session_check=lambda: True,
         )
 
 
 def test_owner_session_revoked_during_dns_is_blocked_before_worker_start():
-    authority = ApprovalAuthority(signing_secret=b"APAA test approval signing secret 32 bytes minimum")
     tenant = TenantKey("https://apaa.test", "owner-1")
     principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
     tempdir = tempfile.TemporaryDirectory()
     private_dir = Path(tempdir.name)
     private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
     ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
     session = {"active": True}
     worker = FakeWorker()
