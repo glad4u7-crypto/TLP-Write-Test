@@ -222,3 +222,107 @@ async def inspect_interaction_target(
         raise
     except Exception as exc:
         raise DOMInspectionError("Target inspection failed closed.") from exc
+
+
+async def extract_visible_search_results(
+    page: Any,
+    intent: Any,
+    *,
+    allowed_origins: Sequence[str],
+    result_selector: str,
+    max_scan: int = 200,
+    timeout_seconds: float = 4.0,
+) -> tuple[Any, ...]:
+    """Extract bounded visible result cards and normalize them as read-only data.
+
+    Selectors are deliberately limited to one simple CSS selector (tag, class,
+    id, or attribute selector); XPath and Playwright text/JS selector engines
+    are rejected. Every card and its single link must be visible. Off-origin
+    links are ignored. This function never clicks, navigates, or submits.
+    """
+    from core.browser_interaction import (
+        SearchIntent,
+        InteractionPolicyError,
+        validate_search_results,
+    )
+
+    if type(intent) is not SearchIntent:
+        raise DOMInspectionError("A validated SearchIntent is required.")
+    if type(max_scan) is not int or not 1 <= max_scan <= 500:
+        raise DOMInspectionError("max_scan must be an integer from 1 to 500.")
+    if type(timeout_seconds) not in (int, float) or isinstance(timeout_seconds, bool) or not 0.05 <= timeout_seconds <= 10:
+        raise DOMInspectionError("timeout_seconds must be between 0.05 and 10.")
+    selector_pattern = re.compile(
+        r"^(?:[A-Za-z][A-Za-z0-9_-]*|\\.[A-Za-z_][A-Za-z0-9_-]*|#[A-Za-z_][A-Za-z0-9_-]*|"
+        r"\\[[A-Za-z_:][A-Za-z0-9_:.-]*(?:=(?:\\"[^\\"]{0,80}\\"|'[^']{0,80}'))?\\])$"
+    )
+    if type(result_selector) is not str or len(result_selector) > 120 or not selector_pattern.fullmatch(result_selector):
+        raise DOMInspectionError("Result selector must be one simple CSS selector.")
+    try:
+        initial_url = page.url
+        current = validate_destination(initial_url, allowed_origins)
+        intended = validate_destination(intent.origin, allowed_origins)
+        if current.origin != intended.origin or intent.page_id == "":
+            raise DOMInspectionError("Current page does not match the approved search page.")
+    except (BrowserPolicyError, TypeError, AttributeError) as exc:
+        if isinstance(exc, DOMInspectionError):
+            raise
+        raise DOMInspectionError("Search page is not on an approved HTTPS origin.") from exc
+
+    async def inspect() -> tuple[Any, ...]:
+        cards = page.locator(result_selector)
+        count = await cards.count()
+        if count > max_scan:
+            raise DOMInspectionError("Search result scan exceeded its configured bound.")
+        raw_results = []
+        for index in range(count):
+            card = cards.nth(index)
+            if not await card.is_visible():
+                continue
+            links = card.locator("a[href]")
+            if await links.count() != 1:
+                continue
+            link = links.nth(0)
+            if not await link.is_visible() or not await link.is_enabled():
+                continue
+            raw_href = await link.get_attribute("href")
+            if not raw_href:
+                continue
+            try:
+                destination = validate_destination(urljoin(initial_url, raw_href), allowed_origins)
+            except BrowserPolicyError:
+                continue
+            title = await link.inner_text(timeout=max(1, int(timeout_seconds * 1000)))
+            snippet = await card.inner_text(timeout=max(1, int(timeout_seconds * 1000)))
+            if type(title) is not str or type(snippet) is not str:
+                raise DOMInspectionError("Search result adapter returned non-text content.")
+            title = title.strip()
+            snippet = snippet.strip()
+            if not title:
+                continue
+            raw_results.append({
+                "title": title[:200],
+                "url": destination.url,
+                "snippet": snippet[:1000],
+                "source_page_id": intent.page_id,
+                "visible": True,
+            })
+            if len(raw_results) >= intent.max_results:
+                break
+        if page.url != initial_url:
+            raise DOMInspectionError("Page URL changed while search results were inspected.")
+        try:
+            return validate_search_results(
+                raw_results, intent=intent, allowed_origins=allowed_origins
+            )
+        except InteractionPolicyError as exc:
+            raise DOMInspectionError("Visible search results failed normalization.") from exc
+
+    try:
+        return await asyncio.wait_for(inspect(), timeout=float(timeout_seconds))
+    except asyncio.TimeoutError as exc:
+        raise DOMInspectionError("Search result extraction exceeded its deadline.") from exc
+    except DOMInspectionError:
+        raise
+    except Exception as exc:
+        raise DOMInspectionError("Search result extraction failed closed.") from exc
