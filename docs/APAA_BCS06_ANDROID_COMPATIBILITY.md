@@ -2,7 +2,7 @@
 
 ## Decision
 
-Android is a supported **local Owner-interface host**, not a qualified browser-worker host.
+Android is a supported **local Owner-interface host through Termux**, not a qualified browser-worker host. The recommended dependency runtime is a Debian userland managed by Termux PRoot-Distro; PRoot is compatibility tooling, not a security sandbox.
 
 - Execution path: Android + Termux, same-phone local web application.
 - Owner interface: Android Chrome at `http://127.0.0.1:<configured-port>`.
@@ -16,7 +16,7 @@ Android is a supported **local Owner-interface host**, not a qualified browser-w
 
 | Capability | Disposition | Evidence / limitation |
 |---|---|---|
-| Python application and local HTTP UI in Termux | Feasible in principle | Termux provides Android-native packages; actual phone installation and launch still require physical acceptance |
+| Python application and local HTTP UI | Supported design via Termux + Debian PRoot | Debian userland provides glibc-compatible Python package installation; actual phone installation and launch still require physical acceptance |
 | Owner UI in Android Chrome | Supported design | Same-device loopback URL; responsive UI and browser smoke tests exist, but real handset test is pending |
 | Owner login, approval, history | Existing application controls | Must be rechecked on physical Android; no bypass is introduced |
 | Chromium/Playwright browser worker inside Termux | Unsupported / fail closed | No qualified Android worker image, sandbox, host attestation or network isolation evidence |
@@ -53,12 +53,12 @@ All checks below require the actual target handset. Desktop emulation, CI viewpo
 | ID | Test | Expected result |
 |---|---|---|
 | A01 | Install supported Termux distribution and update packages | Installation succeeds; record app/package versions |
-| A01a | Run `python scripts/android_device_acceptance.py` | D01–D06 diagnostics all PASS; retain redacted output |
+| A01a | Run `python scripts/android_device_acceptance.py` | D01–D07 diagnostics all PASS; retain redacted output |
 | A02 | Start APAA from Termux | App starts without root |
 | A03 | Verify bind address | Listener is loopback only |
 | A04 | Open local URL in Android Chrome | Owner login page loads on same phone |
 | A05 | Responsive layout / portrait and landscape | No clipped critical controls; touch targets usable |
-| A06 | Owner login and logout | Correct passphrase required; logout invalidates session |
+| A06 | Owner login and logout | Configured OIDC Owner login succeeds; logout invalidates session. No local passphrase login is claimed |
 | A07 | Idle/absolute session expiry | Expired session requires re-login |
 | A08 | Owner approval flow | Approve and cancel both behave correctly; no implicit approval |
 | A09 | Action history and audit verification | Recent history visible; tampering/failure remains fail-closed |
@@ -74,10 +74,11 @@ Record only redacted facts: handset model, Android version, Termux source/versio
 
 - Automated contract tests: added in `tests/test_android_compatibility.py` and `tests/test_android_owner_ui.py`; exact-head CI must pass.\n- Android launcher: `scripts/android_owner_ui.py` requires OIDC auth and binds Streamlit to `127.0.0.1`.
 - Existing Android/Desktop browser viewport tests: useful UI regression evidence only.
-- Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone. The diagnostic script is ready but has not been run on the handset.
+- Physical A01–A12: **NOT RUN** until the Owner performs them on the actual Android phone. The exact Termux + Debian PRoot setup is documented in `docs/APAA_ANDROID_TERMUX_QUICKSTART.md`; the diagnostic script is ready but has not been run on the handset.
 - Android browser-worker runtime: **NOT SUPPORTED / DISABLED**.
 - Overall BCS-06: implementation and automated contract scope can be completed in CI, but final physical-device acceptance remains **PENDING OWNER TEST**. Do not report the handset as accepted without A01–A12 evidence.
 
 ## Safety / release state
 
 Draft only. No merge, deployment, public exposure, Auto-Run, browser dispatch, payment, purchase, trading, or money movement. No device mutation is performed by the assessment module.
+\n\n## Android implementation update — 2026-11-18\n\n- Added a dedicated Android dependency set (`requirements-android.txt`) that excludes Playwright/Chromium.\n- Added `scripts/android_termux_setup.py` to collect OIDC client settings without echoing the client secret, generate fresh signing/cookie secrets, and create a private `secrets.toml` without overwriting an existing file.\n- Tightened OIDC validation: callback must be the local loopback callback on port 8501 and discovery metadata must use HTTPS.\n- Android Owner UI is now explicitly considered supported only when the Android Termux environment is detected.\n- Added a complete Termux + Debian PRoot setup guide. PRoot is not treated as a security sandbox; the Android browser worker remains disabled.\n- Corrected A06 from the obsolete passphrase wording to the actual OIDC login contract.\n
