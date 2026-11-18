@@ -5,7 +5,7 @@ from core.safety import authorize_action
 
 @pytest.mark.parametrize("action", [
     "read", "inspect", "plan", "summarize",
-    "read_invoice", "inspect_repository", "summarize_report", "browser_read",
+    "read_invoice", "inspect_repository", "summarize_report",
 ])
 def test_registered_read_only_actions_are_allowed(action):
     assert authorize_action(action).allowed is True
@@ -90,3 +90,12 @@ def test_auto_run_cannot_override_unknown_action():
         "run_shell", auto_run=True, auto_run_actions={"run_shell"}
     )
     assert decision.allowed is False
+
+
+
+def test_browser_read_requires_exact_owner_approval_and_cannot_use_auto_run():
+    assert authorize_action("browser_read").allowed is False
+    assert authorize_action("browser_read", approved_action="browser_read").allowed is True
+    assert authorize_action(
+        "browser_read", auto_run=True, auto_run_actions={"browser_read"}
+    ).allowed is False
