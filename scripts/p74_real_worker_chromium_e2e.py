@@ -334,7 +334,7 @@ def _annotate_known_dynamic_symbols(failure: dict, symbols: dict) -> list[dict]:
                 "frame": frame.get("frame"),
                 "module_offset": frame["module_offset"],
                 "candidate_symbol": "close",
-                "symbol_offset": close_address,
+                "symbol_offset": f"0x{close_start:x}",
                 "interpretation": "near_exported_close_symbol_candidate",
             })
     return matches
