@@ -286,6 +286,28 @@ def _chromium_binary_build_id(container_id: str) -> str | None:
     return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{16,128}", value) else None
 
 
+def _chromium_package_metadata(container_id: str) -> tuple[str | None, str | None]:
+    """Read Debian package version/architecture for exact dbgsym retrieval."""
+    result = subprocess.run(
+        [
+            "podman", "exec", "--user", "65532:65532", container_id,
+            "dpkg-query", "-W", "-f=${Version}| ${Architecture}", "chromium",
+        ],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    if result.returncode != 0:
+        return None, None
+    parts = (result.stdout or "").strip().split("|", 1)
+    if len(parts) != 2:
+        return None, None
+    version, architecture = parts[0].strip(), parts[1].strip()
+    if not re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,128}", version):
+        version = None
+    if architecture not in {"amd64", "arm64", "i386", "ppc64el"}:
+        architecture = None
+    return version, architecture
+
+
 def _chromium_dynamic_symbols(container_id: str) -> dict:
     """Read exported/full symbol-table names needed to classify the fatal wrapper."""
     outputs = []
@@ -1081,6 +1103,9 @@ def main() -> int:
         )[0].stdout.strip()[:160]
         chromium_build_id = _chromium_binary_build_id(container_id)
         evidence["chromium_binary_build_id"] = chromium_build_id
+        package_version, package_architecture = _chromium_package_metadata(container_id)
+        evidence["chromium_package_version"] = package_version
+        evidence["chromium_package_architecture"] = package_architecture
         chromium_dynamic_symbols = _chromium_dynamic_symbols(container_id)
         evidence["chromium_dynamic_symbols"] = chromium_dynamic_symbols
         local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
