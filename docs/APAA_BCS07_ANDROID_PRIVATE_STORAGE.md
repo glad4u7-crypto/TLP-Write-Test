@@ -6,12 +6,14 @@ Prevent APAA's Android Owner UI from starting when its OIDC client secret, cooki
 
 ## Implemented
 
-- validate_private_secret_storage uses lstat to reject symlinked .streamlit directories and symlinked secret files.
+- Opens the .streamlit directory with directory/no-follow flags, then opens secrets.toml relative to the pinned directory descriptor with no-follow semantics.
+- Checks file type and POSIX permissions using fstat on the opened descriptors. This avoids the ordinary lstat-then-open symlink-swap window for the final directory/file components.
 - Requires .streamlit to be a real directory and secrets.toml to be a regular file.
 - Requires directory permissions to exclude group/other access (expected 0700) and file permissions to exclude group/other access (expected 0600).
-- load_owner_secrets enforces the storage check before reading TOML, so the launcher and handset diagnostics share the same fail-closed rule.
+- load_owner_secrets parses TOML from the already-open file descriptor, so validation and reading use the same opened file object.
+- Malformed redirect/metadata ports are converted into safe configuration errors; only the fixed loopback OIDC callback and HTTPS discovery metadata are accepted.
 - Added D08 to the handset diagnostics; output reports only a safe status and never displays secret values.
-- Added tests for valid private storage, world-readable files, and symlinked secrets; Owner launcher tests now create valid private configuration fixtures.
+- Added tests for valid private storage, world-readable files, symlinked secret files, and symlinked .streamlit directories; Owner launcher fixtures include required signing material and private permissions.
 
 ## Safety boundary
 
