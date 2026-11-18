@@ -147,3 +147,17 @@ def test_owner_control_boundary_requires_explicit_confirmation_and_durable_nonce
             resolver=lambda host: ["93.184.216.34"],
         )
     assert worker.calls == []
+
+
+def test_legacy_gateway_dispatch_consumes_receipt_but_keeps_browser_handler_disabled(tmp_path):
+    private_dir = tmp_path / "private"
+    private_dir.mkdir(mode=0o700)
+    private_dir.chmod(0o700)
+    boundary, _coordinator, worker, _ledger, _audit, _active, job = _context(private_dir)
+    receipt = boundary.request_approval(job, owner_confirmed=True)
+
+    result = boundary.dispatch(job, approval_receipt=receipt)
+
+    assert result.executed is False
+    assert "handler failed" in result.reason.lower()
+    assert worker.calls == []
