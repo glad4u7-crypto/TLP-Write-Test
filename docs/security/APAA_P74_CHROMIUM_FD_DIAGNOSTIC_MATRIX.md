@@ -226,3 +226,12 @@ The P74 workflow now has a best-effort post-processing step that asks Debian's d
 This addresses the previous limitation where local package dbgsym lookup returned no result. Debian documents that its debuginfod service distributes debug information keyed by ELF Build-ID and can be enabled with `DEBUGINFOD_URLS=https://debuginfod.debian.net` ([Debian Debuginfod documentation](https://wiki.debian.org/Debuginfod), [Debian service](https://debuginfod.debian.net/)). Exact availability for this Chromium build ID is not yet confirmed.
 
 New helper: `scripts/symbolicate_chromium_fd_evidence.py`; tests: `tests/test_symbolicate_chromium_fd_evidence.py`. Exact-head CI and a third real OCI run with this symbolication step are pending.
+
+
+## Exact Debian dbgsym package found — fallback implementation added
+
+- Third-run evidence [44219620078](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44219620078) showed Debian debuginfod returned `debug_info_not_found` for build ID `4a74f6497529d42bb61262c76d7b1add49c4dea6`.
+- The exact matching package is present in Debian's security-debug archive: `chromium-dbgsym_156.0.8078.79-1~deb12u1_amd64.deb` (35 MB). The archive index lists the exact Bookworm package and version ([Debian security-debug Chromium package index](https://deb.debian.org/debian-security-debug/pool/updates/main/c/chromium/), [package entry](https://deb.debian.org/debian-security-debug/pool/updates/main/c/chromium/chromium-dbgsym_156.0.8078.79-1~deb12u1_amd64.deb)).
+- P74 now records the exact Debian package version/architecture from the worker and the symbolicator falls back to downloading this exact `chromium-dbgsym` package if debuginfod has no result. It extracts the build-ID debug file and verifies the embedded ELF Build-ID with `eu-readelf` before using `eu-addr2line`. A mismatched or missing debug file is rejected; the downloaded package/debug file is not uploaded.
+- New tests cover exact package URL construction, package extraction, Build-ID verification, symbol resolution, missing symbols and timeout behavior.
+- Exact-head Security CI/P93 validation and a new real OCI run using the package fallback are pending. No symbols have been resolved yet; the next run will determine whether the archive's debug package matches the exact runtime ELF Build-ID.
