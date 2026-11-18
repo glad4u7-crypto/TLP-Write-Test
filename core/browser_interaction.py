@@ -367,10 +367,16 @@ def _redact_result_text(value: str) -> str:
 
 
 def _sanitize_result_url(value: object, allowed_origins: Sequence[str]) -> str:
-    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
     canonical = _validate_origin_url(value, allowed_origins)
     parsed = urlsplit(canonical)
+    decoded_path = unquote(parsed.path)
+    if (_EMAIL_PATTERN.search(decoded_path) or _PHONE_PATTERN.search(decoded_path)
+            or _BEARER_PATTERN.search(decoded_path) or _NAMED_SECRET_PATTERN.search(decoded_path)):
+        safe_path = "/[redacted-path]"
+    else:
+        safe_path = parsed.path
     safe_query = []
     try:
         query_items = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=100)
@@ -385,7 +391,7 @@ def _sanitize_result_url(value: object, allowed_origins: Sequence[str]) -> str:
                 or _BEARER_PATTERN.search(item) or _NAMED_SECRET_PATTERN.search(item)):
             continue
         safe_query.append((key, item))
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_query), ""))
+    return urlunsplit((parsed.scheme, parsed.netloc, safe_path, urlencode(safe_query), ""))
 
 
 def validate_search_results(
