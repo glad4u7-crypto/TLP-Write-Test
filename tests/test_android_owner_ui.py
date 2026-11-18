@@ -13,6 +13,18 @@ TERMUX_ENV = {
 }
 
 
+def valid_secrets(*, redirect="http://localhost:8501/oauth2callback", metadata="https://issuer.example/.well-known/openid-configuration"):
+    return (
+        "[apaa]\nrequire_auth = true\n"
+        "[auth]\n"
+        f'redirect_uri = "{redirect}"\n'
+        'cookie_secret = "cccccccccccccccccccccccccccccccc"\n'
+        'client_id = "client"\n'
+        'client_secret = "secret"\n'
+        f'server_metadata_url = "{metadata}"\n'
+    )
+
+
 def test_owner_launcher_requires_android_termux(tmp_path):
     with pytest.raises(RuntimeError, match="Android/Termux"):
         validate_android_owner_config(environ={"HOME": "/home/test"}, secrets_path=tmp_path / "secrets.toml")
@@ -25,7 +37,7 @@ def test_owner_launcher_refuses_missing_auth_config(tmp_path):
 
 def test_owner_launcher_refuses_unauthenticated_prototype(tmp_path):
     secrets = tmp_path / "secrets.toml"
-    secrets.write_text('[apaa]\nrequire_auth = false\n[auth]\nredirect_uri = "http://localhost:8501/oauth2callback"\n', encoding="utf-8")
+    secrets.write_text('[apaa]\nrequire_auth = false\n[auth]\n', encoding="utf-8")
     with pytest.raises(RuntimeError, match="require_auth"):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
 
@@ -37,9 +49,9 @@ def test_owner_launcher_requires_streamlit_oidc_config(tmp_path):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
 
 
-def test_owner_launcher_accepts_auth_required_config(tmp_path):
+def test_owner_launcher_accepts_valid_auth_required_config(tmp_path):
     secrets = tmp_path / "secrets.toml"
-    secrets.write_text('[apaa]\nrequire_auth = true\n[auth]\nredirect_uri = "http://localhost"\n', encoding="utf-8")
+    secrets.write_text(valid_secrets(), encoding="utf-8")
     validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
 
 
@@ -57,27 +69,13 @@ def test_owner_ui_rejects_unsafe_port(port):
 
 def test_owner_launcher_rejects_non_loopback_oidc_redirect(tmp_path):
     secrets = tmp_path / "secrets.toml"
-    secrets.write_text(
-        '[apaa]\\nrequire_auth = true\\n[auth]\\n'
-        'redirect_uri = "http://192.168.1.5:8501/oauth2callback"\\n'
-        'cookie_secret = "cccccccccccccccccccccccccccccccc"\\n'
-        'client_id = "client"\\nclient_secret = "secret"\\n'
-        'server_metadata_url = "https://issuer.example/.well-known/openid-configuration"\\n',
-        encoding="utf-8",
-    )
+    secrets.write_text(valid_secrets(redirect="http://192.168.1.5:8501/oauth2callback"), encoding="utf-8")
     with pytest.raises(RuntimeError, match="loopback"):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
 
 
 def test_owner_launcher_rejects_http_oidc_metadata(tmp_path):
     secrets = tmp_path / "secrets.toml"
-    secrets.write_text(
-        '[apaa]\\nrequire_auth = true\\n[auth]\\n'
-        'redirect_uri = "http://localhost:8501/oauth2callback"\\n'
-        'cookie_secret = "cccccccccccccccccccccccccccccccc"\\n'
-        'client_id = "client"\\nclient_secret = "secret"\\n'
-        'server_metadata_url = "http://issuer.example/.well-known/openid-configuration"\\n',
-        encoding="utf-8",
-    )
+    secrets.write_text(valid_secrets(metadata="http://issuer.example/.well-known/openid-configuration"), encoding="utf-8")
     with pytest.raises(RuntimeError, match="HTTPS"):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
