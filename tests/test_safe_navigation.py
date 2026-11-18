@@ -11,6 +11,9 @@ class FakeRequest:
     def __init__(self, url):
         self.url = url
 
+    def is_navigation_request(self):
+        return True
+
 
 class FakeRoute:
     def __init__(self, url):
@@ -187,3 +190,27 @@ def test_context_level_route_blocks_disallowed_redirect_or_subresource():
 def test_context_argument_must_expose_route():
     with pytest.raises(TypeError, match="context"):
         SafeNavigationController(FakePage(), make_policy(), context=object())
+
+
+def test_redirect_hop_limit_is_enforced_by_browser_controller():
+    page = FakePage(redirect_urls=(
+        "https://example.com/one",
+        "https://example.com/two",
+    ))
+    controller = SafeNavigationController(
+        page, make_policy(),
+    )
+    controller._policy = NavigationPolicy(
+        allowed_hosts=frozenset({"example.com"}),
+        max_redirects=1,
+        resolver=lambda host: (PUBLIC,),
+    )
+
+    with pytest.raises(SafeNavigationError, match="blocked"):
+        controller.navigate("https://example.com/start")
+
+    assert page.routes_seen[0].continued is True
+    assert page.routes_seen[1].continued is True
+    assert page.routes_seen[2].aborted is True
+    assert page.handlers == {}
+    assert page.unrouted == ["**/*"]
