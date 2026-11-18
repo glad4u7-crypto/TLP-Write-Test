@@ -271,7 +271,7 @@ def test_proxy_tcp_preflight_builds_valid_multiline_python(monkeypatch):
     assert result["connected"] is True
     code = captured["command"][-1]
     assert "import socket,sys\n" in code
-    assert "\\n" not in code
+    assert "\n" not in code
 
 
 def test_chromium_local_dump_dom_smoke_requires_expected_marker(monkeypatch, tmp_path):
@@ -536,9 +536,9 @@ def test_fd_ownership_failure_does_not_claim_preceding_log_pid_is_crash_pid():
 
     stderr = (
         "[19:19:1118/014149.894302:ERROR:network_service.cc:652] "
-        "Network service crashed or was terminated.\\n"
-        "Crashing due to FD ownership violation:\\n"
-        "#0 0x55b8e346843e <unknown>\\n"
+        "Network service crashed or was terminated.\n"
+        "Crashing due to FD ownership violation:\n"
+        "#0 0x55b8e346843e <unknown>\n"
     )
     details = qualification._chromium_failure_details(
         CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
@@ -555,9 +555,9 @@ def test_fd_ownership_structured_diagnostic_proves_fatal_process_identity():
 
     stderr = (
         "APAA_FD_OWNERSHIP_DIAG fd=7 operation=close previous_owned=1 "
-        "requested_owned=0 pid=288 tid=288\\n"
-        "Crashing due to FD ownership violation:\\n"
-        "#0 0x55b8e346843e <unknown>\\n"
+        "requested_owned=0 pid=288 tid=288\n"
+        "Crashing due to FD ownership violation:\n"
+        "#0 0x55b8e346843e <unknown>\n"
     )
     details = qualification._chromium_failure_details(
         CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
@@ -574,7 +574,7 @@ def test_chromium_package_metadata_is_bounded_for_exact_dbgsym_lookup(monkeypatc
     from subprocess import CompletedProcess
 
     def fake_run(command, **kwargs):
-        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| amd64\\n", "")
+        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| amd64\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     assert qualification._chromium_package_metadata("container-id") == (
@@ -586,7 +586,7 @@ def test_chromium_package_metadata_rejects_unknown_architecture(monkeypatch):
     from subprocess import CompletedProcess
 
     def fake_run(command, **kwargs):
-        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| mipsel\\n", "")
+        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| mipsel\n", "")
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     assert qualification._chromium_package_metadata("container-id") == (
