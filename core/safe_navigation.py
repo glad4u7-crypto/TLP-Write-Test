@@ -51,10 +51,22 @@ class SafeNavigationController:
         self._policy.validate_url(url)
         self._navigating = True
         blocked: list[NavigationPolicyError] = []
+        navigation_request_count = 0
 
         def guard(route: Any) -> None:
+            nonlocal navigation_request_count
             try:
-                self._policy.validate_url(route.request.url)
+                request = route.request
+                is_navigation = getattr(request, "is_navigation_request", None)
+                if not callable(is_navigation):
+                    raise NavigationPolicyError("Request navigation metadata is unavailable.")
+                if is_navigation():
+                    navigation_request_count += 1
+                    # The initial navigation is not a redirect; every subsequent
+                    # main-frame navigation request consumes one redirect hop.
+                    if navigation_request_count > self._policy.max_redirects + 1:
+                        raise NavigationPolicyError("Redirect limit exceeded.")
+                self._policy.validate_url(request.url)
             except NavigationPolicyError as exc:
                 blocked.append(exc)
                 route.abort(error_code="blockedbyclient")
