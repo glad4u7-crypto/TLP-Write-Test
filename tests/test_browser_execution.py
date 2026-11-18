@@ -1,6 +1,8 @@
 import ssl
 import time
 import threading
+import hashlib
+import json
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -347,7 +349,7 @@ def test_attested_runtime_factory_rejects_duck_typed_bypass():
 
     # The stronger fail-closed approval gate runs before runtime type checks.
     # A duck-typed gate must never be invoked while Owner approval binding is absent.
-    with pytest.raises(BrowserExecutionError, match="trusted Owner approval"):
+    with pytest.raises(BrowserExecutionError, match="real-host Chromium/FD qualification"):
         BrowserExecutionCoordinator.from_attested_runtime(
             FakeGate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
             audit=lambda event: None,
@@ -662,7 +664,13 @@ def test_owner_approval_is_exact_job_bound_one_time_and_durably_correlated(tmp_p
     ) == {"text": "safe"}
     correlations = ledger.list_approval_correlations(job["job_id"])
     assert len(correlations) == 1
-    assert correlations[0]["request_digest"] == ledger.list_history(job["job_id"])[0].get("request_digest", correlations[0]["request_digest"])
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            payload, sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert correlations[0]["request_digest"] == expected_digest
     assert len(correlations[0]["approval_ref"]) == 64
     assert len(correlations[0]["owner_ref"]) == 64
     assert len(correlations[0]["session_ref"]) == 64
