@@ -107,7 +107,7 @@ class BrowserControlBoundary:
     @staticmethod
     def _browser_handler_disabled(_payload: Mapping[str, Any]) -> None:
         """Fail closed before any browser, network, process, or filesystem side effect."""
-        raise ActionHandlerDisabled(
+        raise BrowserControlSecurityError(
             "Browser handler is registered but DISABLED: a reviewed host adapter "
             "and verified isolated-worker egress evidence are not configured."
         )
