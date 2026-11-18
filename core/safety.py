@@ -13,7 +13,7 @@ class SafetyDecision:
 # Exact read-only identifiers only. Do not allow arbitrary read_* names.
 _READ_ONLY_ACTIONS = {
     "read", "inspect", "plan", "summarize",
-    "read_invoice", "inspect_repository", "summarize_report",
+    "read_invoice", "inspect_repository", "summarize_report", "browser_read",
 }
 
 # Only reviewed mutations may be approved or added to Auto-Run.
