@@ -13,9 +13,13 @@ import json
 import os
 import socket
 import sys
-import tomllib
 from pathlib import Path
 from typing import Mapping
+
+from core.android_owner_config import (
+    AndroidOwnerConfigError, load_owner_secrets,
+    validate_oidc_config, validate_approval_signing_config,
+)
 
 
 def _check(name: str, passed: bool, detail: str) -> dict[str, object]:
@@ -37,16 +41,32 @@ def run_diagnostics(*, environ: Mapping[str, str], secrets_path: Path) -> list[d
         _check("D04", hasattr(os, "geteuid") and os.geteuid() != 0, "Non-root process" if hasattr(os, "geteuid") and os.geteuid() != 0 else "Root or effective UID unavailable"),
     ]
 
-    auth_ok = False
-    if secrets_path.is_file():
+    oidc_ok = False
+    signing_ok = False
+    try:
+        config = load_owner_secrets(secrets_path)
         try:
-            config = tomllib.loads(secrets_path.read_text(encoding="utf-8"))
-            apaa = config.get("apaa")
-            auth = config.get("auth")
-            auth_ok = isinstance(apaa, dict) and apaa.get("require_auth") is True and isinstance(auth, dict) and bool(auth)
-        except (OSError, tomllib.TOMLDecodeError):
-            auth_ok = False
-    results.append(_check("D05", auth_ok, "OIDC-required Owner configuration present" if auth_ok else "Missing/invalid OIDC-required Owner configuration; secret values not displayed"))
+            validate_oidc_config(config)
+            oidc_ok = True
+        except AndroidOwnerConfigError:
+            pass
+        try:
+            validate_approval_signing_config(config)
+            signing_ok = True
+        except AndroidOwnerConfigError:
+            pass
+    except AndroidOwnerConfigError:
+        pass
+    results.append(_check(
+        "D05", oidc_ok,
+        "Complete Streamlit OIDC Owner configuration present"
+        if oidc_ok else "Missing/incomplete OIDC configuration; secret values not displayed",
+    ))
+    results.append(_check(
+        "D07", signing_ok,
+        "APAA approval signing key and storage-path configuration valid"
+        if signing_ok else "Missing/invalid APAA approval signing configuration; secret values not displayed",
+    ))
 
     loopback_ok = False
     try:
