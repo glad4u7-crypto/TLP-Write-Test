@@ -490,7 +490,7 @@ def test_chromium_dynamic_close_symbol_is_parsed_and_stack_pc_annotated(monkeypa
 
     monkeypatch.setattr(qualification.subprocess, "run", fake_run)
     symbols = qualification._chromium_dynamic_symbols("worker-container")
-    assert symbols["close_symbol_offset"] == "0x9c63400"
+    assert int(symbols["close_symbol_offset"], 16) == 0x9c63400
     failure = {"process_mapping": {"stack_frames_with_module_offsets": [
         {"frame": 1, "module": "chromium", "module_offset": "0x9c6343e"},
         {"frame": 2, "module": "chromium", "module_offset": "0x9c64000"},
