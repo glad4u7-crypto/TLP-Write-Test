@@ -245,3 +245,15 @@ New helper: `scripts/symbolicate_chromium_fd_evidence.py`; tests: `tests/test_sy
 - Exact-head targeted symbolication tests: [run 44221205575](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44221205575) — **PASS**.
 - Exact pinned-source patch/parser validation: [run 44221211676](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44221211676) — **PASS**.
 - Full APAA Security CI on this exact head is still running. Real OCI execution remains intentionally skipped by the workflow's explicit owner gate; this is not a runtime qualification.
+
+
+## Collector correctness guardrails (software-only)
+
+The procfs collector now applies two additional integrity constraints:
+
+1. **PID-reuse rejection:** read Linux `/proc/<pid>/stat` field 22 (start-time ticks) before collecting process metadata, then re-read it immediately before emitting the process record. If the process disappeared or the start-time identity changed, discard that process record rather than combine metadata from two different tasks.
+2. **Executable-only address mappings:** retain executable file-backed mappings only when the mapped basename matches the process executable basename. Do not include unrelated shared-library executable ranges or anonymous stack mappings in the field used for Chromium image-offset attribution.
+
+These checks reduce false process/PC attribution. They do not prove FD inheritance, descriptor ownership, or the cause of Chromium's fatal assertion. The collector still cannot observe `FD_CLOEXEC` reliably through `/proc/<pid>/fdinfo`; `flags` is recorded as file-status metadata and must not be treated as proof of the descriptor-table close-on-exec bit.
+
+Automated regression cases cover malformed start-time records, PID recycling during a snapshot, and exclusion of unrelated executable mappings. The tests must pass on the exact PR head before this collector hardening is accepted.
