@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** CONTROLLER FOUNDATION IMPLEMENTED; PREVIOUS EXACT-HEAD CI PASSED; TARGET-EVIDENCE EXTENSION AWAITING EXACT-HEAD CI; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
+**Status:** CONTROLLER FOUNDATION IMPLEMENTED; PREVIOUS EXACT-HEAD CI PASSED; TARGET-EVIDENCE AND SEARCH-RESULT EXTENSIONS AWAITING EXACT-HEAD CI; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -45,15 +45,15 @@ File: `core/browser_interaction.py`
 - P01 form filling is draft-only, bounded, and rejects unsupported/secret field types. It has no submit operation.
 - P02 query/filter intent is bounded, structured, and capped at 10 filters and 100 results.
 - P03 navigation plans are finite (1–8 steps), unique-ID, exact-origin-bound, and capped at 60 seconds.
-- Prohibited financial/purchase wording checks are defense-in-depth only. They are not semantic classification and must never be treated as the primary safety boundary.\n- `validate_target_evidence` adds a pure controller-side gate requiring one unique, visible, enabled locator, exact interaction/page correlation, same approved origin, matching link destination or form-control type, and a timestamp no older than five seconds by default. It revalidates the frozen intent object because dataclasses can be directly constructed.\n- This evidence validator does not inspect a real DOM, attest the adapter, cryptographically bind evidence to a browser process, or consume an Owner approval receipt. It cannot authorize execution.
+- Prohibited financial/purchase wording checks are defense-in-depth only. They are not semantic classification and must never be treated as the primary safety boundary.\n- `validate_target_evidence` adds a pure controller-side gate requiring one unique, visible, enabled locator, exact interaction/page correlation, same approved origin, matching link destination or form-control type, and a timestamp no older than five seconds by default. It revalidates the frozen intent object because dataclasses can be directly constructed.\n- This evidence validator does not inspect a real DOM, attest the adapter, cryptographically bind evidence to a browser process, or consume an Owner approval receipt. It cannot authorize execution.\n- `validate_search_results` adds a bounded normalizer for adapter-reported visible search results. It enforces the approved result count, exact page ID, allowlisted HTTPS destinations, unique URLs, per-field and total byte limits, and redacts email/phone/bearer/labelled-secret text plus sensitive URL query parameters (including API keys). Excessive query parameters fail closed.\n- This is not a browser extractor or proof that content was visible. The adapter must prove visibility and must treat all page text as untrusted data, never as instructions.
 
 File: `tests/test_browser_interaction.py`
 
-- Positive and adversarial tests cover link-only click, rejected buttons/submit, cross-origin and checkout URL rejection, secret form-field rejection, bounded fill, query/filter constraints, result caps, navigation origin escape, duplicate IDs, excessive steps and invalid runtime.\n- Target-evidence tests cover unique match, visible/enabled state, page and interaction correlation, changed href, locator mismatch, control type, stale/future observations, malformed flags, unknown fields and forged dataclass inputs.
+- Positive and adversarial tests cover link-only click, rejected buttons/submit, cross-origin and checkout URL rejection, secret form-field rejection, bounded fill, query/filter constraints, result caps, navigation origin escape, duplicate IDs, excessive steps and invalid runtime.\n- Target-evidence tests cover unique match, visible/enabled state, page and interaction correlation, changed href, locator mismatch, control type, stale/future observations, malformed flags, unknown fields and forged dataclass inputs.\n- Search-result tests cover visible-only records, page binding, allowlisted URLs, deduplication, count/field bounds, email/phone/bearer/API-key redaction, excessive URL parameters and malformed forged search intents.
 
 ## 5. Verification evidence
 
-Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest target-evidence implementation commit: `1d464e372a914d81d5db4fa530457acc2df3b452`. Exact-head CI for this newer code is pending and must pass before this extension is marked verified.
+Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commit: `d19c05a8377861c93ece7babeda754653e21b394`. Exact-head CI for the target-evidence and search-result extensions is pending and must pass before these extensions are marked verified.
 
 - GitHub Actions workflow: **APAA Security CI**
 - Run: [44214923346](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44214923346)
@@ -67,7 +67,7 @@ This is evidence for the exact commit above only. It does not prove live browser
 | Checkpoint | Controller foundation | Full acceptance status |
 |---|---|---|
 | C02-P01 — Click and Form Filling | Intent validators plus offline unique/fresh target-evidence gate implemented | NOT COMPLETE: no real DOM adapter/target preview, cryptographic evidence attestation, approval binding/consumption, or real adapter qualification |
-| C02-P02 — Search and Filtering | IMPLEMENTED; exact-head CI passed | NOT COMPLETE: no live result extraction, pagination/deadline enforcement, redaction pipeline, or site-semantic side-effect classification |
+| C02-P02 — Search and Filtering | Bounded intent plus visible-result normalization/redaction gate implemented | NOT COMPLETE: no real DOM extraction, pagination/deadline enforcement, adapter visibility proof, or site-semantic side-effect classification |
 | C02-P03 — Multi-page Navigation | IMPLEMENTED; exact-head CI passed | NOT COMPLETE: no redirect/popup/frame enforcement at runtime, page lineage, cancellation/recovery proof, or egress qualification |
 | C02 overall | CONTROLLER FOUNDATION VERIFIED | BLOCKED FOR EXECUTION by C01 and missing C02 runtime acceptance evidence |
 
@@ -78,7 +78,7 @@ This is evidence for the exact commit above only. It does not prove live browser
 1. Complete S09-C01: fix and re-qualify real-host Chromium FD ownership; connect production one-time approval receipt consumption to BrowserExecutionCoordinator; complete Android physical-device qualification; obtain independent security review.
 2. Reconcile C02 intent records and target evidence with the production BrowserJob, Owner/session/tenant/job identity, action-history and approval-correlation contracts. Avoid a parallel permission system. The new target-evidence validator is not a replacement for these contracts.
 3. Add a reviewed execution contract for P01 that proves locator uniqueness, page identity/freshness, safe preview, exact approval binding, and fill-without-submit.
-4. Add P02 result extraction, bounded pagination/deadlines, deterministic normalization, redaction, and no-hidden-submit proof.
+4. Add P02 browser-adapter extraction from visible DOM only, bounded pagination/deadlines, deterministic normalization, adapter visibility proof, and no-hidden-submit proof. The new normalizer is not itself an extractor.
 5. Add P03 runtime redirect/popup/frame re-authorization, page lineage, stop-on-first-failure, cancellation, and no-replay-after-uncertain-outcome proof.
 6. Run exact-head CI and independent security review for each integration milestone. Keep live execution disabled until C01 and Owner acceptance gates pass.
 
