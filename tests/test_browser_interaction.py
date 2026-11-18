@@ -283,3 +283,74 @@ def test_target_evidence_rejects_forged_intent_dataclass():
             _fill_evidence(), intent=forged,
             allowed_origins=ORIGINS, now_epoch=100,
         )
+
+
+def _search_result(**overrides):
+    raw = {
+        "title": "Public guide",
+        "url": "https://example.com/docs/guide?q=public&access_token=do-not-keep-this",
+        "snippet": "Public description",
+        "source_page_id": "page_0000001",
+        "visible": True,
+    }
+    raw.update(overrides)
+    return raw
+
+
+def test_search_results_are_bounded_deduplicated_and_redacted():
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(), allowed_origins=ORIGINS)
+    results = validate_search_results([
+        _search_result(snippet="Contact user@example.com or +1 202 555 0199. Bearer abcdefghijklmnop"),
+        _search_result(),
+    ], intent=intent, allowed_origins=ORIGINS)
+    assert len(results) == 1
+    assert "[redacted-email]" in results[0].snippet
+    assert "[redacted-phone]" in results[0].snippet
+    assert "Bearer [redacted]" in results[0].snippet
+    assert "access_token" not in results[0].url
+    assert "q=public" in results[0].url
+
+
+@pytest.mark.parametrize("changes", [
+    {"visible": False},
+    {"visible": 1},
+    {"source_page_id": "page_0000002"},
+    {"url": "https://evil.example/result"},
+    {"title": "x" * 201},
+    {"snippet": "x" * 1001},
+    {"extra": "hidden"},
+])
+def test_search_results_reject_untrusted_or_unbounded_records(changes):
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_search_results(
+            [_search_result(**changes)], intent=intent, allowed_origins=ORIGINS
+        )
+
+
+def test_search_results_reject_result_count_above_approved_limit():
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(max_results=1), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_search_results(
+            [_search_result(), _search_result(url="https://example.com/another")],
+            intent=intent, allowed_origins=ORIGINS,
+        )
+
+
+def test_search_results_revalidate_forged_search_intent():
+    from core.browser_interaction import SearchIntent, validate_search_results
+
+    forged = SearchIntent(
+        "search_000001", "page_0000001", "https://example.com/search",
+        "buy now", (), 10,
+    )
+    with pytest.raises(InteractionPolicyError):
+        validate_search_results(
+            [_search_result()], intent=forged, allowed_origins=ORIGINS
+        )
