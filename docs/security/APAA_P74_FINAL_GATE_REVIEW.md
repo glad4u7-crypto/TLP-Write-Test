@@ -93,3 +93,9 @@ Required outcome: written findings, severity, remediation references, reviewer i
 - [ ] Explicit Owner acceptance recorded before any dispatch enablement.
 
 **Until every gate is closed:** keep Browser/Worker dispatch disabled, Auto-Run OFF, PR Draft/Open/Unmerged, and do not deploy.
+
+
+## Owner-approved disposable-host fixture — 2026-11-18
+- Owner authorized proceeding without a privately owned domain.
+- Use the reserved public HTTPS fixture `https://example.com/`, exact allowed origin `https://example.com`, and expected marker `Example Domain`. This is a public, read-only GET smoke-test fixture; it is not represented as an Owner-owned domain and must not receive credentials, cookies, personal data, or writes.
+- This authorization covers only the disposable GitHub-hosted qualification workflow. It does not authorize deployment, enabling Browser/Worker dispatch, Auto-Run, merging, or weakening any sandbox/network control.
