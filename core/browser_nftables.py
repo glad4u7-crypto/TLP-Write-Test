@@ -71,25 +71,76 @@ def _json_object(raw: Mapping[str, object] | str | bytes) -> dict:
     return normalized
 
 
-def _match(expr: object) -> tuple[str, object] | None:
-    if not isinstance(expr, dict) or set(expr) != {"match"}:
-        return None
-    value = expr["match"]
-    if not isinstance(value, dict) or set(value) != _MATCH_FIELDS or value["op"] != "==":
-        return None
-    left, right = value["left"], value["right"]
-    if left == {"meta": {"key": "l4proto"}} and right == "tcp":
-        return ("protocol", "tcp")
-    if left == {"payload": {"protocol": "ip", "field": "daddr"}} and type(right) is str:
-        try:
-            address = ipaddress.ip_address(right)
-        except ValueError:
-            return None
-        return ("destination_ip", address.compressed.lower())
-    if left == {"payload": {"protocol": "tcp", "field": "dport"}} and type(right) is int:
-        if 1 <= right <= 65535:
-            return ("destination_port", right)
-    return None
+def _nft_match(left: dict, right: object, *, op: str = "==") -> dict:
+    return {"match": {"left": left, "op": op, "right": right}}
+
+
+def _proxy_rule_expr(address: str, port: int, *, direction: str, state: object) -> list[dict]:
+    parsed = ipaddress.ip_address(address)
+    family = "ip" if parsed.version == 4 else "ip6"
+    if direction == "input":
+        ip_field, port_field = "saddr", "sport"
+    elif direction == "output":
+        ip_field, port_field = "daddr", "dport"
+    else:
+        raise HostCollectionError("Unsupported nftables proxy direction.")
+    return [
+        _nft_match({"payload": {"protocol": family, "field": ip_field}}, parsed.compressed),
+        _nft_match({"payload": {"protocol": "tcp", "field": port_field}}, port),
+        _nft_match({"ct": {"key": "state"}}, state, op="in"),
+        {"accept": None},
+    ]
+
+
+def _expected_dual_stack_rules(
+    proxies: tuple[str, ...], port: int,
+) -> dict[str, list[list[dict]]]:
+    """Exact input/output allowlist for the APAA dual-stack proxy namespace."""
+    link_local = {"prefix": {"addr": "fe80::", "len": 10}}
+    link_multicast = {"prefix": {"addr": "ff02::", "len": 16}}
+    loopback_input = [
+        _nft_match({"meta": {"key": "iifname"}}, "lo"),
+        {"accept": None},
+    ]
+    loopback_output = [
+        _nft_match({"meta": {"key": "oifname"}}, "lo"),
+        {"accept": None},
+    ]
+    ndp_input = [
+        [
+            _nft_match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            _nft_match({"payload": {"protocol": "icmpv6", "field": "type"}}, kind),
+            {"accept": None},
+        ]
+        for kind in ("nd-neighbor-solicit", "nd-neighbor-advert")
+    ]
+    ndp_output = [
+        [
+            _nft_match({"payload": {"protocol": "ip6", "field": "saddr"}}, link_local),
+            _nft_match({"payload": {"protocol": "ip6", "field": "daddr"}}, destination),
+            _nft_match({"payload": {"protocol": "icmpv6", "field": "type"}}, kind),
+            {"accept": None},
+        ]
+        for destination, kind in (
+            (link_multicast, "nd-neighbor-solicit"),
+            (link_local, "nd-neighbor-advert"),
+            (link_multicast, "nd-neighbor-advert"),
+        )
+    ]
+    established_related = ["established", "related"]
+    input_rules = [loopback_input, *ndp_input]
+    output_rules = [loopback_output, *ndp_output]
+    for address in proxies:
+        input_rules.append(_proxy_rule_expr(
+            address, port, direction="input", state=established_related,
+        ))
+        output_rules.append(_proxy_rule_expr(
+            address, port, direction="output", state=established_related,
+        ))
+        output_rules.append(_proxy_rule_expr(
+            address, port, direction="output", state="new",
+        ))
+    return {"input": input_rules, "output": output_rules}
 
 
 def parse_nftables_egress(
@@ -98,13 +149,13 @@ def parse_nftables_egress(
     expected_proxy_addresses: Sequence[str],
     expected_proxy_port: int,
 ) -> ParsedNftablesEgress:
-    """Parse a deliberately narrow nft -j ruleset subset; reject unknown output policy.
+    """Attest the complete APAA dual-stack input/output default-DROP ruleset.
 
-    Exactly one inet-family base output chain is supported. It must have policy
-    drop. Every rule in that chain must be a simple TCP + exact IPv4 destination
-    + exact TCP destination-port match followed by accept. No jumps, sets,
-    verdict maps, interface-independent alternate chains or extra expressions
-    are accepted. This conservative subset intentionally fails closed.
+    The parser accepts exactly one inet apaa table, one input and one output
+    filter base chain (both default DROP), and the exact loopback, bounded IPv6
+    neighbour-discovery, and proxy-only TCP rules. Every ACCEPT expression is
+    compared with the complete reviewed policy; unknown chains, rules, matches,
+    jumps, sets, or extra ACCEPT paths fail closed.
     """
     document = _json_object(raw)
     if set(document) != {"nftables"} or not isinstance(document["nftables"], list):
@@ -113,55 +164,72 @@ def parse_nftables_egress(
     if type(expected_proxy_port) is not int or not 1 <= expected_proxy_port <= 65535:
         raise HostCollectionError("Approved proxy port is invalid.")
 
-    output_chains: list[dict] = []
+    tables: list[dict] = []
+    chains: dict[str, dict] = {}
+    rules_by_chain: dict[str, list[list[dict]]] = {"input": [], "output": []}
+    metainfo_count = 0
     for item in document["nftables"]:
         if not isinstance(item, dict) or len(item) != 1:
             raise HostCollectionError("Malformed nftables object.")
         kind, value = next(iter(item.items()))
-        if kind == "chain":
+        if kind == "metainfo":
+            metainfo_count += 1
+            if not isinstance(value, dict):
+                raise HostCollectionError("Malformed nftables metainfo.")
+        elif kind == "table":
+            if not isinstance(value, dict) or not {"family", "name"}.issubset(value):
+                raise HostCollectionError("Malformed nftables table.")
+            if set(value) - {"family", "name", "handle"}:
+                raise HostCollectionError("Nftables table contains unknown fields.")
+            tables.append(value)
+        elif kind == "chain":
             if not isinstance(value, dict):
                 raise HostCollectionError("Malformed nftables chain.")
-            if value.get("hook") == "output":
-                output_chains.append(value)
+            if set(value) - {"family", "table", "name", "type", "hook", "prio", "policy", "handle"}:
+                raise HostCollectionError("Nftables chain contains unknown fields.")
+            name = value.get("name")
+            if type(name) is not str or name in chains:
+                raise HostCollectionError("Nftables chain names are missing or duplicated.")
+            chains[name] = value
         elif kind == "rule":
             if not isinstance(value, dict):
                 raise HostCollectionError("Malformed nftables rule.")
-        elif kind not in {"metainfo", "table", "set", "element", "counter"}:
+            if set(value) - {"family", "table", "chain", "expr", "handle"}:
+                raise HostCollectionError("Nftables rule contains unknown fields.")
+            chain_name = value.get("chain")
+            if chain_name not in rules_by_chain:
+                raise HostCollectionError("Rule exists outside the reviewed input/output chains.")
+            if (value.get("family") != "inet" or value.get("table") != "apaa"
+                    or not isinstance(value.get("expr"), list)):
+                raise HostCollectionError("Nftables rule is attached to an unexpected table or schema.")
+            rules_by_chain[chain_name].append(value["expr"])
+        else:
             raise HostCollectionError("Unsupported nftables object type.")
 
-    if len(output_chains) != 1:
-        raise HostCollectionError("Exactly one nftables base output chain is required.")
-    chain = output_chains[0]
-    if (chain.get("family") != "inet" or chain.get("type") != "filter"
-            or chain.get("policy") != "drop" or type(chain.get("name")) is not str):
-        raise HostCollectionError("Output base chain must be inet/filter with default DROP.")
-    chain_name = chain["name"]
-    rules: list[tuple[str, str, int]] = []
-    for item in document["nftables"]:
-        value = item.get("rule") if isinstance(item, dict) else None
-        if not isinstance(value, dict) or value.get("chain") != chain_name:
-            continue
-        if value.get("family") != "inet" or value.get("table") != chain.get("table"):
-            raise HostCollectionError("Output rule is attached to an unexpected table.")
-        expr = value.get("expr")
-        if not isinstance(expr, list) or len(expr) != 4 or expr[-1] != {"accept": None}:
-            raise HostCollectionError("Output rule is not in the reviewed exact-proxy form.")
-        matches = [_match(part) for part in expr[:3]]
-        if any(part is None for part in matches):
-            raise HostCollectionError("Output rule contains unsupported match expressions.")
-        fields = dict(matches)
-        if set(fields) != {"protocol", "destination_ip", "destination_port"}:
-            raise HostCollectionError("Output rule must constrain protocol, IP and port.")
-        if fields["protocol"] != "tcp" or fields["destination_port"] != expected_proxy_port:
-            raise HostCollectionError("Output rule permits an unapproved protocol or port.")
-        rules.append((fields["destination_ip"], "tcp", fields["destination_port"]))
+    if metainfo_count != 1 or len(tables) != 1 or tables[0].get("family") != "inet" or tables[0].get("name") != "apaa":
+        raise HostCollectionError("Exactly one inet apaa nftables table and metainfo record are required.")
+    if set(chains) != {"input", "output"}:
+        raise HostCollectionError("Exactly the reviewed input and output base chains are required.")
+    for name, hook in (("input", "input"), ("output", "output")):
+        chain = chains[name]
+        if (chain.get("family") != "inet" or chain.get("table") != "apaa"
+                or chain.get("type") != "filter" or chain.get("hook") != hook
+                or chain.get("policy") != "drop" or type(chain.get("prio")) is not int
+                or chain.get("prio") != 0):
+            raise HostCollectionError("Both base chains must be inet/filter, priority zero and default DROP.")
 
-    expected = sorted((ip, "tcp", expected_proxy_port) for ip in proxies)
-    if sorted(rules) != expected or len(rules) != len(expected):
-        raise HostCollectionError("Effective output rules do not equal the exact proxy allowlist.")
+    expected = _expected_dual_stack_rules(proxies, expected_proxy_port)
+    for chain_name in ("input", "output"):
+        actual_encoded = sorted(_canonical_json(expr) for expr in rules_by_chain[chain_name])
+        expected_encoded = sorted(_canonical_json(expr) for expr in expected[chain_name])
+        if actual_encoded != expected_encoded or len(actual_encoded) != len(expected_encoded):
+            raise HostCollectionError(
+                f"Effective {chain_name} rules differ from the exact APAA dual-stack policy."
+            )
+
     digest = hashlib.sha256(_canonical_json(document)).hexdigest()
-    return ParsedNftablesEgress("drop", tuple((ip, proto, port) for ip, proto, port in sorted(rules)), digest)
-
+    allowed = tuple((ip, "tcp", expected_proxy_port) for ip in proxies)
+    return ParsedNftablesEgress("drop", allowed, digest)
 
 def _namespace_identity(raw: object, runtime_id: str, worker_id: str) -> NetworkNamespaceIdentity:
     if not isinstance(raw, Mapping) or set(raw) != _NAMESPACE_FIELDS:

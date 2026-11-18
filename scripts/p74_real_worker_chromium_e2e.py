@@ -1,0 +1,1433 @@
+"""Provision and qualify one disposable, isolated Chromium worker on a real Linux host.
+
+This is opt-in and destructive only to uniquely named APAA resources created by
+this run. It never enables public browsing. Requires a local digest-pinned
+Chromium image, deny-by-default seccomp profile, delegated cgroup-v2 subtree,
+Podman, iproute2 and nftables. The proxy is started on both host-side veth IPs;
+it permits only the exact HTTPS hostname and dials a numeric address from one
+validated DNS answer set. TLS remains end-to-end in Chromium (SNI/cert checks).
+"""
+from __future__ import annotations
+
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+from core.browser_security import canonicalize_https_url
+from core.audit import redact_sensitive_text
+from core.cgroup_seccomp_provisioner import (
+    CgroupLimits,
+    CgroupV2Provisioner,
+    validate_seccomp_profile,
+)
+from core.linux_network_namespace import LinuxNetworkNamespaceProvisioner, NamespacePlan
+from core.nftables_firewall_provisioner import NftablesFirewallProvisioner
+from core.nftables_attestation import NftablesPolicy, attest_nftables_json
+from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
+from core.oci_runtime_observer import PodmanWorkerObserver
+from core.pinned_connect_proxy import PinnedConnectProxy
+from core.chromium_fd_diagnostics import snapshot_cgroup, snapshot_json_safe
+from core.chromium_fd_ownership_log import parse_fd_ownership_diagnostics
+
+
+def _required(name: str) -> str:
+    value = os.environ.get(name, "")
+    if not value:
+        raise RuntimeError(f"required environment variable is missing: {name}")
+    return value
+
+
+def _safe_command_label(command: list[str]) -> str:
+    if command and command[0] == "podman":
+        action = command[1] if len(command) > 1 else "unknown"
+        if action == "exec" and len(command) > 5:
+            executable = Path(command[5]).name
+            return f"podman exec {executable}"
+        return f"podman {action}"
+    return Path(command[0]).name if command else "unknown"
+
+
+def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True,
+                                timeout=timeout, shell=False)
+    except subprocess.TimeoutExpired as exc:
+        def _as_text(value) -> str:
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return value if isinstance(value, str) else ""
+        stdout = _as_text(exc.stdout)
+        stderr = _as_text(exc.stderr)
+        raise RuntimeError(
+            f"qualification command timed out: {_safe_command_label(command)} "
+            f"(timeout={timeout}; stdout_bytes={len(stdout.encode('utf-8', errors='replace'))}; "
+            f"stdout_sha256={hashlib.sha256(stdout.encode('utf-8', errors='replace')).hexdigest()}; "
+            f"stderr={redact_sensitive_text(stderr[-1200:], limit=640)})"
+        ) from exc
+    if result.returncode:
+        diagnostic = " ".join((result.stderr or "").split())
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)
+        diagnostic = redact_sensitive_text(diagnostic[-640:], limit=320)
+        raise RuntimeError(
+            f"qualification command failed: {_safe_command_label(command)} "
+            f"(exit={result.returncode}; {diagnostic or 'no diagnostic output'})"
+        )
+    return result
+
+
+
+def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
+    marker = "Crashing due to FD ownership violation:"
+    marker_at = stderr.rfind(marker)
+    if marker_at < 0:
+        return {
+            "detected": False, "log_pid": None, "log_tid": None,
+            "preceding_log_pid": None, "preceding_log_tid": None,
+            "pid_attribution": "unavailable", "stack_frames": [],
+        }
+    prefix = stderr[:marker_at]
+    log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+:", prefix))
+    identity = log_lines[-1] if log_lines else None
+    stack_frames = [
+        {"frame": int(index), "address": address.lower()}
+        for index, address in re.findall(r"(?m)^#(\d+)\s+(0x[0-9a-fA-F]+)", stderr[marker_at:])
+    ][:64]
+    return {
+        "detected": True,
+        # This is only the last prefixed log line before Chromium's unprefixed
+        # fatal marker. It is not proof that this PID emitted the fatal stack.
+        "log_pid": int(identity.group(1)) if identity else None,
+        "log_tid": int(identity.group(2)) if identity else None,
+        "preceding_log_pid": int(identity.group(1)) if identity else None,
+        "preceding_log_tid": int(identity.group(2)) if identity else None,
+        "pid_attribution": "preceding_prefixed_log_line_only" if identity else "unavailable",
+        "stack_frames": stack_frames,
+    }
+
+
+def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None:
+    log_pid = failure.get("fd_ownership_preceding_log_pid", failure.get("fd_ownership_log_pid"))
+    source_frames = failure.get("fd_ownership_stack_frames", [])
+    pid_matches = []
+    pc_matches = []
+
+    for snapshot_index, snapshot in enumerate(diagnostics.get("snapshots", [])):
+        for process in snapshot.get("processes", []):
+            namespace_pids = process.get("status", {}).get("nspid", "").split()
+            matching_indices = [
+                index for index, value in enumerate(namespace_pids)
+                if value.isdigit() and type(log_pid) is int and int(value) == log_pid
+            ]
+            frames = []
+            mapped_count = 0
+            for frame in source_frames:
+                try:
+                    address = int(frame["address"], 16)
+                except (KeyError, TypeError, ValueError):
+                    frames.append(dict(frame))
+                    continue
+                mapped_frame = dict(frame)
+                for mapping in process.get("executable_mappings", []):
+                    try:
+                        start, end = int(mapping["start"], 16), int(mapping["end"], 16)
+                        if start <= address < end:
+                            mapped_frame["module"] = mapping["module"]
+                            mapped_frame["module_offset"] = hex(
+                                address - start + int(mapping["file_offset"], 16)
+                            )
+                            mapped_count += 1
+                            break
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                frames.append(mapped_frame)
+
+            candidate = {
+                "snapshot_index": snapshot_index,
+                "snapshot_wall_time_ns": snapshot.get("wall_time_ns"),
+                "host_pid": process["pid"],
+                "container_pid": namespace_pids[1] if len(namespace_pids) > 1 else None,
+                "log_pid_namespace_match": bool(matching_indices),
+                "nspid_match_index": min(matching_indices) if matching_indices else None,
+                "ppid": process["ppid"],
+                "comm": process["comm"],
+                "executable": process.get("executable"),
+                "role": process.get("role"),
+                "cmdline_bytes_observed": process.get("cmdline_bytes_observed"),
+                "process_type": process.get("process_type"),
+                "utility_subtype": process.get("utility_subtype"),
+                "zygote_disabled": process.get("zygote_disabled"),
+                "single_process": process.get("single_process"),
+                "start_time_ticks": process.get("start_time_ticks"),
+                "fd_count_observed": process.get("fd_count_observed"),
+                "executable_mappings": process.get("executable_mappings", []),
+                "stack_frames_with_module_offsets": frames,
+                "stack_frame_match_count": mapped_count,
+                "status": process.get("status"),
+            }
+            if matching_indices:
+                pid_matches.append(candidate)
+            if mapped_count:
+                pc_matches.append(candidate)
+
+    def _best(candidates: list[dict]) -> dict | None:
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda item: (
+                item["stack_frame_match_count"],
+                item["nspid_match_index"] == 1 if item["nspid_match_index"] is not None else False,
+                item["snapshot_wall_time_ns"] or 0,
+                item["snapshot_index"],
+            ),
+        )
+
+    log_process = _best(pid_matches)
+    stack_process = _best(pc_matches)
+    primary = stack_process or log_process
+    if primary is None:
+        return None
+    result = dict(primary)
+    result["log_pid"] = log_pid
+    result["preceding_log_pid"] = log_pid
+    result["crash_pid_proven"] = failure.get("fd_ownership_crash_pid_proven") is True
+    result["log_process_mapping"] = log_process
+    result["preceding_log_process_mapping"] = log_process
+    result["stack_process_mapping"] = stack_process
+    if stack_process and stack_process["stack_frame_match_count"] == len(source_frames) and source_frames:
+        result["mapping_confidence"] = "all_stack_frames_match_candidate_process_image"
+    elif stack_process:
+        result["mapping_confidence"] = "partial_stack_frames_match_candidate_process_image"
+    else:
+        result["mapping_confidence"] = "log_pid_only_no_stack_mapping"
+    return result
+
+
+def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
+    stdout = page.stdout or ""
+    stderr = page.stderr or ""
+    fd_crash = _fd_ownership_crash_identity(stderr)
+    fd_diagnostics = parse_fd_ownership_diagnostics(stderr)
+    return {
+        "family": family,
+        "exit_code": page.returncode,
+        "stdout_bytes": len(stdout.encode("utf-8", errors="replace")),
+        "stdout_sha256": hashlib.sha256(stdout.encode("utf-8", errors="replace")).hexdigest(),
+        "stdout_html_present": "<html" in stdout.lower(),
+        "expected_marker_present": expected_marker in stdout,
+        "stderr_bytes": len(stderr.encode("utf-8", errors="replace")),
+        "stderr_sha256": hashlib.sha256(stderr.encode("utf-8", errors="replace")).hexdigest(),
+        "fd_ownership_violation": fd_crash["detected"],
+        "fd_ownership_log_pid": fd_crash["log_pid"],
+        "fd_ownership_log_tid": fd_crash["log_tid"],
+        "fd_ownership_preceding_log_pid": fd_crash["preceding_log_pid"],
+        "fd_ownership_preceding_log_tid": fd_crash["preceding_log_tid"],
+        "fd_ownership_pid_attribution": fd_crash["pid_attribution"],
+        "fd_ownership_stack_frames": fd_crash["stack_frames"],
+        "fd_ownership_diagnostics": fd_diagnostics,
+        "fd_ownership_instrumentation_present": bool(fd_diagnostics),
+        "fd_ownership_crash_pid_proven": bool(fd_diagnostics),
+        "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
+        "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
+        "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
+        "stderr_markers": [
+            marker for marker in (
+                "ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED",
+                "ERR_NAME_NOT_RESOLVED", "ERR_CERT_AUTHORITY_INVALID",
+                "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_REFUSED",
+                "zygote", "sandbox", "crashpad", "DevTools listening",
+            ) if marker.lower() in stderr.lower()
+        ],
+    }
+
+
+
+def _chromium_binary_build_id(container_id: str) -> str | None:
+    """Read the GNU build-id note from the exact worker Chromium ELF, read-only."""
+    code = (
+        "import struct\n"
+        "p='/usr/lib/chromium/chromium'\n"
+        "f=open(p,'rb')\n"
+        "h=f.read(64)\n"
+        "if h[:4] != b'\\x7fELF' or h[4] != 2: raise SystemExit(3)\n"
+        "endian='<' if h[5] == 1 else '>'\n"
+        "phoff=struct.unpack_from(endian+'Q',h,32)[0]\n"
+        "entsize=struct.unpack_from(endian+'H',h,54)[0]\n"
+        "count=struct.unpack_from(endian+'H',h,56)[0]\n"
+        "f.seek(phoff)\n"
+        "for i in range(count):\n"
+        " ph=f.read(entsize)\n"
+        " typ=struct.unpack_from(endian+'I',ph,0)[0]\n"
+        " if typ != 4: continue\n"
+        " off=struct.unpack_from(endian+'Q',ph,8)[0]; size=struct.unpack_from(endian+'Q',ph,32)[0]\n"
+        " f.seek(off); b=f.read(size); pos=0\n"
+        " while pos+12 <= len(b):\n"
+        "  ns,ds,nt=struct.unpack_from(endian+'III',b,pos); pos+=12\n"
+        "  name=b[pos:pos+ns].rstrip(b'\\0'); pos=(pos+ns+3)&~3\n"
+        "  desc=b[pos:pos+ds]; pos=(pos+ds+3)&~3\n"
+        "  if name == b'GNU' and nt == 3: print(desc.hex()); raise SystemExit(0)\n"
+        "raise SystemExit(4)\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    value = (result.stdout or "").strip().lower()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{16,128}", value) else None
+
+
+def _chromium_package_metadata(container_id: str) -> tuple[str | None, str | None]:
+    """Read Debian package version/architecture for exact dbgsym retrieval."""
+    result = subprocess.run(
+        [
+            "podman", "exec", "--user", "65532:65532", container_id,
+            "dpkg-query", "-W", "-f=${Version}| ${Architecture}", "chromium",
+        ],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    if result.returncode != 0:
+        return None, None
+    parts = (result.stdout or "").strip().split("|", 1)
+    if len(parts) != 2:
+        return None, None
+    version, architecture = parts[0].strip(), parts[1].strip()
+    if not re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,128}", version):
+        version = None
+    if architecture not in {"amd64", "arm64", "i386", "ppc64el"}:
+        architecture = None
+    return version, architecture
+
+
+def _chromium_dynamic_symbols(container_id: str) -> dict:
+    """Read exported/full symbol-table names needed to classify the fatal wrapper."""
+    outputs = []
+    for args in (
+        ["nm", "-n", "-C", "--defined-only", "/usr/lib/chromium/chromium"],
+        ["nm", "-D", "-n", "--defined-only", "/usr/lib/chromium/chromium"],
+    ):
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id, *args],
+            check=False, capture_output=True, text=True, timeout=12, shell=False,
+        )
+        outputs.append(result)
+        if result.returncode != 0:
+            continue
+        found = {}
+        for line in (result.stdout or "").splitlines():
+            match = re.match(r"^\s*([0-9a-fA-F]+)\s+[A-Za-z]\s+(.+?)\s*$", line)
+            if not match:
+                continue
+            address, name = match.group(1).lower(), match.group(2)
+            if name == "close":
+                found["close"] = "0x" + address
+            elif "CrashOnFD" in name or "CrashOnFd" in name:
+                found["crash"] = "0x" + address
+            elif "UpdateAndCheckFdOwnership" in name:
+                found["ownership_check"] = "0x" + address
+            elif "ScopedFDCloseTraits" in name:
+                found.setdefault("scoped_fd_traits", []).append({"name": name, "address": "0x" + address})
+        if found:
+            return {
+                "exit_code": result.returncode,
+                "close_symbol_offset": found.get("close"),
+                "symbols_of_interest": found,
+                "nm_available": True,
+                "symbol_table_source": "full" if args[1] != "-D" else "dynamic",
+            }
+    return {
+        "exit_code": outputs[-1].returncode if outputs else None,
+        "close_symbol_offset": None,
+        "symbols_of_interest": {},
+        "nm_available": any(item.returncode == 0 for item in outputs),
+        "symbol_table_source": "no-matching-symbols",
+    }
+
+
+def _annotate_known_dynamic_symbols(failure: dict, symbols: dict) -> list[dict]:
+    close_address = symbols.get("close_symbol_offset")
+    if not isinstance(close_address, str):
+        return []
+    close_start = int(close_address, 16)
+    matches = []
+    mapping = failure.get("process_mapping") or {}
+    for frame in mapping.get("stack_frames_with_module_offsets", []):
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            offset = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        # The exported close wrapper is small; a nearby PC is a candidate only,
+        # never a symbolic proof without the exact function size/debug data.
+        if close_start <= offset < close_start + 512:
+            matches.append({
+                "frame": frame.get("frame"),
+                "module_offset": frame["module_offset"],
+                "candidate_symbol": "close",
+                "symbol_offset": f"0x{close_start:x}",
+                "interpretation": "near_exported_close_symbol_candidate",
+            })
+    return matches
+
+
+def _disassemble_chromium_stack(container_id: str, failure: dict) -> list[dict]:
+    """Capture bounded read-only instruction windows around the first Chromium frames."""
+    process_mapping = failure.get("process_mapping") or {}
+    frames = process_mapping.get("stack_frames_with_module_offsets", [])
+    windows = []
+    for frame in frames[:3]:
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            address = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = max(0, address - 0x40)
+        stop = address + 0x80
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id,
+             "objdump", "-d", f"--start-address={start:#x}",
+             f"--stop-address={stop:#x}", "/usr/lib/chromium/chromium"],
+            check=False, capture_output=True, text=True, timeout=8, shell=False,
+        )
+        windows.append({
+            "frame": frame.get("frame"),
+            "module_offset": frame.get("module_offset"),
+            "exit_code": result.returncode,
+            "disassembly": redact_sensitive_text((result.stdout or "")[-6000:], limit=6000),
+            "stderr_preview": redact_sensitive_text((result.stderr or "")[:400], limit=400),
+        })
+    return windows
+
+
+def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
+    """Best-effort Debian debuginfod symbolication; never changes worker execution."""
+    if not build_id:
+        return {"status": "missing-build-id", "frames": []}
+    addr2line = shutil.which("eu-addr2line")
+    if not addr2line:
+        return {"status": "addr2line-unavailable", "build_id": build_id, "frames": []}
+    debug_file = None
+    debug_source = None
+    debug_root = os.environ.get("APAA_CHROMIUM_DEBUG_ROOT")
+    if debug_root:
+        candidate = Path(debug_root) / ".build-id" / build_id[:2] / (build_id[2:] + ".debug")
+        if candidate.is_file():
+            debug_file = str(candidate)
+            debug_source = "exact-debian-dbgsym"
+    if debug_file is None:
+        finder = shutil.which("debuginfod-find")
+        if not finder:
+            return {"status": "debug-info-unavailable", "build_id": build_id, "frames": []}
+        env = dict(os.environ)
+        env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
+        try:
+            found = subprocess.run(
+                [finder, "debuginfo", build_id], check=False, capture_output=True,
+                text=True, timeout=20, shell=False, env=env,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return {"status": "debuginfod-unavailable-or-timeout", "build_id": build_id, "frames": []}
+        if found.returncode != 0 or not found.stdout.strip():
+            return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
+        debug_file = found.stdout.strip().splitlines()[-1]
+        debug_source = "debuginfod"
+    source_frames = failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", [])
+    valid_frames = [
+        frame for frame in source_frames
+        if isinstance(frame.get("module_offset"), str)
+        and re.fullmatch(r"0x[0-9a-f]+", frame["module_offset"])
+    ][:64]
+    if not valid_frames:
+        return {"status": "no-executable-frame-offsets", "build_id": build_id, "frames": []}
+    try:
+        result = subprocess.run(
+            [addr2line, "-f", "-C", "-e", debug_file]
+            + [frame["module_offset"] for frame in valid_frames],
+            check=False, capture_output=True, text=True, timeout=20, shell=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {"status": "addr2line-timeout-or-unavailable", "build_id": build_id, "frames": []}
+    lines = (result.stdout or "").splitlines()
+    symbolized = []
+    if result.returncode == 0:
+        for index, frame in enumerate(valid_frames):
+            function = lines[index * 2] if index * 2 < len(lines) else "??"
+            location = lines[index * 2 + 1] if index * 2 + 1 < len(lines) else "??:0"
+            symbolized.append({
+                "frame": frame.get("frame"),
+                "module_offset": frame["module_offset"],
+                "function": redact_sensitive_text(function, limit=240),
+                "source_location": location.rsplit("/", 1)[-1][:160],
+            })
+    return {
+        "status": "symbolized" if symbolized else "symbols-loaded-no-matching-frames",
+        "symbol_source": debug_source,
+        "build_id": build_id,
+        "frames": symbolized[:64],
+    }
+
+
+def _http_proxy_uri(proxy_ip: str, port: int) -> str:
+    address = ipaddress.ip_address(proxy_ip)
+    host = f"[{address.compressed}]" if address.version == 6 else address.compressed
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError("proxy port is invalid")
+    return f"http://{host}:{port}"
+
+
+
+
+
+_CHROMIUM_EXEC_WRAPPER = (
+    "import os,sys\n"
+    "for n in os.listdir('/proc/self/fd'):\n"
+    " try:\n"
+    "  fd=int(n)\n"
+    "  if fd>2: os.close(fd)\n"
+    " except (ValueError,OSError): pass\n"
+    "os.execvp(sys.argv[1], sys.argv[1:])\n"
+)
+
+
+def _podman_chromium_command(container_id: str, chromium_bin: str, args: list[str]) -> list[str]:
+    # Close non-stdio descriptors inherited through conmon/podman exec before
+    # Chromium starts its own strict ScopedFD ownership accounting.
+    return [
+        "podman", "exec", "--user", "65532:65532", container_id,
+        "python3", "-c", _CHROMIUM_EXEC_WRAPPER, chromium_bin, *args,
+    ]
+
+def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[str, object]:
+    code = (
+        "import socket,sys\n"
+        + f"s=socket.create_connection(({proxy_ip!r},{proxy_port}),timeout=5)\n"
+        + "print('APAA_PROXY_TCP_CONNECTED')\n"
+        + "s.close()\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=8, shell=False,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0 or "APAA_PROXY_TCP_CONNECTED" not in output:
+        diagnostic = redact_sensitive_text(output, limit=240)
+        raise RuntimeError(
+            f"worker could not establish TCP to the mandatory proxy (family={'ipv6' if ':' in proxy_ip else 'ipv4'}; "
+            f"exit={result.returncode}; diagnostic={diagnostic})"
+        )
+    return {
+        "exit_code": result.returncode,
+        "connected": True,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+
+
+
+def _run_chromium_with_fd_snapshots(
+    command: list[str], cgroup_dir: Path, *, timeout: int = 45,
+) -> tuple[subprocess.CompletedProcess[str], dict]:
+    """Run Chromium while taking bounded, read-only host /proc FD snapshots."""
+    if not cgroup_dir.is_absolute() or not cgroup_dir.is_dir():
+        raise RuntimeError("Chromium diagnostic cgroup is unavailable")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        encoding="utf-8", errors="replace", shell=False, close_fds=True,
+        start_new_session=True, bufsize=0,
+    )
+    # Drain both pipes concurrently; otherwise verbose Chromium stderr can fill
+    # the OS pipe buffer and stall the very process being diagnosed.
+    captured = {"stdout": [], "stderr": []}
+    captured_chars = {"stdout": 0, "stderr": 0}
+    fd_marker_event = threading.Event()
+    max_snapshots = 180
+
+    def _drain(name: str, stream) -> None:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            remaining = 2_000_000 - captured_chars[name]
+            if remaining > 0:
+                kept = chunk[:remaining]
+                captured[name].append(kept)
+                captured_chars[name] += len(kept)
+            if name == "stderr" and "Crashing due to FD ownership violation:" in chunk:
+                fd_marker_event.set()
+
+    readers = [
+        threading.Thread(target=_drain, args=("stdout", process.stdout), daemon=True),
+        threading.Thread(target=_drain, args=("stderr", process.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    snapshots: list[dict] = []
+    diagnostic_errors: list[str] = []
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    marker_trigger_snapshots = 0
+    next_snapshot_at = time.monotonic()
+    try:
+        while process.poll() is None and time.monotonic() < deadline:
+            marker_seen = fd_marker_event.is_set()
+            periodic_due = time.monotonic() >= next_snapshot_at
+            if (marker_seen or periodic_due) and len(snapshots) < max_snapshots:
+                fd_marker_event.clear()
+                try:
+                    snap = snapshot_cgroup(
+                        cgroup_dir, max_processes=96, max_fds_per_process=192,
+                    )
+                    safe_snapshot = snapshot_json_safe(snap, max_bytes=250_000)
+                    if marker_seen:
+                        safe_snapshot["capture_reason"] = "fd-ownership-marker"
+                        marker_trigger_snapshots += 1
+                    else:
+                        safe_snapshot["capture_reason"] = "periodic"
+                    snapshots.append(safe_snapshot)
+                except Exception as exc:
+                    if len(diagnostic_errors) < 3:
+                        diagnostic_errors.append(type(exc).__name__)
+                next_snapshot_at = time.monotonic() + 0.25
+            else:
+                fd_marker_event.wait(timeout=0.05)
+        if process.poll() is None:
+            timed_out = True
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        process.wait(timeout=5)
+    except Exception:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        for reader in readers:
+            reader.join(timeout=2)
+        raise
+    for reader in readers:
+        reader.join(timeout=5)
+    if len(snapshots) < max_snapshots:
+        try:
+            final_snapshot = snapshot_cgroup(
+                cgroup_dir, max_processes=96, max_fds_per_process=192,
+            )
+            final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=250_000)
+            if fd_marker_event.is_set():
+                final_safe_snapshot["capture_reason"] = "fd-ownership-marker-post-exit"
+                marker_trigger_snapshots += 1
+            else:
+                final_safe_snapshot["capture_reason"] = "final"
+            snapshots.append(final_safe_snapshot)
+        except Exception as exc:
+            if len(diagnostic_errors) < 3:
+                diagnostic_errors.append(type(exc).__name__)
+    stdout = "".join(captured["stdout"])
+    stderr = "".join(captured["stderr"])
+    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    summary = {
+        "snapshot_count": len(snapshots),
+        "snapshot_interval_seconds": 0.25,
+        "max_snapshots": max_snapshots,
+        "marker_trigger_snapshots": marker_trigger_snapshots,
+        "diagnostic_errors": diagnostic_errors,
+        "timed_out": timed_out,
+        "snapshots": snapshots,
+    }
+    if timed_out:
+        summary["timeout_seconds"] = timeout
+    return result, summary
+
+
+def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str, cgroup_dir: Path) -> tuple[dict[str, object], dict]:
+    marker = "APAA_LOCAL_DUMP_DOM_OK"
+    data_url = "data:text/html,<html><body>" + marker + "</body></html>"
+    result, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
+        "--headless=new", "--disable-gpu", "--disable-quic",
+        "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
+        "--disable-crashpad-for-testing", "--disable-features=PassHistogramSharedMemoryOnLaunch",
+        "--disable-dev-shm-usage", "--user-data-dir=/tmp/apaa-chromium-smoke",
+        "--disable-background-networking", "--no-first-run", "--dump-dom", data_url,
+    ]), cgroup_dir, timeout=45)
+    marker_present = "<html" in result.stdout.lower() and marker in result.stdout
+    return ({
+        "exit_code": result.returncode,
+        "stdout_bytes": len(result.stdout.encode("utf-8")),
+        "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+        "marker_present": marker_present,
+        "failure": _chromium_failure_details(result, "local-data-url", marker) if not marker_present else None,
+    }, fd_diagnostics)
+
+def _probe_blocked(
+    command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
+) -> dict[str, object]:
+    result = subprocess.run(command, check=False, capture_output=True, text=True,
+                             timeout=8, shell=False)
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode == 0:
+        raise RuntimeError(f"network bypass unexpectedly succeeded: {description}")
+    lowered = output.lower()
+    denial = next((label for label, markers in (
+        ("network_unreachable", ("network is unreachable", "network unreachable")),
+        ("no_route", ("no route to host", "network is down")),
+        ("timeout", ("timed out", "connection timed out")),
+    ) if any(marker in lowered for marker in markers)), None)
+    if denial is None and allow_seccomp_socket_denial and (
+        "permissionerror: [errno 1] operation not permitted" in lowered
+        or "permissionerror: [errno 13] permission denied" in lowered
+    ):
+        # The default deny-by-default seccomp profile may forbid creation of
+        # UDP sockets entirely. This is a stronger UDP block than a firewall
+        # drop, but is recorded separately and never conflated with nftables.
+        denial = "seccomp_socket_creation_denied"
+    if denial is None:
+        # A failed podman exec, missing executable, or malformed probe is not
+        # evidence that the network boundary blocked the packet.
+        diagnostic = " ".join(output.split())
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)[:240]
+        digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        raise RuntimeError(
+            f"direct network probe did not reach a recognized socket-level denial: "
+            f"{description} (exit={result.returncode}; sha256={digest}; "
+            f"{diagnostic or 'no diagnostic output'})"
+        )
+    return {
+        "exit_code": result.returncode,
+        "denial": denial,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+
+
+
+def _probe_user_namespace(container_id: str) -> dict[str, object]:
+    """Verify unprivileged userns mapping and chroot without adding capabilities."""
+    code = (
+        "import ctypes,os,sys\n"
+        "uid=os.getuid(); gid=os.getgid()\n"
+        "libc=ctypes.CDLL(None,use_errno=True)\n"
+        "if libc.unshare(0x10000000) != 0:\n"
+        " print('USERNS_UNSHARE_ERR',ctypes.get_errno()); sys.exit(10)\n"
+        "try:\n"
+        " open('/proc/self/setgroups','w').write('deny')\n"
+        " open('/proc/self/uid_map','w').write(f'0 {uid} 1')\n"
+        " open('/proc/self/gid_map','w').write(f'0 {gid} 1')\n"
+        "except OSError as e:\n"
+        " print('USERNS_MAP_ERR',e.errno); sys.exit(11)\n"
+        "try:\n"
+        " os.chroot('/proc/self/fdinfo'); print('USERNS_CHROOT_OK')\n"
+        "except OSError as e:\n"
+        " print('USERNS_CHROOT_ERR',e.errno); sys.exit(12)\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=8, shell=False,
+    )
+    output = (result.stdout or "").strip()
+    return {
+        "exit_code": result.returncode,
+        "user_namespace_chroot_available": result.returncode == 0 and "USERNS_CHROOT_OK" in output,
+        "result": output[:160],
+        "stderr_sha256": hashlib.sha256((result.stderr or "").encode("utf-8")).hexdigest(),
+    }
+
+def _probe_proxy_outage(command: list[str], expected_marker: str, description: str) -> dict:
+    """A dead mandatory proxy must not produce the allowed page via direct fallback."""
+    result = subprocess.run(command, check=False, capture_output=True, text=True,
+                            timeout=45, shell=False)
+    output = (result.stdout or "") + (result.stderr or "")
+    if expected_marker in output:
+        raise RuntimeError(f"browser reached the allowed page while its proxy was unavailable: {description}")
+    proxy_error = next((
+        marker for marker in ("ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED")
+        if marker in output
+    ), None)
+    if proxy_error is None:
+        diagnostic = " ".join(output.split())
+        diagnostic = re.sub(r"https?://[^\s]+", "<url>", diagnostic)[:240]
+        digest = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        raise RuntimeError(
+            f"proxy outage probe did not reach a Chromium proxy failure: {description} "
+            f"(exit={result.returncode}; sha256={digest}; "
+            f"{diagnostic or 'no diagnostic output'})"
+        )
+    return {
+        "exit_code": result.returncode,
+        "proxy_error": proxy_error,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+        "allowed_marker_absent": True,
+    }
+
+
+def _audit_worker_capture(
+    pcap_path: Path,
+    *,
+    worker_ips: set[str],
+    proxy_ips: set[str],
+    proxy_port: int,
+) -> dict:
+    output = _run(["tcpdump", "-nn", "-r", str(pcap_path)], timeout=30).stdout
+    allowed_tcp = 0
+    arp_packets = 0
+    ndp_packets = 0
+    unexpected = []
+    endpoint_pattern = re.compile(r"\bIP6?\s+(\S+)\s+>\s+(\S+):")
+    worker_v4 = next((value for value in worker_ips if ipaddress.ip_address(value).version == 4), None)
+    host_v4 = next((value for value in proxy_ips if ipaddress.ip_address(value).version == 4), None)
+    for line in output.splitlines():
+        if "ARP," in line:
+            # Only the expected worker -> veth-gateway resolution and its reply
+            # are legitimate on this point-to-point link.
+            expected_request = bool(worker_v4 and host_v4 and
+                                    f"who-has {host_v4} tell {worker_v4}" in line)
+            expected_reply = bool(host_v4 and f"Reply {host_v4} is-at " in line)
+            if expected_request or expected_reply:
+                arp_packets += 1
+            else:
+                unexpected.append(line[:240])
+            continue
+        match = endpoint_pattern.search(line)
+        if not match:
+            if line.strip() and not line.startswith(("reading from file", "tcpdump:")):
+                unexpected.append(line[:240])
+            continue
+        source_text, destination_text = match.groups()
+        # NDP is the only non-TCP exception. It must remain link-local and
+        # use link-local or link-scoped multicast destinations; arbitrary
+        # ICMPv6 traffic is not silently treated as harmless neighbour traffic.
+        if "ICMP6" in line and ("neighbor solicitation" in line or "neighbor advertisement" in line):
+            try:
+                source_ip = ipaddress.ip_address(source_text)
+                destination_ip = ipaddress.ip_address(destination_text.rstrip(":"))
+            except ValueError:
+                unexpected.append(line[:240])
+                continue
+            scoped_multicast = (destination_ip.version == 6 and destination_ip.is_multicast
+                                and destination_ip.packed[1] & 0x0F == 2)
+            if source_ip.version == 6 and source_ip.is_link_local and (
+                    destination_ip.is_link_local or scoped_multicast):
+                ndp_packets += 1
+            else:
+                unexpected.append(line[:240])
+            continue
+        try:
+            source_ip_text, source_port_text = source_text.rsplit(".", 1)
+            destination_ip_text, destination_port_text = destination_text.rsplit(".", 1)
+            source_ip = ipaddress.ip_address(source_ip_text).compressed
+            destination_ip = ipaddress.ip_address(destination_ip_text).compressed
+            source_port = int(source_port_text)
+            destination_port = int(destination_port_text)
+        except (ValueError, IndexError):
+            unexpected.append(line[:240])
+            continue
+        forward = source_ip in worker_ips and destination_ip in proxy_ips and destination_port == proxy_port
+        reverse = source_ip in proxy_ips and destination_ip in worker_ips and source_port == proxy_port
+        if (forward or reverse) and ("Flags" in line or "tcp" in line.lower()):
+            allowed_tcp += 1
+        else:
+            unexpected.append(line[:240])
+    if unexpected:
+        raise RuntimeError("sink-side veth packet capture found non-proxy worker traffic: " + unexpected[0])
+    if allowed_tcp == 0:
+        raise RuntimeError("sink-side packet capture did not observe the approved proxy TCP flow")
+    return {
+        "allowed_proxy_tcp_packets": allowed_tcp,
+        "arp_packets": arp_packets,
+        "ipv6_neighbor_discovery_packets": ndp_packets,
+        "unexpected_packets": 0,
+        "capture_text_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+
+
+def _evidence_write(path_value: str, evidence: dict) -> None:
+    if not path_value:
+        return
+    path = Path(path_value)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("evidence path must be an absolute normalized path")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
+
+
+def main() -> int:
+    if os.environ.get("APAA_P74_REAL_HOST") != "1":
+        print("BLOCKED: set APAA_P74_REAL_HOST=1 only on an owner-approved disposable Linux host")
+        return 2
+
+    worker_id = os.environ.get("APAA_P74_WORKER_ID", "worker-p74-01")
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", worker_id):
+        print("BLOCKED: worker ID must be a lowercase safe identifier")
+        return 2
+
+    namespace_name = os.environ.get("APAA_P74_NETNS_NAME", "apaa-w1")
+    host_veth = os.environ.get("APAA_P74_HOST_VETH", "apahost0")
+    worker_veth = os.environ.get("APAA_P74_WORKER_VETH", "apawork0")
+    plan = NamespacePlan(
+        name=namespace_name,
+        host_veth=host_veth,
+        worker_veth=worker_veth,
+        host_ipv4=os.environ.get("APAA_P74_HOST_IPV4", "198.18.0.1/30"),
+        worker_ipv4=os.environ.get("APAA_P74_WORKER_IPV4", "198.18.0.2/30"),
+        host_ipv6=os.environ.get("APAA_P74_HOST_IPV6", "2001:db8:1::1/64"),
+        worker_ipv6=os.environ.get("APAA_P74_WORKER_IPV6", "2001:db8:1::2/64"),
+    )
+
+    container_id = None
+    cgroup_path = None
+    namespace_created = False
+    proxy_servers: list[PinnedConnectProxy] = []
+    capture_process = None
+    capture_temp = None
+    cleanup_errors: list[str] = []
+    evidence: dict = {
+        "result": "BLOCKED",
+        "worker_id": worker_id,
+        "namespace": namespace_name,
+        "host_veth": host_veth,
+        "worker_veth": worker_veth,
+        "tests": {},
+    }
+    runtime = PodmanOCIRuntime(timeout_seconds=30)
+    namespace = LinuxNetworkNamespaceProvisioner()
+    firewall = NftablesFirewallProvisioner()
+    cgroups = CgroupV2Provisioner("/sys/fs/cgroup/apaa")
+
+    try:
+        image = _required("APAA_P74_IMAGE_DIGEST")
+        seccomp_profile = _required("APAA_P74_SECCOMP_PROFILE")
+        target = canonicalize_https_url(_required("APAA_P74_TEST_URL"))
+        allowed_origin = _required("APAA_P74_ALLOWED_ORIGIN")
+        expected_marker = _required("APAA_P74_EXPECTED_MARKER")
+        if not 1 <= len(expected_marker) <= 256:
+            raise RuntimeError("expected page marker must contain 1 to 256 characters")
+        chromium_bin = os.environ.get("APAA_P74_CHROMIUM_BIN", "chromium")
+        proxy_port = int(os.environ.get("APAA_P74_PROXY_PORT", "3128"))
+        if target.origin != allowed_origin or target.port != 443:
+            raise RuntimeError("test URL must be the exact approved HTTPS origin on port 443")
+        if not chromium_bin or "/" in chromium_bin or "\x00" in chromium_bin:
+            raise RuntimeError("Chromium executable must be a command name")
+        if not 1024 <= proxy_port <= 65535:
+            raise RuntimeError("proxy port is outside the permitted range")
+        validate_seccomp_profile(seccomp_profile)
+        seccomp_bytes = Path(seccomp_profile).read_bytes()
+        seccomp_document = json.loads(seccomp_bytes)
+        relevant_syscalls = []
+        for rule in seccomp_document.get("syscalls", []):
+            names = rule.get("names", []) if isinstance(rule, dict) else []
+            if any(name in {"socket", "clone", "clone3", "unshare", "setns", "chroot", "ptrace"} for name in names):
+                relevant_syscalls.append(rule)
+        evidence["seccomp_profile_summary"] = {
+            "filename": Path(seccomp_profile).name,
+            "sha256": hashlib.sha256(seccomp_bytes).hexdigest(),
+            "default_action": seccomp_document.get("defaultAction"),
+            "relevant_syscalls": relevant_syscalls,
+        }
+        if not image.startswith("sha256:") and "@sha256:" not in image:
+            raise RuntimeError("Chromium image must be addressed by an immutable sha256 digest")
+
+        host4 = str(ipaddress.ip_interface(plan.host_ipv4).ip)
+        host6 = str(ipaddress.ip_interface(plan.host_ipv6).ip)
+        proxy_ips = [host4, host6]
+        namespace_path = f"/run/netns/{namespace_name}"
+        evidence.update({
+            "image_digest": image,
+            "target_origin": target.origin,
+            "proxy_ips": proxy_ips,
+            "proxy_port": proxy_port,
+            "seccomp_profile": seccomp_profile,
+        })
+
+        namespace.provision(plan)
+        namespace_created = True
+        evidence["tests"]["namespace_provisioned"] = True
+
+        links = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "link", "show"]).stdout)
+        if {item.get("ifname") for item in links} != {"lo", worker_veth}:
+            raise RuntimeError("worker namespace contains an unexpected network interface")
+        route4 = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "route", "show", "default"]).stdout)
+        route6 = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-6", "-j", "route", "show", "default"]).stdout)
+        if (len(route4) != 1 or route4[0].get("gateway") != host4 or route4[0].get("dev") != worker_veth
+                or len(route6) != 1 or route6[0].get("gateway") != host6 or route6[0].get("dev") != worker_veth):
+            raise RuntimeError("IPv4/IPv6 default routes do not lead exclusively to the approved proxy host")
+        addresses = json.loads(_run(["ip", "netns", "exec", namespace_name, "ip", "-j", "addr", "show", "dev", worker_veth]).stdout)
+        addr_values = {
+            item.get("local")
+            for device in addresses for item in device.get("addr_info", [])
+        }
+        if not {str(ipaddress.ip_interface(plan.worker_ipv4).ip), str(ipaddress.ip_interface(plan.worker_ipv6).ip)}.issubset(addr_values):
+            raise RuntimeError("worker veth does not hold the configured IPv4 and IPv6 addresses")
+        evidence["network_snapshot"] = {
+            "interfaces": sorted(item.get("ifname", "") for item in links),
+            "ipv4_default_route": route4,
+            "ipv6_default_route": route6,
+            "worker_addresses": sorted(addr_values),
+        }
+        evidence["tests"]["dual_stack_namespace_routes_and_no_alternate_interface"] = True
+
+        firewall.install(namespace_name, proxy_ips, proxy_port)
+        ruleset = firewall.verify_ruleset(
+            namespace_name, proxy_ips=proxy_ips, proxy_port=proxy_port
+        )
+        evidence["nftables_ruleset"] = ruleset
+        live_json_ruleset = _run([
+            "ip", "netns", "exec", namespace_name, "nft", "-j", "list", "table", "inet", "apaa"
+        ]).stdout
+        # Retain the exact, bounded firewall JSON in the private qualification
+        # artifact so a failed semantic attestation can be debugged without
+        # guessing from the human-readable nft output.
+        if len(live_json_ruleset) > 1_000_000:
+            raise RuntimeError("nftables JSON evidence exceeds the bounded artifact size")
+        evidence["nftables_json_snapshot"] = json.loads(live_json_ruleset)
+        nft_attestation = attest_nftables_json(
+            live_json_ruleset, NftablesPolicy(tuple(proxy_ips), proxy_port)
+        )
+        evidence["nftables_attestation"] = {
+            "ruleset_sha256": nft_attestation.ruleset_sha256,
+            "accept_rule_count": nft_attestation.accept_rule_count,
+            "chains": list(nft_attestation.chains),
+        }
+        evidence["tests"]["nftables_exact_default_drop"] = True
+        evidence["tests"]["nftables_json_semantic_attestation"] = True
+
+        for bind_ip in proxy_ips:
+            proxy = PinnedConnectProxy(
+                bind_ip, proxy_port, allowed_hosts=[target.hostname], allowed_port=443
+            )
+            proxy.start()
+            proxy_servers.append(proxy)
+        evidence["tests"]["pinned_proxy_ipv4_ipv6_listeners"] = True
+
+        capture_temp = tempfile.TemporaryDirectory(prefix="apaa-p74-pcap-")
+        capture_path = Path(capture_temp.name) / "worker-veth.pcap"
+        capture_process = subprocess.Popen(
+            ["tcpdump", "-nn", "-i", host_veth, "-U", "-w", str(capture_path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.25)
+        if capture_process.poll() is not None:
+            raise RuntimeError("sink-side tcpdump capture could not start")
+
+        cgroup_path = cgroups.create(worker_id, CgroupLimits())
+        evidence["cgroup_parent"] = str(cgroup_path)
+        spec = OCIWorkerSpec(
+            image=image,
+            network_namespace=namespace_path,
+            seccomp_profile=seccomp_profile,
+            worker_id=worker_id,
+            limits=WorkerLimits(),
+            cgroup_parent="/" + str(cgroup_path.relative_to("/sys/fs/cgroup")).strip("/"),
+        )
+        container_id = runtime.create(spec)
+        evidence["container_id"] = container_id
+        inspected = runtime.inspect(container_id)
+        host = inspected.get("HostConfig") or {}
+        config = inspected.get("Config") or {}
+        state = inspected.get("State") or {}
+        security = host.get("SecurityOpt") or []
+        cap_drop = host.get("CapDrop") or []
+        # Keep only the small, non-secret fields needed to diagnose a failed
+        # runtime-policy assertion in the sanitized evidence artifact.
+        evidence["oci_inspect_security"] = {
+            "readonly_rootfs": host.get("ReadonlyRootfs"),
+            "cap_drop": cap_drop,
+            "security_options": security,
+            "memory": host.get("Memory"),
+            "pids_limit": host.get("PidsLimit"),
+            "nano_cpus": host.get("NanoCpus"),
+            "user": config.get("User"),
+            "cgroup_parent": host.get("CgroupParent"),
+            "network_mode": host.get("NetworkMode"),
+            "state_status": state.get("Status"),
+        }
+        expected_cpu_nanos = int(spec.limits.cpu_count * 1_000_000_000)
+        if (not host.get("ReadonlyRootfs")
+                or not isinstance(cap_drop, list) or not cap_drop
+                or len(cap_drop) != len(set(cap_drop))
+                or any(type(item) is not str or not re.fullmatch(r"CAP_[A-Z0-9_]+", item) for item in cap_drop)
+                or (host.get("CapAdd") or [])):
+            raise RuntimeError("OCI inspect did not confirm read-only rootfs and expanded capability-drop policy")
+        if not any(item.startswith("no-new-privileges") for item in security):
+            raise RuntimeError("OCI inspect did not confirm no-new-privileges")
+        if not any(item == f"seccomp={seccomp_profile}" for item in security):
+            raise RuntimeError("OCI inspect did not confirm the requested seccomp profile")
+        if (host.get("Memory") != spec.limits.memory_bytes
+                or host.get("PidsLimit") != spec.limits.pids_limit
+                or host.get("NanoCpus") != expected_cpu_nanos):
+            raise RuntimeError("OCI inspect did not confirm CPU, memory and PID limits")
+        if config.get("User") != "65532:65532":
+            raise RuntimeError("OCI inspect did not confirm the unprivileged worker UID/GID")
+        if host.get("CgroupParent") != spec.cgroup_parent:
+            raise RuntimeError("OCI inspect did not confirm the dedicated cgroup parent")
+        if host.get("NetworkMode") != f"ns:{namespace_path}":
+            raise RuntimeError("OCI inspect did not confirm the exact isolated network namespace")
+        if state.get("Status") not in ("created", "configured"):
+            raise RuntimeError("OCI worker did not remain in the created pre-start state")
+        evidence["oci_inspect"] = {
+            "readonly_rootfs": host.get("ReadonlyRootfs"),
+            "cap_drop": cap_drop,
+            "security_opt": security,
+            "memory_bytes": host.get("Memory"),
+            "nano_cpus": host.get("NanoCpus"),
+            "pids_limit": host.get("PidsLimit"),
+            "network_mode": host.get("NetworkMode"),
+            "user": config.get("User"),
+            "image_id": inspected.get("Image"),
+            "image_digest": inspected.get("ImageDigest"),
+        }
+        evidence["tests"]["oci_inspect_hardening"] = True
+
+        runtime.start(container_id)
+        evidence["chromium_version"] = _run_chromium_with_fd_snapshots(
+            _podman_chromium_command(container_id, chromium_bin, ["--version"]),
+            cgroup_path, timeout=15,
+        )[0].stdout.strip()[:160]
+        chromium_build_id = _chromium_binary_build_id(container_id)
+        evidence["chromium_binary_build_id"] = chromium_build_id
+        package_version, package_architecture = _chromium_package_metadata(container_id)
+        evidence["chromium_package_version"] = package_version
+        evidence["chromium_package_architecture"] = package_architecture
+        chromium_dynamic_symbols = _chromium_dynamic_symbols(container_id)
+        evidence["chromium_dynamic_symbols"] = chromium_dynamic_symbols
+        local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
+        evidence["chromium_local_dump_dom"] = local_smoke
+        evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
+        if not local_smoke["marker_present"]:
+            local_smoke["failure"]["process_mapping"] = _map_failure_to_fd_snapshot(
+                local_smoke["failure"], local_fd_diagnostics,
+            )
+            local_smoke["failure"]["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                local_smoke["failure"], chromium_dynamic_symbols,
+            )
+            local_smoke["failure"]["stack_disassembly"] = _disassemble_chromium_stack(
+                container_id, local_smoke["failure"],
+            )
+            local_smoke["failure"]["symbolication"] = _symbolize_failure_frames(
+                local_smoke["failure"], chromium_build_id,
+            )
+            evidence["chromium_local_dump_dom"] = local_smoke
+            raise RuntimeError(f"Chromium local dump-dom smoke test failed: {local_smoke['failure']}")
+        evidence["tests"]["chromium_local_dump_dom_smoke"] = True
+        post_start_inspect = runtime.inspect(container_id)
+        post_start_state = post_start_inspect.get("State") or {}
+        post_start_pid = post_start_state.get("Pid")
+        if type(post_start_pid) is int and post_start_pid > 1:
+            # A cgroup path is non-secret host enforcement metadata and helps
+            # diagnose the independent observer's strict subtree check.
+            evidence["worker_proc_cgroup"] = Path(f"/proc/{post_start_pid}/cgroup").read_text(
+                encoding="ascii"
+            )[:2048]
+            raw_membership = evidence["worker_proc_cgroup"].split("::", 1)[-1].strip()
+            cgroup_mount = Path("/sys/fs/cgroup")
+            mount_text = str(cgroup_mount.resolve())
+            normalized_membership = (
+                raw_membership[len(mount_text):]
+                if raw_membership.startswith(mount_text + "/")
+                else raw_membership
+            )
+            candidate_cgroup = cgroup_mount / normalized_membership.lstrip("/")
+            parent_cgroup = candidate_cgroup.parent
+            try:
+                parent_entries = sorted(item.name for item in parent_cgroup.iterdir())[:64]
+            except OSError:
+                parent_entries = []
+            def _read_small(path: Path) -> str | None:
+                try:
+                    return path.read_text(encoding="ascii")[:2048].strip()
+                except OSError:
+                    return None
+            evidence["worker_cgroup_probe"] = {
+                "candidate": str(candidate_cgroup),
+                "candidate_is_dir": candidate_cgroup.is_dir(),
+                "parent": str(parent_cgroup),
+                "parent_is_dir": parent_cgroup.is_dir(),
+                "parent_entries": parent_entries,
+                "parent_procs": _read_small(parent_cgroup / "cgroup.procs"),
+                "parent_type": _read_small(parent_cgroup / "cgroup.type"),
+                "parent_subtree_control": _read_small(parent_cgroup / "cgroup.subtree_control"),
+                "parent_events": _read_small(parent_cgroup / "cgroup.events"),
+            }
+        observation = PodmanWorkerObserver(runtime).observe(container_id, spec)
+        evidence["runtime_observation"] = {
+            "host_pid": observation.host_pid,
+            "process_start_time_ticks": observation.process_start_time_ticks,
+            "network_namespace_inode": observation.network_namespace_inode,
+            "cgroup_path": observation.cgroup_path,
+            "memory_max": observation.memory_max,
+            "cpu_max": observation.cpu_max,
+            "pids_max": observation.pids_max,
+            "seccomp_mode": observation.seccomp_mode,
+            "image_id": observation.image_id,
+        }
+        evidence["tests"]["independent_runtime_kernel_observation"] = True
+        inspected = runtime.inspect(container_id)
+        state = inspected.get("State") or {}
+        host_pid = state.get("Pid")
+        if type(host_pid) is not int or host_pid <= 1:
+            raise RuntimeError("OCI runtime did not expose a valid host PID for namespace attestation")
+        if os.stat(f"/proc/{host_pid}/ns/net").st_ino != os.stat(namespace_path).st_ino:
+            raise RuntimeError("container init process is not in the provisioned network namespace")
+        process_cgroup = Path(f"/proc/{host_pid}/cgroup").read_text(encoding="ascii")
+        if f"/{worker_id}/" not in process_cgroup:
+            raise RuntimeError("container init process is not inside its dedicated APAA cgroup")
+        evidence["tests"]["network_namespace_inode_match"] = True
+        evidence["tests"]["host_pid_cgroup_membership"] = True
+
+        def container_read(path: str) -> str:
+            return _run(["podman", "exec", container_id, "cat", path]).stdout.strip()
+
+        memory = container_read("/sys/fs/cgroup/memory.max")
+        cpu = container_read("/sys/fs/cgroup/cpu.max")
+        pids = container_read("/sys/fs/cgroup/pids.max")
+        status = _run(["podman", "exec", container_id, "cat", "/proc/self/status"]).stdout
+        if (memory != str(spec.limits.memory_bytes)
+                or cpu != "100000 100000"
+                or pids != str(spec.limits.pids_limit)):
+            raise RuntimeError("kernel cgroup-v2 read-back does not match requested worker limits")
+        seccomp_lines = [line for line in status.splitlines() if line.startswith("Seccomp:")]
+        if seccomp_lines != ["Seccomp:\t2"]:
+            raise RuntimeError("kernel does not report an active seccomp filter")
+        evidence["cgroup_readback"] = {"memory.max": memory, "cpu.max": cpu, "pids.max": pids}
+        evidence["tests"]["kernel_cgroup_v2_readback"] = True
+        evidence["tests"]["kernel_seccomp_active"] = True
+
+        userns_probe = _probe_user_namespace(container_id)
+        evidence["user_namespace_probe"] = userns_probe
+        evidence["tests"]["unprivileged_user_namespace_available"] = userns_probe["exit_code"] == 0
+        evidence["tests"]["user_namespace_chroot_available"] = userns_probe["user_namespace_chroot_available"]
+
+        # Direct DNS and direct IPv4/IPv6 TCP must fail from inside the worker.
+        evidence["direct_network_probes"] = {
+            "udp_dns": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; q=bytes.fromhex('123401000001000000000000076578616d706c6503636f6d0000010001'); s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(q,('1.1.1.1',53)); s.recvfrom(4096)",
+            ], "direct UDP DNS query", allow_seccomp_socket_denial=True),
+            "tcp_dns": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('1.1.1.1',53),2)",
+            ], "direct TCP DNS query"),
+            "ipv4_tcp": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; socket.create_connection(('1.1.1.1',443),2)",
+            ], "direct IPv4 TCP"),
+            "ipv6_tcp": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6); s.settimeout(2); s.connect(('2606:4700:4700::1111',443))",
+            ], "direct IPv6 TCP"),
+            "udp_443": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP-PROBE',('1.1.1.1',443)); s.recvfrom(1)",
+            ], "direct UDP/443 QUIC-style egress", allow_seccomp_socket_denial=True),
+            "udp6_443": _probe_blocked([
+                "podman", "exec", container_id, "python3", "-c",
+                "import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM); s.settimeout(2); s.sendto(b'APAA-UDP6-PROBE',('2606:4700:4700::1111',443)); s.recvfrom(1)",
+            ], "direct IPv6 UDP/443 QUIC-style egress", allow_seccomp_socket_denial=True),
+        }
+        evidence["tests"]["direct_dns_blocked"] = True
+        evidence["tests"]["direct_tcp_dns_blocked"] = True
+        evidence["tests"]["direct_ipv4_blocked"] = True
+        evidence["tests"]["direct_ipv6_blocked"] = True
+        evidence["tests"]["direct_udp_443_blocked"] = True
+        evidence["tests"]["direct_udp6_443_blocked"] = True
+
+        for family, proxy_ip in (("ipv4", host4), ("ipv6", host6)):
+            proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
+            proxy = proxy_servers[0] if family == "ipv4" else proxy_servers[1]
+            preflight = _probe_proxy_tcp(container_id, proxy_ip, proxy_port)
+            evidence[f"proxy_tcp_preflight_{family}"] = preflight
+            accepted_before_browser = proxy.accepted_connections
+            rejected_before_browser = proxy.rejected_requests
+            page, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
+"--headless=new",
+"--disable-gpu",
+"--disable-quic",
+"--disable-setuid-sandbox",
+"--disable-breakpad",
+"--disable-features=PassHistogramSharedMemoryOnLaunch",
+"--disable-crash-reporter",
+# Disable Crashpad initialization only; Chromium's renderer and
+# namespace sandbox remain enabled for this disposable test.
+"--disable-crashpad-for-testing",
+"--disable-features=PassHistogramSharedMemoryOnLaunch",
+"--disable-dev-shm-usage",
+"--user-data-dir=/tmp/apaa-chromium-" + family,
+"--enable-logging=stderr",
+"--v=1",
+"--disable-http2",
+"--disable-background-networking",
+"--disable-component-update",
+"--disable-sync",
+"--no-first-run",
+"--proxy-server=" + proxy_argument,
+"--proxy-bypass-list=<-loopback>",
+"--dump-dom",
+target.url,
+
+            ]), timeout=120)
+            evidence["proxy_progress"] = {
+                "family": family,
+                "accepted_before_browser": accepted_before_browser,
+                "accepted_after_browser": proxy.accepted_connections,
+                "browser_accept_delta": proxy.accepted_connections - accepted_before_browser,
+                "rejected_before_browser": rejected_before_browser,
+                "rejected_after_browser": proxy.rejected_requests,
+                "dialed_addresses": list(proxy.dialed_addresses),
+            }
+            if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
+                failure = _chromium_failure_details(page, family, expected_marker)
+                failure["process_mapping"] = _map_failure_to_fd_snapshot(failure, fd_diagnostics)
+                failure["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                    failure, chromium_dynamic_symbols,
+                )
+                failure["stack_disassembly"] = _disassemble_chromium_stack(container_id, failure)
+                failure["symbolication"] = _symbolize_failure_frames(failure, chromium_build_id)
+                evidence["chromium_failure"] = failure
+                raise RuntimeError(
+                    f"Chromium did not return the expected controlled-page marker over the {family} proxy "
+                    f"(exit={failure['exit_code']}; stdout_bytes={failure['stdout_bytes']}; "
+                    f"stdout_sha256={failure['stdout_sha256']}; stderr={failure['stderr_preview']})"
+                )
+            evidence["tests"][f"chromium_https_via_{family}_proxy"] = True
+            evidence[f"chromium_{family}_evidence"] = {
+                "stdout_sha256": hashlib.sha256(page.stdout.encode("utf-8")).hexdigest(),
+                "stdout_bytes": len(page.stdout.encode("utf-8")),
+                "expected_marker_present": True,
+            }
+
+        if capture_process is None or capture_temp is None:
+            raise RuntimeError("sink-side packet capture was not active during Chromium execution")
+        capture_process.send_signal(signal.SIGINT)
+        capture_returncode = capture_process.wait(timeout=10)
+        capture_process = None
+        if capture_returncode != 0:
+            raise RuntimeError("sink-side tcpdump did not exit cleanly")
+        packet_summary = _audit_worker_capture(
+            capture_path,
+            worker_ips={str(ipaddress.ip_interface(plan.worker_ipv4).ip), str(ipaddress.ip_interface(plan.worker_ipv6).ip)},
+            proxy_ips=set(proxy_ips),
+            proxy_port=proxy_port,
+        )
+        evidence["packet_capture"] = packet_summary
+        evidence["tests"]["sink_side_packet_capture_proxy_only"] = True
+        capture_temp.cleanup()
+        capture_temp = None
+
+        evidence["proxy_dialed_addresses"] = {
+            "ipv4_listener": list(proxy_servers[0].dialed_addresses),
+            "ipv6_listener": list(proxy_servers[1].dialed_addresses),
+        }
+        evidence["proxy_accepted_connections"] = {
+            "ipv4_listener": proxy_servers[0].accepted_connections,
+            "ipv6_listener": proxy_servers[1].accepted_connections,
+        }
+        if not all(evidence["proxy_accepted_connections"].values()):
+            raise RuntimeError("one or both proxy families did not record an upstream pinned TCP connection")
+
+        # Shut down each mandatory proxy and prove Chromium cannot reach the
+        # allowed origin through a direct fallback. The namespace firewall
+        # remains installed and default-DROP during both negative probes.
+        for family, proxy_ip, proxy in (
+            ("ipv4", host4, proxy_servers[0]),
+            ("ipv6", host6, proxy_servers[1]),
+        ):
+            proxy.close()
+            proxy_argument = _http_proxy_uri(proxy_ip, proxy_port)
+            outage = _probe_proxy_outage([
+                "podman", "exec", "--user", "65532:65532", container_id,
+                chromium_bin, "--headless=new", "--disable-gpu", "--disable-quic",
+                "--disable-setuid-sandbox",
+                "--disable-breakpad",
+                "--disable-dev-shm-usage",
+                "--user-data-dir=/tmp/apaa-chromium-outage-" + family,
+                "--disable-http2",
+                "--disable-background-networking", "--disable-component-update",
+                "--disable-sync", "--no-first-run", "--proxy-server=" + proxy_argument,
+                "--proxy-bypass-list=<-loopback>", "--dump-dom", target.url,
+            ], expected_marker, family)
+            evidence["tests"][f"proxy_outage_no_direct_fallback_{family}"] = True
+            evidence[f"proxy_outage_{family}_evidence"] = outage
+
+        evidence["result"] = "PASS"
+        print("PASS: Chromium ran inside the isolated OCI worker through both IPv4 and IPv6 pinned proxies.")
+        print("PASS: direct DNS, direct IPv4 TCP and direct IPv6 TCP were blocked.")
+    except Exception as exc:
+        evidence["error"] = f"{type(exc).__name__}: {exc}"
+        print(f"BLOCKED: {type(exc).__name__}: {exc}")
+    finally:
+        if capture_process is not None:
+            try:
+                capture_process.send_signal(signal.SIGINT)
+                capture_process.wait(timeout=5)
+            except Exception:
+                try:
+                    capture_process.kill()
+                    capture_process.wait(timeout=2)
+                except Exception:
+                    cleanup_errors.append("packet-capture: stop-not-confirmed")
+        if capture_temp is not None:
+            try:
+                capture_temp.cleanup()
+            except Exception:
+                cleanup_errors.append("packet-capture: temp-cleanup-failed")
+        for proxy in reversed(proxy_servers):
+            try:
+                proxy.close()
+            except Exception as exc:
+                cleanup_errors.append(f"proxy: {type(exc).__name__}")
+        if container_id:
+            try:
+                runtime.stop(container_id, timeout_seconds=5)
+            except Exception:
+                pass
+            try:
+                runtime.remove(container_id)
+            except Exception as exc:
+                cleanup_errors.append(f"container: {type(exc).__name__}")
+        if cgroup_path is not None:
+            try:
+                cgroups.remove(cgroup_path)
+            except Exception as exc:
+                cleanup_errors.append(f"cgroup: {type(exc).__name__}")
+        if namespace_created:
+            try:
+                namespace.remove(plan)
+            except Exception as exc:
+                cleanup_errors.append(f"namespace/veth: {type(exc).__name__}")
+        evidence["cleanup_errors"] = cleanup_errors
+        evidence["cleanup_confirmed"] = not cleanup_errors
+        evidence["finished_at_unix"] = int(time.time())
+        if cleanup_errors:
+            evidence["result"] = "CLEANUP_REQUIRED"
+            print("CLEANUP_REQUIRED: one or more worker resources could not be confirmed removed.", file=sys.stderr)
+        try:
+            _evidence_write(os.environ.get("APAA_P74_EVIDENCE_PATH", ""), evidence)
+        except Exception as exc:
+            cleanup_errors.append(f"evidence: {type(exc).__name__}")
+            evidence["result"] = "CLEANUP_REQUIRED"
+            evidence["cleanup_errors"] = cleanup_errors
+            evidence["cleanup_confirmed"] = False
+
+    return 0 if evidence["result"] == "PASS" and not cleanup_errors else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

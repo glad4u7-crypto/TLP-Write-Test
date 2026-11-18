@@ -120,6 +120,12 @@ class LinuxHostSnapshotSource(HostSnapshotSource):
             dev = dev_path.read_text(encoding="ascii")
         except OSError as exc:
             raise HostCollectionError("Worker network namespace could not be inspected.") from exc
+        # procfs PID identity can change between the first stat read and the
+        # namespace/interface reads. Re-check starttime before accepting this
+        # snapshot so a recycled PID cannot bind a new namespace to old runtime
+        # identity. read_nftables_json performs another check after nsenter.
+        if self._observed_start_ticks(stat_path) != expected_start_ticks:
+            raise HostCollectionError("Worker PID identity changed during namespace snapshot.")
         if type(inode) is not int or inode <= 0:
             raise HostCollectionError("Worker network namespace inode is invalid.")
         interfaces: list[str] = []

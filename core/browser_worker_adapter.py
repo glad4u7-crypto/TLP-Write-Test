@@ -106,6 +106,7 @@ class AttestedBrowserWorkerAdapter:
         trusted_public_keys: Mapping[str, bytes],
         expected_proxy_addresses: Sequence[str],
         challenge_factory: Any = secrets.token_hex,
+        challenge_ledger: Any | None = None,
         cleanup_wait_seconds: float = 15.0,
     ) -> None:
         if type(spec) is not WorkerLaunchSpec:
@@ -138,6 +139,8 @@ class AttestedBrowserWorkerAdapter:
             raise ValueError("Duplicate proxy IP pins are not permitted.")
         if not callable(challenge_factory):
             raise TypeError("challenge_factory must be callable.")
+        if challenge_ledger is not None and not callable(getattr(challenge_ledger, "consume", None)):
+            raise TypeError("challenge_ledger must expose an atomic consume(challenge) operation.")
         if isinstance(cleanup_wait_seconds, bool) or not isinstance(cleanup_wait_seconds, (int, float)) or not 0 < cleanup_wait_seconds <= 60:
             raise ValueError("cleanup_wait_seconds must be between 0 and 60 seconds.")
         self._spec = spec
@@ -147,9 +150,51 @@ class AttestedBrowserWorkerAdapter:
         self._trusted_keys = dict(trusted_public_keys)
         self._proxy_addresses = tuple(sorted(normalized_proxy_ips))
         self._challenge_factory = challenge_factory
+        self._challenge_ledger = challenge_ledger
         self._cleanup_wait = float(cleanup_wait_seconds)
         self._states: dict[str, _WorkerState] = {}
+        # Challenges are single-use for this adapter process. The default 256-bit
+        # CSPRNG makes cross-process collisions negligible; deployments requiring
+        # restart-surviving replay protection must add a durable owner-controlled ledger.
+        self._used_challenges: set[str] = set()
         self._lock = threading.RLock()
+
+    @classmethod
+    def from_keyring(
+        cls,
+        spec: WorkerLaunchSpec,
+        *,
+        backend: IsolatedWorkerBackend,
+        keyring: Any,
+        expected_proxy_addresses: Sequence[str],
+        challenge_ledger: Any,
+        cleanup_wait_seconds: float = 15.0,
+    ) -> "AttestedBrowserWorkerAdapter":
+        """Build an adapter from an explicit owner keyring and durable replay ledger.
+
+        This factory requires durable replay protection. The keyring's software
+        storage is not an HSM or out-of-band key custody mechanism.
+        """
+        if keyring is None or not callable(getattr(keyring, "signing_key", None)):
+            raise TypeError("an owner-managed attestation keyring is required")
+        if not callable(getattr(keyring, "trusted_public_keys", None)):
+            raise TypeError("keyring must expose trusted_public_keys()")
+        if challenge_ledger is None or not callable(getattr(challenge_ledger, "consume", None)):
+            raise TypeError("a durable atomic challenge ledger is required")
+        status = keyring.status() if callable(getattr(keyring, "status", None)) else None
+        if not isinstance(status, dict) or type(status.get("active_key_id")) is not str:
+            raise TypeError("keyring must report exactly one active key ID")
+        key_id = status["active_key_id"]
+        return cls(
+            spec,
+            backend=backend,
+            signing_key=keyring.signing_key(),
+            key_id=key_id,
+            trusted_public_keys=keyring.trusted_public_keys(),
+            expected_proxy_addresses=expected_proxy_addresses,
+            challenge_ledger=challenge_ledger,
+            cleanup_wait_seconds=cleanup_wait_seconds,
+        )
 
     def run(
         self,
@@ -179,8 +224,23 @@ class AttestedBrowserWorkerAdapter:
             if not isinstance(source, HostSnapshotSource):
                 raise BrowserWorkerBootstrapError("Backend did not provide a trusted host snapshot source.")
             challenge = self._challenge_factory(32)
-            if type(challenge) is not str or len(challenge) != 64:
+            if type(challenge) is not str or not re.fullmatch(r"[0-9a-f]{64}", challenge):
                 raise BrowserWorkerBootstrapError("Challenge factory did not return a 256-bit hex challenge.")
+            with self._lock:
+                if challenge in self._used_challenges:
+                    raise BrowserWorkerBootstrapError("A host-attestation challenge cannot be reused.")
+                # A persistent ledger makes replay rejection survive adapter
+                # restarts and coordinates multiple adapter processes.
+                if self._challenge_ledger is not None:
+                    try:
+                        if self._challenge_ledger.consume(challenge) is not True:
+                            raise BrowserWorkerBootstrapError("A host-attestation challenge cannot be reused.")
+                    except BrowserWorkerBootstrapError:
+                        raise
+                    except Exception as exc:
+                        raise BrowserWorkerBootstrapError("Durable challenge replay protection failed closed.") from exc
+                # Consume before collection: failed collection cannot make the nonce reusable.
+                self._used_challenges.add(challenge)
 
             evidence = collect_signed_inspector_evidence(
                 source,

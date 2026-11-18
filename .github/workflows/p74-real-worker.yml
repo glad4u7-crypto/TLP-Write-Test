@@ -1,0 +1,146 @@
+name: APAA P74 real OCI Chromium worker
+# Chromium FD diagnosis uses read-only bounded host procfs snapshots; sandbox policy is unchanged.
+# The gated disposable-host run is opt-in and uses only this ephemeral runner.
+# Stack symbolication is best-effort; exact Chromium debug symbols may not be published.
+# Debug symbol fetch and address translation are time-bounded and non-fatal.
+# Snapshots span the full crash window and PID matching checks executable stack ranges.
+# The unprefixed fatal stack is mapped across all worker Chromium processes.
+# Evidence distinguishes the prefixed browser log PID from the stack-matched child image.
+# Exact-build symbols are fetched by build ID from Debian debuginfod when available; absence is non-fatal.
+# Exported close symbol addresses are inspected from the pinned worker ELF.
+# Full local symbols are checked before falling back to dynamic symbols.
+# Procfs command-line parsing now uses true NUL boundaries for process roles.
+# The final run includes sanitized cmdline availability and disassembly windows.
+# FD ownership crash stderr now triggers an immediate host /proc snapshot.
+
+on:
+  push:
+    branches:
+      - feature/apaa-p74-action-12-oci-runtime-network
+      - feature/apaa-p74-chromium-fd-diagnostics
+  workflow_dispatch:
+    inputs:
+      test_url:
+        description: Exact HTTPS URL on an owner-approved test origin
+        required: true
+        default: https://example.com/
+        type: string
+      allowed_origin:
+        description: Exact HTTPS origin matching test_url (scheme + host + optional port)
+        required: true
+        default: https://example.com
+        type: string
+      expected_marker:
+        description: Unique text that must appear in the controlled test page HTML
+        required: true
+        default: Example Domain
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-worker:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-p74-real-worker]'))
+    name: Disposable Linux OCI + dual-stack Chromium qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install disposable-host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman nftables iproute2 tcpdump uidmap slirp4netns fuse-overlayfs elfutils debuginfod
+          podman --version
+          nft --version
+          ip -Version
+
+      - name: Prepare delegated cgroup v2 subtree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(stat -fc %T /sys/fs/cgroup)" = "cgroup2fs"
+          for controller in cpu memory pids; do
+            grep -qw "$controller" /sys/fs/cgroup/cgroup.controllers
+          done
+          sudo mkdir -p /sys/fs/cgroup/apaa
+          printf '+cpu +memory +pids\n' | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          printf '+cpu +memory +pids\n' | sudo tee /sys/fs/cgroup/apaa/cgroup.subtree_control >/dev/null
+          cat /sys/fs/cgroup/apaa/cgroup.controllers
+          cat /sys/fs/cgroup/apaa/cgroup.subtree_control
+
+      - name: Build local Chromium worker image
+        run: |
+          set -euo pipefail
+          sudo podman build --pull=always \
+            --build-arg BASE_IMAGE=docker.io/library/debian:bookworm-slim \
+            -f containers/chromium-worker/Containerfile \
+            -t localhost/apaa-chromium-worker:ci .
+          IMAGE_ID="$(sudo podman image inspect --format '{{.Id}}' localhost/apaa-chromium-worker:ci)"
+          test "$IMAGE_ID" != ""
+          case "$IMAGE_ID" in
+            sha256:*) ;;
+            *) IMAGE_ID="sha256:$IMAGE_ID" ;;
+          esac
+          echo "APAA_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
+
+      - name: Locate deny-by-default OCI seccomp profile
+        run: |
+          set -euo pipefail
+          test -s /usr/share/containers/seccomp.json
+          echo "APAA_SECCOMP_PROFILE=/usr/share/containers/seccomp.json" >> "$GITHUB_ENV"
+
+      - name: Prepare Chromium user-namespace seccomp profile
+        run: |
+          set -euo pipefail
+          python3 -m scripts.prepare_chromium_seccomp_profile \
+            --source "$APAA_SECCOMP_PROFILE" \
+            --output "$RUNNER_TEMP/apaa-chromium-seccomp.json"
+          echo "APAA_SECCOMP_PROFILE=$RUNNER_TEMP/apaa-chromium-seccomp.json" >> "$GITHUB_ENV"
+
+      - name: Run real Chromium inside isolated OCI worker
+        env:
+          APAA_P74_TEST_URL: ${{ inputs.test_url || 'https://example.com/' }}
+          APAA_P74_ALLOWED_ORIGIN: ${{ inputs.allowed_origin || 'https://example.com' }}
+          APAA_P74_EXPECTED_MARKER: ${{ inputs.expected_marker || 'Example Domain' }}
+        run: |
+          set -euo pipefail
+          sudo env \
+            APAA_P74_REAL_HOST=1 \
+            APAA_P74_IMAGE_DIGEST="$APAA_IMAGE_ID" \
+            APAA_P74_SECCOMP_PROFILE="$APAA_SECCOMP_PROFILE" \
+            APAA_P74_WORKER_ID=worker-p74-01 \
+            APAA_P74_TEST_URL="$APAA_P74_TEST_URL" \
+            APAA_P74_ALLOWED_ORIGIN="$APAA_P74_ALLOWED_ORIGIN" \
+            APAA_P74_EXPECTED_MARKER="$APAA_P74_EXPECTED_MARKER" \
+            APAA_P74_EVIDENCE_PATH="$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" \
+            PYTHONPATH="$GITHUB_WORKSPACE" \
+            python3 scripts/p74_real_worker_chromium_e2e.py
+
+      - name: Make sanitized evidence readable to artifact uploader
+        if: always()
+        run: |
+          sudo chown "$USER":"$USER" "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
+          chmod 600 "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
+
+      - name: Resolve exact Debian Chromium debug symbols (best effort)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          DEBUGINFOD_URLS: https://debuginfod.debian.net
+          DEBUGINFOD_PROGRESS: "0"
+        run: |
+          set -euo pipefail
+          python3 scripts/symbolicate_chromium_fd_evidence.py "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json"
+
+      - name: Upload sanitized qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apaa-p74-real-worker-evidence
+          path: ${{ runner.temp }}/apaa-p74-real-worker-evidence.json
+          if-no-files-found: warn
+          retention-days: 7

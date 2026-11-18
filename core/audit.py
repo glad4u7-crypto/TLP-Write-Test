@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import threading
@@ -31,12 +32,47 @@ class ExecutionAuditEvent:
     reason: str
 
 
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|password|passwd|token|secret|api[_-]?key|session(?:[_ -]?id)?)\s*[:=]\s*([^\s,;]+)"
+)
+_BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
+_URL = re.compile(r'(?i)\bhttps?://[^\s<>"]+')
+_EMAIL = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+
+
+def redact_sensitive_text(value: str, *, limit: int = 256) -> str:
+    """Return bounded audit text with credentials, URL paths and identifiers masked."""
+    if type(value) is not str:
+        raise TypeError("audit text must be a string")
+    # Mask bearer/basic payloads before assignment parsing; otherwise the
+    # Authorization matcher can consume only the word "Bearer" and leak the
+    # credential that follows it.
+    value = _BEARER.sub(lambda m: f"{m.group(1)} [REDACTED]", value)
+    value = _SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
+
+    def hide_url(match):
+        from urllib.parse import urlsplit
+        try:
+            parsed = urlsplit(match.group(0))
+            host = parsed.hostname or "[host]"
+            port = f":{parsed.port}" if parsed.port else ""
+            return f"{parsed.scheme}://{host}{port}/[REDACTED]"
+        except ValueError:
+            return "[URL REDACTED]"
+
+    value = _URL.sub(hide_url, value)
+    value = _EMAIL.sub("[EMAIL REDACTED]", value)
+    return value[:limit]
+
+
 def create_audit_event(action: str, executed: bool, reason: str) -> ExecutionAuditEvent:
+    if type(executed) is not bool:
+        raise TypeError("executed must be a boolean")
     return ExecutionAuditEvent(
         timestamp=datetime.now(timezone.utc).isoformat(),
-        action=action,
+        action=redact_sensitive_text(action, limit=96),
         executed=executed,
-        reason=reason,
+        reason=redact_sensitive_text(reason, limit=256),
     )
 
 
@@ -135,6 +171,10 @@ class JsonlAuditLog:
         if not isinstance(event, ExecutionAuditEvent):
             raise TypeError("Only ExecutionAuditEvent records may be persisted.")
         event_data = asdict(event)
+        # Defense in depth: direct dataclass construction must not bypass the
+        # redaction applied by create_audit_event().
+        event_data["action"] = redact_sensitive_text(event_data["action"], limit=96)
+        event_data["reason"] = redact_sensitive_text(event_data["reason"], limit=256)
         with self._lock:
             previous_hash = self.verify()
             entry_hash = self._entry_hash(previous_hash, event_data)

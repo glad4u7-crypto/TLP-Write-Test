@@ -1,8 +1,10 @@
-"""Real Chromium TLS acceptance tests (not Python ssl-only checks).
+"""Test-only local Chromium TLS/policy tests (not OCI isolation qualification).
 
-The tests launch a disposable headless Chromium process through a constrained
-CONNECT proxy. A private test CA is installed into Chromium's isolated NSS
-trust database; no certificate-ignore switch is used.
+The tests launch a disposable headless Chromium process against a local-only
+CONNECT proxy and local TLS server. A private test CA is installed into the
+temporary NSS database; no certificate-ignore switch is used. The test fixture
+uses chromium_sandbox=False and a fake runtime callback, so it must never be
+reported as proof of production worker isolation or sandbox enforcement.
 """
 from __future__ import annotations
 
@@ -161,6 +163,8 @@ def _browser_with_test_ca(tmp_path: Path, ca_path: Path, proxy_port: int, monkey
     subprocess.run([certutil, "-A", "-d", f"sql:{nssdb}", "-n", "APAA Test Root",
                     "-t", "C,,", "-i", str(ca_path)],
                    check=True, capture_output=True, text=True)
+    # Test-only local fixture: this process is not an APAA production worker.
+    # The proxy forwards only to the loopback TLS server created by this test.
     playwright = sync_playwright().start()
     context = playwright.chromium.launch_persistent_context(
         str(tmp_path / "chromium-profile"), headless=True, chromium_sandbox=False,
@@ -246,10 +250,10 @@ def test_chromium_rejects_expired_certificate_signed_by_trusted_test_ca(tmp_path
 
 
 
-def test_live_browsing_controller_reads_from_real_chromium_over_restricted_local_proxy(
+def test_live_browsing_policy_with_test_only_local_chromium_fixture(
     tmp_path, monkeypatch
 ):
-    """End-to-end live-browsing path: real Chromium, local-only CONNECT, TLS verified."""
+    """Exercise controller policy with local Chromium; does not prove OCI isolation."""
     import time
 
     from core.live_browsing import LiveBrowsingController

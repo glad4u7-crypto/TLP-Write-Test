@@ -107,6 +107,10 @@ class NavigationPolicy:
             raise NavigationPolicyError("URL must include a hostname.")
         if parts.username is not None or parts.password is not None or "@" in parts.netloc:
             raise NavigationPolicyError("URL credentials are not allowed.")
+        # urllib.parse treats an explicit empty port (example.com:) as no port.
+        # Reject it rather than silently accepting an ambiguous authority.
+        if parts.netloc.endswith(":"):
+            raise NavigationPolicyError("URL port is invalid.")
         if port is not None and not 1 <= port <= 65535:
             raise NavigationPolicyError("URL port is invalid.")
         host = _normalise_host(host_raw)
@@ -130,7 +134,14 @@ class NavigationPolicy:
             if not allowed:
                 raise NavigationPolicyError("Hostname is not on the explicit allowlist.")
             try:
-                resolved = tuple(self.resolver(host))
+                raw_resolved = self.resolver(host)
+                # Check before tuple(): strings are iterable and would otherwise
+                # become a tuple of characters, obscuring the resolver contract.
+                if isinstance(raw_resolved, (str, bytes)):
+                    raise NavigationPolicyError(
+                        "Resolver must return an iterable of IP address strings."
+                    )
+                resolved = tuple(raw_resolved)
             except NavigationPolicyError:
                 raise
             except Exception as exc:
