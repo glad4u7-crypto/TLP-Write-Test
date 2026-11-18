@@ -769,3 +769,42 @@ def test_owner_principal_must_match_tenant_before_coordinator_creation(tmp_path)
             owner_principal=other, owner_tenant=tenant,
             session_scope="owner-session-test-001", owner_session_check=lambda: True,
         )
+
+
+def test_owner_session_revoked_during_dns_is_blocked_before_worker_start():
+    authority = ApprovalAuthority(signing_secret=b"APAA test approval signing secret 32 bytes minimum")
+    tenant = TenantKey("https://apaa.test", "owner-1")
+    principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
+    tempdir = tempfile.TemporaryDirectory()
+    private_dir = Path(tempdir.name)
+    private_dir.chmod(0o700)
+    ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
+    session = {"active": True}
+    worker = FakeWorker()
+    events = []
+    coordinator = _ProductionBrowserExecutionCoordinator(
+        worker, audit=events.append, recovery_ledger=ledger,
+        approval_authority=authority, owner_principal=principal,
+        owner_tenant=tenant, session_scope="owner-session-test-001",
+        owner_session_check=lambda: session["active"],
+    )
+    job = valid_job(job_id="job_approval_0004")
+    validated = validate_browser_job(job)
+    payload = asdict(validated)
+    payload["allowed_origins"] = list(validated.allowed_origins)
+    receipt = authority.issue(
+        "browser_read", payload, ttl_seconds=60,
+        tenant=tenant, session_scope="owner-session-test-001",
+    )
+
+    def revoke_during_dns(host):
+        session["active"] = False
+        return ["93.184.216.34"]
+
+    with pytest.raises(BrowserExecutionError, match="inactive or expired"):
+        coordinator.execute(job, resolver=revoke_during_dns, approval_receipt=receipt)
+
+    assert worker.calls == []
+    assert ledger.list_history(job["job_id"])[-1]["state"] == "failed"
+    assert events[-1]["event"] == "session_closed"
+    tempdir.cleanup()
