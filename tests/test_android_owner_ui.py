@@ -25,7 +25,7 @@ def test_owner_launcher_refuses_missing_auth_config(tmp_path):
 
 def test_owner_launcher_refuses_unauthenticated_prototype(tmp_path):
     secrets = tmp_path / "secrets.toml"
-    secrets.write_text('[apaa]\nrequire_auth = false\n[auth]\nredirect_uri = "http://localhost"\n', encoding="utf-8")
+    secrets.write_text('[apaa]\nrequire_auth = false\n[auth]\nredirect_uri = "http://localhost:8501/oauth2callback"\n', encoding="utf-8")
     with pytest.raises(RuntimeError, match="require_auth"):
         validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
 
@@ -53,3 +53,31 @@ def test_owner_ui_command_binds_loopback_only():
 def test_owner_ui_rejects_unsafe_port(port):
     with pytest.raises(ValueError):
         owner_ui_command(python_executable="python", app_path=Path("/app/app.py"), port=port)
+
+
+def test_owner_launcher_rejects_non_loopback_oidc_redirect(tmp_path):
+    secrets = tmp_path / "secrets.toml"
+    secrets.write_text(
+        '[apaa]\\nrequire_auth = true\\n[auth]\\n'
+        'redirect_uri = "http://192.168.1.5:8501/oauth2callback"\\n'
+        'cookie_secret = "cccccccccccccccccccccccccccccccc"\\n'
+        'client_id = "client"\\nclient_secret = "secret"\\n'
+        'server_metadata_url = "https://issuer.example/.well-known/openid-configuration"\\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="loopback"):
+        validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
+
+
+def test_owner_launcher_rejects_http_oidc_metadata(tmp_path):
+    secrets = tmp_path / "secrets.toml"
+    secrets.write_text(
+        '[apaa]\\nrequire_auth = true\\n[auth]\\n'
+        'redirect_uri = "http://localhost:8501/oauth2callback"\\n'
+        'cookie_secret = "cccccccccccccccccccccccccccccccc"\\n'
+        'client_id = "client"\\nclient_secret = "secret"\\n'
+        'server_metadata_url = "http://issuer.example/.well-known/openid-configuration"\\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="HTTPS"):
+        validate_android_owner_config(environ=TERMUX_ENV, secrets_path=secrets)
