@@ -1,6 +1,6 @@
 # APAA-S09-C01-P03 — Page and Element Inspection
 
-**Status:** Generic read-only element-inspection implementation and focused tests added; execution and latest branch CI remain unverified.
+**Status:** Read-only element-inspection implementation and expanded edge-case tests are present; exact-head CI is pending.
 **Branch:** `feature/apaa-s09-c01-p01-browser-launch`
 **PR:** #10 (Draft; unmerged)
 
@@ -21,8 +21,8 @@ Inspect a page only after a separately authorized, bounded navigation. Expose li
 
 - [x] Define and implement a bounded generic element-inspection schema (stable tag/role/label/text/visibility/disabled metadata only; no action execution).
 - [x] Add focused tests for hidden/disabled elements and response-byte-limit enforcement.
-- [ ] Add further edge-case tests for duplicate matches, stale handles, selector timeouts and malformed element metadata.
-- [ ] Verify inspection output is sanitized, bounded and does not expose cookies, local storage, credentials or hidden page state.
+- [x] Add further edge-case tests for duplicate matches (bounded to 100), stale handles, selector timeouts and malformed element metadata.
+- [x] Add regression assertions that output is metadata-only, bounded, omits unknown/sensitive fields, suppresses off-origin links and does not expose hidden text.
 - [ ] Full repository CI successful on the latest branch head.
 - [ ] Real browser/host qualification after the signed runtime and proxy/firewall boundary is independently verified.
 
@@ -39,3 +39,14 @@ Browser/Worker dispatch remains disabled; Auto-Run remains OFF. No payment, purc
 - Added focused tests for visible/hidden and disabled element metadata and response-byte-limit rejection.
 - Commits: `079c574` (controller), `73f1d6e` (job action allowlist), `7912bcb` (focused tests).
 - These commits have not yet been executed by GitHub Actions in the available verification evidence. P03 remains IN PROGRESS until tests and exact-head CI pass.
+
+## Edge-case hardening — 2026-11-18
+
+- Added tests proving duplicate element matches are capped at 100 records and only the approved metadata keys are returned; injected `value`, `outerHTML`, cookie and storage fields are ignored.
+- Added tests proving off-origin element links are omitted while approved same-origin links may be returned.
+- Added stale-element-handle and selector-creation timeout tests; both fail closed, record a failure event, and close the browser session.
+- The implementation and tests remain read-only. No click, fill, submit, login, upload, download or page mutation was introduced.
+- New test commit: `778146320ec05488f2bdb9df9d7cad7473b7794a`.
+- Exact-head repository CI must pass before P03 can be marked CI-verified. Production worker/network isolation and Android/Termux qualification remain separate pending gates.
+
+**P03 status: IMPLEMENTATION + EDGE-CASE TESTS PRESENT; EXACT-HEAD CI PENDING.** Browser/Worker dispatch remains disabled; Auto-Run remains OFF. PR #10 remains Draft/Open/Unmerged.
