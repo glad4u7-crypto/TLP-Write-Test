@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 
 ENV HOME=/tmp
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium ca-certificates python3 coreutils \
+    && apt-get install -y --no-install-recommends chromium ca-certificates python3 coreutils binutils \
     && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["/usr/bin/sleep"]

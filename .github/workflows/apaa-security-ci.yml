@@ -5,11 +5,13 @@ on:
     branches:
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
+      - feature/apaa-p74-chromium-fd-diagnostics
   pull_request:
     branches:
       - main
       - master
       - feature/apaa-s09-c01-p01-browser-launch
+      - feature/apaa-p74-action-12-oci-runtime-network
   workflow_dispatch:
 
 permissions:

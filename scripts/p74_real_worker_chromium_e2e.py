@@ -16,9 +16,11 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from core.browser_security import canonicalize_https_url
@@ -34,6 +36,8 @@ from core.nftables_attestation import NftablesPolicy, attest_nftables_json
 from core.oci_runtime_backend import OCIWorkerSpec, PodmanOCIRuntime, WorkerLimits
 from core.oci_runtime_observer import PodmanWorkerObserver
 from core.pinned_connect_proxy import PinnedConnectProxy
+from core.chromium_fd_diagnostics import snapshot_cgroup, snapshot_json_safe
+from core.chromium_fd_ownership_log import parse_fd_ownership_diagnostics
 
 
 def _required(name: str) -> str:
@@ -82,9 +86,138 @@ def _run(command: list[str], timeout: int = 90) -> subprocess.CompletedProcess[s
 
 
 
+def _fd_ownership_crash_identity(stderr: str) -> dict[str, object]:
+    marker = "Crashing due to FD ownership violation:"
+    marker_at = stderr.rfind(marker)
+    if marker_at < 0:
+        return {
+            "detected": False, "log_pid": None, "log_tid": None,
+            "preceding_log_pid": None, "preceding_log_tid": None,
+            "pid_attribution": "unavailable", "stack_frames": [],
+        }
+    prefix = stderr[:marker_at]
+    log_lines = list(re.finditer(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+:", prefix))
+    identity = log_lines[-1] if log_lines else None
+    stack_frames = [
+        {"frame": int(index), "address": address.lower()}
+        for index, address in re.findall(r"(?m)^#(\d+)\s+(0x[0-9a-fA-F]+)", stderr[marker_at:])
+    ][:64]
+    return {
+        "detected": True,
+        # This is only the last prefixed log line before Chromium's unprefixed
+        # fatal marker. It is not proof that this PID emitted the fatal stack.
+        "log_pid": int(identity.group(1)) if identity else None,
+        "log_tid": int(identity.group(2)) if identity else None,
+        "preceding_log_pid": int(identity.group(1)) if identity else None,
+        "preceding_log_tid": int(identity.group(2)) if identity else None,
+        "pid_attribution": "preceding_prefixed_log_line_only" if identity else "unavailable",
+        "stack_frames": stack_frames,
+    }
+
+
+def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None:
+    log_pid = failure.get("fd_ownership_preceding_log_pid", failure.get("fd_ownership_log_pid"))
+    source_frames = failure.get("fd_ownership_stack_frames", [])
+    pid_matches = []
+    pc_matches = []
+
+    for snapshot_index, snapshot in enumerate(diagnostics.get("snapshots", [])):
+        for process in snapshot.get("processes", []):
+            namespace_pids = process.get("status", {}).get("nspid", "").split()
+            matching_indices = [
+                index for index, value in enumerate(namespace_pids)
+                if value.isdigit() and type(log_pid) is int and int(value) == log_pid
+            ]
+            frames = []
+            mapped_count = 0
+            for frame in source_frames:
+                try:
+                    address = int(frame["address"], 16)
+                except (KeyError, TypeError, ValueError):
+                    frames.append(dict(frame))
+                    continue
+                mapped_frame = dict(frame)
+                for mapping in process.get("executable_mappings", []):
+                    try:
+                        start, end = int(mapping["start"], 16), int(mapping["end"], 16)
+                        if start <= address < end:
+                            mapped_frame["module"] = mapping["module"]
+                            mapped_frame["module_offset"] = hex(
+                                address - start + int(mapping["file_offset"], 16)
+                            )
+                            mapped_count += 1
+                            break
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                frames.append(mapped_frame)
+
+            candidate = {
+                "snapshot_index": snapshot_index,
+                "snapshot_wall_time_ns": snapshot.get("wall_time_ns"),
+                "host_pid": process["pid"],
+                "container_pid": namespace_pids[1] if len(namespace_pids) > 1 else None,
+                "log_pid_namespace_match": bool(matching_indices),
+                "nspid_match_index": min(matching_indices) if matching_indices else None,
+                "ppid": process["ppid"],
+                "comm": process["comm"],
+                "executable": process.get("executable"),
+                "role": process.get("role"),
+                "cmdline_bytes_observed": process.get("cmdline_bytes_observed"),
+                "process_type": process.get("process_type"),
+                "utility_subtype": process.get("utility_subtype"),
+                "zygote_disabled": process.get("zygote_disabled"),
+                "single_process": process.get("single_process"),
+                "start_time_ticks": process.get("start_time_ticks"),
+                "fd_count_observed": process.get("fd_count_observed"),
+                "executable_mappings": process.get("executable_mappings", []),
+                "stack_frames_with_module_offsets": frames,
+                "stack_frame_match_count": mapped_count,
+                "status": process.get("status"),
+            }
+            if matching_indices:
+                pid_matches.append(candidate)
+            if mapped_count:
+                pc_matches.append(candidate)
+
+    def _best(candidates: list[dict]) -> dict | None:
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda item: (
+                item["stack_frame_match_count"],
+                item["nspid_match_index"] == 1 if item["nspid_match_index"] is not None else False,
+                item["snapshot_wall_time_ns"] or 0,
+                item["snapshot_index"],
+            ),
+        )
+
+    log_process = _best(pid_matches)
+    stack_process = _best(pc_matches)
+    primary = stack_process or log_process
+    if primary is None:
+        return None
+    result = dict(primary)
+    result["log_pid"] = log_pid
+    result["preceding_log_pid"] = log_pid
+    result["crash_pid_proven"] = failure.get("fd_ownership_crash_pid_proven") is True
+    result["log_process_mapping"] = log_process
+    result["preceding_log_process_mapping"] = log_process
+    result["stack_process_mapping"] = stack_process
+    if stack_process and stack_process["stack_frame_match_count"] == len(source_frames) and source_frames:
+        result["mapping_confidence"] = "all_stack_frames_match_candidate_process_image"
+    elif stack_process:
+        result["mapping_confidence"] = "partial_stack_frames_match_candidate_process_image"
+    else:
+        result["mapping_confidence"] = "log_pid_only_no_stack_mapping"
+    return result
+
+
 def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
     stdout = page.stdout or ""
     stderr = page.stderr or ""
+    fd_crash = _fd_ownership_crash_identity(stderr)
+    fd_diagnostics = parse_fd_ownership_diagnostics(stderr)
     return {
         "family": family,
         "exit_code": page.returncode,
@@ -94,6 +227,16 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "expected_marker_present": expected_marker in stdout,
         "stderr_bytes": len(stderr.encode("utf-8", errors="replace")),
         "stderr_sha256": hashlib.sha256(stderr.encode("utf-8", errors="replace")).hexdigest(),
+        "fd_ownership_violation": fd_crash["detected"],
+        "fd_ownership_log_pid": fd_crash["log_pid"],
+        "fd_ownership_log_tid": fd_crash["log_tid"],
+        "fd_ownership_preceding_log_pid": fd_crash["preceding_log_pid"],
+        "fd_ownership_preceding_log_tid": fd_crash["preceding_log_tid"],
+        "fd_ownership_pid_attribution": fd_crash["pid_attribution"],
+        "fd_ownership_stack_frames": fd_crash["stack_frames"],
+        "fd_ownership_diagnostics": fd_diagnostics,
+        "fd_ownership_instrumentation_present": bool(fd_diagnostics),
+        "fd_ownership_crash_pid_proven": bool(fd_diagnostics),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
@@ -107,6 +250,232 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         ],
     }
 
+
+
+def _chromium_binary_build_id(container_id: str) -> str | None:
+    """Read the GNU build-id note from the exact worker Chromium ELF, read-only."""
+    code = (
+        "import struct\n"
+        "p='/usr/lib/chromium/chromium'\n"
+        "f=open(p,'rb')\n"
+        "h=f.read(64)\n"
+        "if h[:4] != b'\\x7fELF' or h[4] != 2: raise SystemExit(3)\n"
+        "endian='<' if h[5] == 1 else '>'\n"
+        "phoff=struct.unpack_from(endian+'Q',h,32)[0]\n"
+        "entsize=struct.unpack_from(endian+'H',h,54)[0]\n"
+        "count=struct.unpack_from(endian+'H',h,56)[0]\n"
+        "f.seek(phoff)\n"
+        "for i in range(count):\n"
+        " ph=f.read(entsize)\n"
+        " typ=struct.unpack_from(endian+'I',ph,0)[0]\n"
+        " if typ != 4: continue\n"
+        " off=struct.unpack_from(endian+'Q',ph,8)[0]; size=struct.unpack_from(endian+'Q',ph,32)[0]\n"
+        " f.seek(off); b=f.read(size); pos=0\n"
+        " while pos+12 <= len(b):\n"
+        "  ns,ds,nt=struct.unpack_from(endian+'III',b,pos); pos+=12\n"
+        "  name=b[pos:pos+ns].rstrip(b'\\0'); pos=(pos+ns+3)&~3\n"
+        "  desc=b[pos:pos+ds]; pos=(pos+ds+3)&~3\n"
+        "  if name == b'GNU' and nt == 3: print(desc.hex()); raise SystemExit(0)\n"
+        "raise SystemExit(4)\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "--user", "65532:65532", container_id, "python3", "-c", code],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    value = (result.stdout or "").strip().lower()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{16,128}", value) else None
+
+
+def _chromium_package_metadata(container_id: str) -> tuple[str | None, str | None]:
+    """Read Debian package version/architecture for exact dbgsym retrieval."""
+    result = subprocess.run(
+        [
+            "podman", "exec", "--user", "65532:65532", container_id,
+            "dpkg-query", "-W", "-f=${Version}| ${Architecture}", "chromium",
+        ],
+        check=False, capture_output=True, text=True, timeout=10, shell=False,
+    )
+    if result.returncode != 0:
+        return None, None
+    parts = (result.stdout or "").strip().split("|", 1)
+    if len(parts) != 2:
+        return None, None
+    version, architecture = parts[0].strip(), parts[1].strip()
+    if not re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,128}", version):
+        version = None
+    if architecture not in {"amd64", "arm64", "i386", "ppc64el"}:
+        architecture = None
+    return version, architecture
+
+
+def _chromium_dynamic_symbols(container_id: str) -> dict:
+    """Read exported/full symbol-table names needed to classify the fatal wrapper."""
+    outputs = []
+    for args in (
+        ["nm", "-n", "-C", "--defined-only", "/usr/lib/chromium/chromium"],
+        ["nm", "-D", "-n", "--defined-only", "/usr/lib/chromium/chromium"],
+    ):
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id, *args],
+            check=False, capture_output=True, text=True, timeout=12, shell=False,
+        )
+        outputs.append(result)
+        if result.returncode != 0:
+            continue
+        found = {}
+        for line in (result.stdout or "").splitlines():
+            match = re.match(r"^\s*([0-9a-fA-F]+)\s+[A-Za-z]\s+(.+?)\s*$", line)
+            if not match:
+                continue
+            address, name = match.group(1).lower(), match.group(2)
+            if name == "close":
+                found["close"] = "0x" + address
+            elif "CrashOnFD" in name or "CrashOnFd" in name:
+                found["crash"] = "0x" + address
+            elif "UpdateAndCheckFdOwnership" in name:
+                found["ownership_check"] = "0x" + address
+            elif "ScopedFDCloseTraits" in name:
+                found.setdefault("scoped_fd_traits", []).append({"name": name, "address": "0x" + address})
+        if found:
+            return {
+                "exit_code": result.returncode,
+                "close_symbol_offset": found.get("close"),
+                "symbols_of_interest": found,
+                "nm_available": True,
+                "symbol_table_source": "full" if args[1] != "-D" else "dynamic",
+            }
+    return {
+        "exit_code": outputs[-1].returncode if outputs else None,
+        "close_symbol_offset": None,
+        "symbols_of_interest": {},
+        "nm_available": any(item.returncode == 0 for item in outputs),
+        "symbol_table_source": "no-matching-symbols",
+    }
+
+
+def _annotate_known_dynamic_symbols(failure: dict, symbols: dict) -> list[dict]:
+    close_address = symbols.get("close_symbol_offset")
+    if not isinstance(close_address, str):
+        return []
+    close_start = int(close_address, 16)
+    matches = []
+    mapping = failure.get("process_mapping") or {}
+    for frame in mapping.get("stack_frames_with_module_offsets", []):
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            offset = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        # The exported close wrapper is small; a nearby PC is a candidate only,
+        # never a symbolic proof without the exact function size/debug data.
+        if close_start <= offset < close_start + 512:
+            matches.append({
+                "frame": frame.get("frame"),
+                "module_offset": frame["module_offset"],
+                "candidate_symbol": "close",
+                "symbol_offset": f"0x{close_start:x}",
+                "interpretation": "near_exported_close_symbol_candidate",
+            })
+    return matches
+
+
+def _disassemble_chromium_stack(container_id: str, failure: dict) -> list[dict]:
+    """Capture bounded read-only instruction windows around the first Chromium frames."""
+    process_mapping = failure.get("process_mapping") or {}
+    frames = process_mapping.get("stack_frames_with_module_offsets", [])
+    windows = []
+    for frame in frames[:3]:
+        if frame.get("module") != "chromium":
+            continue
+        try:
+            address = int(frame["module_offset"], 16)
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = max(0, address - 0x40)
+        stop = address + 0x80
+        result = subprocess.run(
+            ["podman", "exec", "--user", "65532:65532", container_id,
+             "objdump", "-d", f"--start-address={start:#x}",
+             f"--stop-address={stop:#x}", "/usr/lib/chromium/chromium"],
+            check=False, capture_output=True, text=True, timeout=8, shell=False,
+        )
+        windows.append({
+            "frame": frame.get("frame"),
+            "module_offset": frame.get("module_offset"),
+            "exit_code": result.returncode,
+            "disassembly": redact_sensitive_text((result.stdout or "")[-6000:], limit=6000),
+            "stderr_preview": redact_sensitive_text((result.stderr or "")[:400], limit=400),
+        })
+    return windows
+
+
+def _symbolize_failure_frames(failure: dict, build_id: str | None) -> dict:
+    """Best-effort Debian debuginfod symbolication; never changes worker execution."""
+    if not build_id:
+        return {"status": "missing-build-id", "frames": []}
+    addr2line = shutil.which("eu-addr2line")
+    if not addr2line:
+        return {"status": "addr2line-unavailable", "build_id": build_id, "frames": []}
+    debug_file = None
+    debug_source = None
+    debug_root = os.environ.get("APAA_CHROMIUM_DEBUG_ROOT")
+    if debug_root:
+        candidate = Path(debug_root) / ".build-id" / build_id[:2] / (build_id[2:] + ".debug")
+        if candidate.is_file():
+            debug_file = str(candidate)
+            debug_source = "exact-debian-dbgsym"
+    if debug_file is None:
+        finder = shutil.which("debuginfod-find")
+        if not finder:
+            return {"status": "debug-info-unavailable", "build_id": build_id, "frames": []}
+        env = dict(os.environ)
+        env.setdefault("DEBUGINFOD_URLS", "https://debuginfod.debian.net")
+        try:
+            found = subprocess.run(
+                [finder, "debuginfo", build_id], check=False, capture_output=True,
+                text=True, timeout=20, shell=False, env=env,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return {"status": "debuginfod-unavailable-or-timeout", "build_id": build_id, "frames": []}
+        if found.returncode != 0 or not found.stdout.strip():
+            return {"status": "debug-info-not-found", "build_id": build_id, "frames": []}
+        debug_file = found.stdout.strip().splitlines()[-1]
+        debug_source = "debuginfod"
+    source_frames = failure.get("process_mapping", {}).get("stack_frames_with_module_offsets", [])
+    valid_frames = [
+        frame for frame in source_frames
+        if isinstance(frame.get("module_offset"), str)
+        and re.fullmatch(r"0x[0-9a-f]+", frame["module_offset"])
+    ][:64]
+    if not valid_frames:
+        return {"status": "no-executable-frame-offsets", "build_id": build_id, "frames": []}
+    try:
+        result = subprocess.run(
+            [addr2line, "-f", "-C", "-e", debug_file]
+            + [frame["module_offset"] for frame in valid_frames],
+            check=False, capture_output=True, text=True, timeout=20, shell=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {"status": "addr2line-timeout-or-unavailable", "build_id": build_id, "frames": []}
+    lines = (result.stdout or "").splitlines()
+    symbolized = []
+    if result.returncode == 0:
+        for index, frame in enumerate(valid_frames):
+            function = lines[index * 2] if index * 2 < len(lines) else "??"
+            location = lines[index * 2 + 1] if index * 2 + 1 < len(lines) else "??:0"
+            symbolized.append({
+                "frame": frame.get("frame"),
+                "module_offset": frame["module_offset"],
+                "function": redact_sensitive_text(function, limit=240),
+                "source_location": location.rsplit("/", 1)[-1][:160],
+            })
+    return {
+        "status": "symbolized" if symbolized else "symbols-loaded-no-matching-frames",
+        "symbol_source": debug_source,
+        "build_id": build_id,
+        "frames": symbolized[:64],
+    }
 
 
 def _http_proxy_uri(proxy_ip: str, port: int) -> str:
@@ -164,24 +533,148 @@ def _probe_proxy_tcp(container_id: str, proxy_ip: str, proxy_port: int) -> dict[
     }
 
 
-def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str) -> dict[str, object]:
+
+def _run_chromium_with_fd_snapshots(
+    command: list[str], cgroup_dir: Path, *, timeout: int = 45,
+) -> tuple[subprocess.CompletedProcess[str], dict]:
+    """Run Chromium while taking bounded, read-only host /proc FD snapshots."""
+    if not cgroup_dir.is_absolute() or not cgroup_dir.is_dir():
+        raise RuntimeError("Chromium diagnostic cgroup is unavailable")
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        encoding="utf-8", errors="replace", shell=False, close_fds=True,
+        start_new_session=True, bufsize=0,
+    )
+    # Drain both pipes concurrently; otherwise verbose Chromium stderr can fill
+    # the OS pipe buffer and stall the very process being diagnosed.
+    captured = {"stdout": [], "stderr": []}
+    captured_chars = {"stdout": 0, "stderr": 0}
+    fd_marker_event = threading.Event()
+    max_snapshots = 180
+
+    def _drain(name: str, stream) -> None:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            remaining = 2_000_000 - captured_chars[name]
+            if remaining > 0:
+                kept = chunk[:remaining]
+                captured[name].append(kept)
+                captured_chars[name] += len(kept)
+            if name == "stderr" and "Crashing due to FD ownership violation:" in chunk:
+                fd_marker_event.set()
+
+    readers = [
+        threading.Thread(target=_drain, args=("stdout", process.stdout), daemon=True),
+        threading.Thread(target=_drain, args=("stderr", process.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    snapshots: list[dict] = []
+    diagnostic_errors: list[str] = []
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    marker_trigger_snapshots = 0
+    next_snapshot_at = time.monotonic()
+    try:
+        while process.poll() is None and time.monotonic() < deadline:
+            marker_seen = fd_marker_event.is_set()
+            periodic_due = time.monotonic() >= next_snapshot_at
+            if (marker_seen or periodic_due) and len(snapshots) < max_snapshots:
+                fd_marker_event.clear()
+                try:
+                    snap = snapshot_cgroup(
+                        cgroup_dir, max_processes=96, max_fds_per_process=192,
+                    )
+                    safe_snapshot = snapshot_json_safe(snap, max_bytes=250_000)
+                    if marker_seen:
+                        safe_snapshot["capture_reason"] = "fd-ownership-marker"
+                        marker_trigger_snapshots += 1
+                    else:
+                        safe_snapshot["capture_reason"] = "periodic"
+                    snapshots.append(safe_snapshot)
+                except Exception as exc:
+                    if len(diagnostic_errors) < 3:
+                        diagnostic_errors.append(type(exc).__name__)
+                next_snapshot_at = time.monotonic() + 0.25
+            else:
+                fd_marker_event.wait(timeout=0.05)
+        if process.poll() is None:
+            timed_out = True
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        process.wait(timeout=5)
+    except Exception:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        for reader in readers:
+            reader.join(timeout=2)
+        raise
+    for reader in readers:
+        reader.join(timeout=5)
+    if len(snapshots) < max_snapshots:
+        try:
+            final_snapshot = snapshot_cgroup(
+                cgroup_dir, max_processes=96, max_fds_per_process=192,
+            )
+            final_safe_snapshot = snapshot_json_safe(final_snapshot, max_bytes=250_000)
+            if fd_marker_event.is_set():
+                final_safe_snapshot["capture_reason"] = "fd-ownership-marker-post-exit"
+                marker_trigger_snapshots += 1
+            else:
+                final_safe_snapshot["capture_reason"] = "final"
+            snapshots.append(final_safe_snapshot)
+        except Exception as exc:
+            if len(diagnostic_errors) < 3:
+                diagnostic_errors.append(type(exc).__name__)
+    stdout = "".join(captured["stdout"])
+    stderr = "".join(captured["stderr"])
+    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    summary = {
+        "snapshot_count": len(snapshots),
+        "snapshot_interval_seconds": 0.25,
+        "max_snapshots": max_snapshots,
+        "marker_trigger_snapshots": marker_trigger_snapshots,
+        "diagnostic_errors": diagnostic_errors,
+        "timed_out": timed_out,
+        "snapshots": snapshots,
+    }
+    if timed_out:
+        summary["timeout_seconds"] = timeout
+    return result, summary
+
+
+def _probe_chromium_local_dump_dom(container_id: str, chromium_bin: str, cgroup_dir: Path) -> tuple[dict[str, object], dict]:
     marker = "APAA_LOCAL_DUMP_DOM_OK"
     data_url = "data:text/html,<html><body>" + marker + "</body></html>"
-    result = _run(_podman_chromium_command(container_id, chromium_bin, [
+    result, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
         "--headless=new", "--disable-gpu", "--disable-quic",
         "--disable-setuid-sandbox", "--disable-breakpad", "--disable-crash-reporter",
         "--disable-crashpad-for-testing", "--disable-features=PassHistogramSharedMemoryOnLaunch",
         "--disable-dev-shm-usage", "--user-data-dir=/tmp/apaa-chromium-smoke",
         "--disable-background-networking", "--no-first-run", "--dump-dom", data_url,
-    ]), timeout=45)
-    if "<html" not in result.stdout.lower() or marker not in result.stdout:
-        details = _chromium_failure_details(result, "local-data-url", marker)
-        raise RuntimeError(f"Chromium local dump-dom smoke test failed: {details}")
-    return {
+    ]), cgroup_dir, timeout=45)
+    marker_present = "<html" in result.stdout.lower() and marker in result.stdout
+    return ({
+        "exit_code": result.returncode,
         "stdout_bytes": len(result.stdout.encode("utf-8")),
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
-        "marker_present": True,
-    }
+        "marker_present": marker_present,
+        "failure": _chromium_failure_details(result, "local-data-url", marker) if not marker_present else None,
+    }, fd_diagnostics)
 
 def _probe_blocked(
     command: list[str], description: str, *, allow_seccomp_socket_denial: bool = False,
@@ -604,11 +1097,35 @@ def main() -> int:
         evidence["tests"]["oci_inspect_hardening"] = True
 
         runtime.start(container_id)
-        evidence["chromium_version"] = _run(
+        evidence["chromium_version"] = _run_chromium_with_fd_snapshots(
             _podman_chromium_command(container_id, chromium_bin, ["--version"]),
-            timeout=15,
-        ).stdout.strip()[:160]
-        evidence["chromium_local_dump_dom"] = _probe_chromium_local_dump_dom(container_id, chromium_bin)
+            cgroup_path, timeout=15,
+        )[0].stdout.strip()[:160]
+        chromium_build_id = _chromium_binary_build_id(container_id)
+        evidence["chromium_binary_build_id"] = chromium_build_id
+        package_version, package_architecture = _chromium_package_metadata(container_id)
+        evidence["chromium_package_version"] = package_version
+        evidence["chromium_package_architecture"] = package_architecture
+        chromium_dynamic_symbols = _chromium_dynamic_symbols(container_id)
+        evidence["chromium_dynamic_symbols"] = chromium_dynamic_symbols
+        local_smoke, local_fd_diagnostics = _probe_chromium_local_dump_dom(container_id, chromium_bin, cgroup_path)
+        evidence["chromium_local_dump_dom"] = local_smoke
+        evidence["chromium_fd_diagnostics_local_smoke"] = local_fd_diagnostics
+        if not local_smoke["marker_present"]:
+            local_smoke["failure"]["process_mapping"] = _map_failure_to_fd_snapshot(
+                local_smoke["failure"], local_fd_diagnostics,
+            )
+            local_smoke["failure"]["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                local_smoke["failure"], chromium_dynamic_symbols,
+            )
+            local_smoke["failure"]["stack_disassembly"] = _disassemble_chromium_stack(
+                container_id, local_smoke["failure"],
+            )
+            local_smoke["failure"]["symbolication"] = _symbolize_failure_frames(
+                local_smoke["failure"], chromium_build_id,
+            )
+            evidence["chromium_local_dump_dom"] = local_smoke
+            raise RuntimeError(f"Chromium local dump-dom smoke test failed: {local_smoke['failure']}")
         evidence["tests"]["chromium_local_dump_dom_smoke"] = True
         post_start_inspect = runtime.inspect(container_id)
         post_start_state = post_start_inspect.get("State") or {}
@@ -739,7 +1256,7 @@ def main() -> int:
             evidence[f"proxy_tcp_preflight_{family}"] = preflight
             accepted_before_browser = proxy.accepted_connections
             rejected_before_browser = proxy.rejected_requests
-            page = _run(_podman_chromium_command(container_id, chromium_bin, [
+            page, fd_diagnostics = _run_chromium_with_fd_snapshots(_podman_chromium_command(container_id, chromium_bin, [
 "--headless=new",
 "--disable-gpu",
 "--disable-quic",
@@ -777,6 +1294,12 @@ target.url,
             }
             if "<html" not in page.stdout.lower() or expected_marker not in page.stdout:
                 failure = _chromium_failure_details(page, family, expected_marker)
+                failure["process_mapping"] = _map_failure_to_fd_snapshot(failure, fd_diagnostics)
+                failure["known_symbol_matches"] = _annotate_known_dynamic_symbols(
+                    failure, chromium_dynamic_symbols,
+                )
+                failure["stack_disassembly"] = _disassemble_chromium_stack(container_id, failure)
+                failure["symbolication"] = _symbolize_failure_frames(failure, chromium_build_id)
                 evidence["chromium_failure"] = failure
                 raise RuntimeError(
                     f"Chromium did not return the expected controlled-page marker over the {family} proxy "
