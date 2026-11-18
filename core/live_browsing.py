@@ -230,18 +230,38 @@ class LiveBrowsingController:
                 for item in raw_elements:
                     if not isinstance(item, Mapping):
                         continue
-                    tag = str(item.get("tag", ""))[:20]
+                    # Browser-evaluated metadata must retain its expected
+                    # primitive types. Never coerce malformed strings/objects
+                    # into truthy visibility or disabled flags.
+                    tag_value = item.get("tag")
+                    role_value = item.get("role")
+                    label_value = item.get("label")
+                    text_value = item.get("text")
+                    disabled_value = item.get("disabled")
+                    visible_value = item.get("visible")
+                    href_value = item.get("href", "")
+                    if (
+                        type(tag_value) is not str
+                        or type(role_value) is not str
+                        or type(label_value) is not str
+                        or type(text_value) is not str
+                        or type(disabled_value) is not bool
+                        or type(visible_value) is not bool
+                        or type(href_value) is not str
+                    ):
+                        continue
+                    tag = tag_value[:20]
                     if not tag.isalpha():
                         continue
                     record: dict[str, Any] = {
                         "tag": tag,
-                        "role": str(item.get("role", ""))[:64],
-                        "label": str(item.get("label", ""))[:200],
-                        "text": str(item.get("text", ""))[:300],
-                        "disabled": bool(item.get("disabled", False)),
-                        "visible": bool(item.get("visible", False)),
+                        "role": role_value[:64],
+                        "label": label_value[:200],
+                        "text": text_value[:300],
+                        "disabled": disabled_value,
+                        "visible": visible_value,
                     }
-                    href = item.get("href", "")
+                    href = href_value
                     if href:
                         try:
                             target = validate_destination(
