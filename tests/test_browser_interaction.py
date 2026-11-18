@@ -425,3 +425,20 @@ def test_target_evidence_rejects_non_string_element_type(element_type):
             _click_evidence(element_type=element_type), intent=intent,
             allowed_origins=ORIGINS, now_epoch=100,
         )
+
+
+@pytest.mark.parametrize("secret_key", [
+    "access-token", "refresh-token", "client-secret", "session-id",
+    "id-token", "x-xsrf-token", "credential", "jwt",
+])
+def test_search_result_url_removes_hyphenated_and_common_auth_parameters(secret_key):
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(), allowed_origins=ORIGINS)
+    result = validate_search_results(
+        [_search_result(url=f"https://example.com/docs?{secret_key}=private123456&topic=public")],
+        intent=intent, allowed_origins=ORIGINS,
+    )[0]
+    assert secret_key not in result.url
+    assert "private123456" not in result.url
+    assert "topic=public" in result.url
