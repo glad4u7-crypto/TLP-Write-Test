@@ -26,6 +26,7 @@ Provide an explicit, bounded, fail-closed way for the browser controller to navi
 - [x] URL allowlist, HTTPS defaults, host normalization and malformed URL rejection.
 - [x] Private/special-use IP and unsafe DNS-answer rejection.
 - [x] Bounded redirect validation and loop rejection.
+- [x] Browser controller enforces the configured redirect-hop limit against navigation requests and aborts over-limit hops.
 - [x] Playwright navigation controller with request-route enforcement and cleanup.
 - [x] Context-level route mode and integration regression coverage.
 - [ ] Full repository CI successful on the latest branch head.
@@ -34,4 +35,4 @@ Provide an explicit, bounded, fail-closed way for the browser controller to navi
 
 ## Current status
 
-P02 implementation is present in the branch and has focused test coverage. The scope is not marked fully verified until latest-head CI is observed. No public-site browsing is enabled by this document. Browser/Worker dispatch remains disabled; Auto-Run remains OFF.
+P02 implementation is present in the branch and has focused test coverage, including a controller-level redirect-hop-limit regression case. The scope is not marked fully verified until latest-head CI is observed and the tests execute successfully. No public-site browsing is enabled by this document. Browser/Worker dispatch remains disabled; Auto-Run remains OFF.
