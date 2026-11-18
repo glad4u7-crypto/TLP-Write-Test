@@ -317,7 +317,7 @@ def test_execution_coordinator_keeps_dispatch_disabled_until_owner_approval_is_i
     )
     with pytest.raises(
         BrowserExecutionError,
-        match="trusted Owner approval consumption",
+        match="real-host Chromium/FD qualification",
     ):
         BrowserExecutionCoordinator.from_attested_runtime(
             gate,
@@ -344,7 +344,7 @@ def test_execution_coordinator_never_calls_untrusted_worker_adapter_before_appro
         expected_proxy_addresses=[PROXY_IP],
         worker_start=lambda *_: calls.append(True),
     )
-    with pytest.raises(BrowserExecutionError, match="trusted Owner approval consumption"):
+    with pytest.raises(BrowserExecutionError, match="real-host Chromium/FD qualification"):
         BrowserExecutionCoordinator.from_attested_runtime(
             gate,
             signed_evidence(spec, key),
