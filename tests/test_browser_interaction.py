@@ -269,3 +269,17 @@ def test_target_evidence_rejects_form_control_type_or_locator_mismatch(changes):
             _fill_evidence(**changes), intent=intent,
             allowed_origins=ORIGINS, now_epoch=100,
         )
+
+
+def test_target_evidence_rejects_forged_intent_dataclass():
+    from core.browser_interaction import FillIntent, validate_target_evidence
+
+    forged = FillIntent(
+        "fill_0000001", "page_0000001", "https://example.com/form",
+        "label", "Display name", "password", "secret",
+    )
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _fill_evidence(), intent=forged,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
