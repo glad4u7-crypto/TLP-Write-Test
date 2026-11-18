@@ -42,3 +42,12 @@ No website is visited by tests. No browser navigation, page interaction, credent
 An isolated local harness mirroring the committed P02/P03 policy implementation and focused tests completed: **21 tests passed**; Python `compileall` passed. The tests use an injected fake DNS resolver and make no outbound web requests. This is focused unit-level evidence, not full repository CI or device/browser integration evidence.
 
 The latest exact branch-head GitHub Actions lookup and combined status must still be checked. Until both required repository workflows are visible and successful on the exact head, P02/P03 remain **CI PENDING / NOT VERIFIED**.
+
+## P02 security-hardening follow-up — 2026-11-18
+
+- Policy construction now requires immutable, non-empty `frozenset` values for host and scheme allowlists.
+- Scheme values are normalized to lowercase and invalid runtime types are rejected.
+- Resolver configuration must be callable; allowlist host values must be strings.
+- Added regression tests for mutable configuration, mixed-case schemes, invalid scheme entries, invalid resolver values and non-string host entries.
+- These changes harden policy configuration only. They do not change the documented limitation: DNS validation before connection is not protection against DNS rebinding/TOCTOU, and this module does not intercept live browser requests or redirects.
+- Exact-head CI must pass on the new commit before this follow-up is marked verified.
