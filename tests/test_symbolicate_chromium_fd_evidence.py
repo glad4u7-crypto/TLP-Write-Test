@@ -143,7 +143,9 @@ def test_symbolicator_falls_back_to_exact_debian_security_dbgsym_package(tmp_pat
     assert result["security_dbgsym_architecture"] == "amd64"
     curl_call = next(command for command, _kwargs in calls if command[0] == "curl")
     assert f"chromium-dbgsym_{PACKAGE_VERSION}_amd64.deb" in curl_call[-1]
-    assert debug_file_holder["path"].exists()
+    addr2line_call = next(command for command, _kwargs in calls if command[0] == "eu-addr2line")
+    assert BUILD_ID[2:] + ".debug" in addr2line_call[-2]
+    assert result["debug_info_size_bytes"] == len(b"exact-build-debug-info")
 
 
 def test_symbolicator_records_debuginfod_timeout_as_nonfatal(tmp_path, monkeypatch):
