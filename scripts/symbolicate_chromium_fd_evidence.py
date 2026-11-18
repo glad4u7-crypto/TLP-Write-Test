@@ -108,7 +108,8 @@ def _fetch_security_dbgsym(
         downloaded = subprocess.run(
             [
                 curl, "-fL", "--retry", "2", "--connect-timeout", "10",
-                "--max-time", "120", "-o", str(package_path), url,
+                "--max-time", "120", "--max-filesize", "100000000",
+                "-o", str(package_path), url,
             ],
             capture_output=True, text=True, timeout=130, check=False,
         )
