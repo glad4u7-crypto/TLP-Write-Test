@@ -62,6 +62,11 @@ class ApprovalAuthority:
             return ""
         return re.sub(r"[^a-z0-9]+", "_", action.strip().lower()).strip("_")
 
+    @property
+    def durable_nonce_store(self) -> bool:
+        """Whether receipt replay protection survives process restarts."""
+        return self._nonce_store is not None
+
     def _message(
         self, action: str, payload_digest: str, expires_at: int, nonce: str,
         tenant: TenantKey | None = None,
