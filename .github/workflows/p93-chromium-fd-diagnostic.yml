@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/apaa-p74-chromium-fd-diagnostics
+      - feature/apaa-p74-action-12-oci-runtime-network
   pull_request:
     branches:
       - feature/apaa-p74-action-12-oci-runtime-network
