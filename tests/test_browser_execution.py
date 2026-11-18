@@ -173,7 +173,7 @@ def test_execution_requires_live_dns_and_passes_pins_to_worker():
     assert result == {"text": "safe"}
     assert worker.calls[0][2].addresses == ("93.184.216.34",)
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_completed", "session_closed"
+        "approval_consumed", "job_accepted", "job_completed", "session_closed"
     ]
 
 
@@ -233,7 +233,7 @@ def test_worker_failure_is_audited_and_session_closed():
     with pytest.raises(RuntimeError, match="worker crash"):
         coordinator.execute(valid_job(), resolver=lambda host: ["93.184.216.34"])
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_failed", "session_cleanup_unconfirmed"
+        "approval_consumed", "job_accepted", "job_failed", "session_cleanup_unconfirmed"
     ]
 
 
@@ -302,7 +302,7 @@ def test_cancel_terminates_the_unique_worker_session():
     assert len(errors) == 1
     assert isinstance(errors[0], BrowserCancelled)
     assert [event["event"] for event in events] == [
-        "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
+        "approval_consumed", "job_accepted", "cancel_requested", "job_cancelled", "session_closed"
     ]
 
 
@@ -334,7 +334,7 @@ def test_hard_deadline_terminates_worker_and_audits_timeout():
     assert started.is_set()
     assert len(terminated) == 1
     assert [event["event"] for event in events] == [
-        "job_accepted", "job_timed_out", "session_closed"
+        "approval_consumed", "job_accepted", "job_timed_out", "session_closed"
     ]
 
 
