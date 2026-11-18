@@ -197,14 +197,12 @@ def test_redirect_hop_limit_is_enforced_by_browser_controller():
         "https://example.com/one",
         "https://example.com/two",
     ))
-    controller = SafeNavigationController(
-        page, make_policy(),
-    )
-    controller._policy = NavigationPolicy(
+    bounded_policy = NavigationPolicy(
         allowed_hosts=frozenset({"example.com"}),
         max_redirects=1,
         resolver=lambda host: (PUBLIC,),
     )
+    controller = SafeNavigationController(page, bounded_policy)
 
     with pytest.raises(SafeNavigationError, match="blocked"):
         controller.navigate("https://example.com/start")
