@@ -303,3 +303,48 @@ def test_element_inspection_obeys_response_byte_limit(monkeypatch):
             now=1000, resolver=lambda host: (PUBLIC,),
         )
     assert session.closed == 1
+
+
+def test_element_inspection_discards_malformed_metadata_without_boolean_coercion(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    class MalformedLocator:
+        def evaluate_all(self, _script):
+            return [
+                {"tag": "button", "role": "button", "label": "Safe",
+                 "text": "Safe", "disabled": False, "visible": True, "href": ""},
+                {"tag": "input", "role": "", "label": "Hidden",
+                 "text": "", "disabled": "false", "visible": "false", "href": ""},
+                {"tag": "div", "role": None, "label": "Bad",
+                 "text": "", "disabled": False, "visible": True, "href": ""},
+            ]
+
+    monkeypatch.setattr(context.page, "locator", lambda _selector: MalformedLocator())
+    result = controller.execute(
+        valid_job(action="inspect_elements"),
+        signed_evidence={}, challenge="c" * 64,
+        now=1000, resolver=lambda host: (PUBLIC,),
+    )
+    assert len(result.elements) == 1
+    assert result.elements[0]["label"] == "Safe"
+    assert result.elements[0]["disabled"] is False
+    assert result.elements[0]["visible"] is True
+    assert session.closed == 1
+
+
+def test_element_inspection_evaluation_timeout_fails_closed_and_closes_session(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    class TimedOutLocator:
+        def evaluate_all(self, _script):
+            raise TimeoutError("stale element inspection timed out")
+
+    monkeypatch.setattr(context.page, "locator", lambda _selector: TimedOutLocator())
+    with pytest.raises(LiveBrowsingError, match="failed or was blocked"):
+        controller.execute(
+            valid_job(action="inspect_elements"),
+            signed_evidence={}, challenge="c" * 64,
+            now=1000, resolver=lambda host: (PUBLIC,),
+        )
+    assert session.closed == 1
+    assert [event["event"] for event in events] == ["job_accepted", "job_failed"]
