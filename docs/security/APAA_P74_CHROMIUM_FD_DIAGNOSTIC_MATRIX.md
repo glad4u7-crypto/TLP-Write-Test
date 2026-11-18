@@ -217,3 +217,12 @@ The current P93 patch validation only verifies that the diagnostic source patch 
 - The structured diagnostic record remains absent and crash PID remains unproven because the Debian runtime executable is still uninstrumented. Symbolication remains unavailable. Cleanup was confirmed.
 
 The second run validates the improved snapshot/attribution collector and reproduces the same failure. It does **not** identify the FD number or operation. Current status remains **FAILED / NO-GO**; no isolation control was relaxed.
+
+
+## Next diagnostic enhancement — exact-build Debian debuginfod symbolication
+
+The P74 workflow now has a best-effort post-processing step that asks Debian's debuginfod service for the exact Chromium debug file using the captured ELF Build-ID, then resolves the captured Chromium module offsets with `eu-addr2line` (or `addr2line`). The downloaded debug file is not included in the artifact; only build ID, debug-file hash/size and bounded function/location results are recorded. Missing symbols and timeouts remain non-fatal to evidence upload.
+
+This addresses the previous limitation where local package dbgsym lookup returned no result. Debian documents that its debuginfod service distributes debug information keyed by ELF Build-ID and can be enabled with `DEBUGINFOD_URLS=https://debuginfod.debian.net` ([Debian Debuginfod documentation](https://wiki.debian.org/Debuginfod), [Debian service](https://debuginfod.debian.net/)). Exact availability for this Chromium build ID is not yet confirmed.
+
+New helper: `scripts/symbolicate_chromium_fd_evidence.py`; tests: `tests/test_symbolicate_chromium_fd_evidence.py`. Exact-head CI and a third real OCI run with this symbolication step are pending.
