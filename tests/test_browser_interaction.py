@@ -354,3 +354,34 @@ def test_search_results_revalidate_forged_search_intent():
         validate_search_results(
             [_search_result()], intent=forged, allowed_origins=ORIGINS
         )
+
+
+def test_search_results_remove_api_keys_and_reject_excessive_query_parameters():
+    from core.browser_interaction import validate_search_results
+
+    intent = validate_search_intent(search(), allowed_origins=ORIGINS)
+    safe = validate_search_results([
+        _search_result(url="https://example.com/docs?api-key=private123456&q=ok")
+    ], intent=intent, allowed_origins=ORIGINS)
+    assert "api-key" not in safe[0].url
+    assert "q=ok" in safe[0].url
+
+    many = "&".join(f"p{i}=v" for i in range(101))
+    with pytest.raises(InteractionPolicyError):
+        validate_search_results(
+            [_search_result(url=f"https://example.com/docs?{many}")],
+            intent=intent, allowed_origins=ORIGINS,
+        )
+
+
+def test_search_results_reject_malformed_forged_filter_tuple():
+    from core.browser_interaction import SearchIntent, validate_search_results
+
+    forged = SearchIntent(
+        "search_000001", "page_0000001", "https://example.com/search",
+        "annual report", ({"field": "title", "operator": "eq", "value": "x"},), 10,
+    )
+    with pytest.raises(InteractionPolicyError):
+        validate_search_results(
+            [_search_result()], intent=forged, allowed_origins=ORIGINS
+        )
