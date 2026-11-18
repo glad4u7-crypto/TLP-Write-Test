@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import stat
 import tomllib
 from urllib.parse import urlsplit
 
@@ -19,10 +20,31 @@ _REQUIRED_OIDC_FIELDS = (
 )
 
 
+def validate_private_secret_storage(secrets_path: Path) -> None:
+    """Require a regular, non-symlink secrets file in an owner-private directory."""
+    if not isinstance(secrets_path, Path):
+        raise AndroidOwnerConfigError("Owner secrets.toml path is invalid.")
+    directory = secrets_path.parent
+    try:
+        directory_info = directory.lstat()
+        file_info = secrets_path.lstat()
+    except OSError as exc:
+        raise AndroidOwnerConfigError("Owner secrets storage is missing or unreadable.") from exc
+    if stat.S_ISLNK(directory_info.st_mode) or stat.S_ISLNK(file_info.st_mode):
+        raise AndroidOwnerConfigError("Owner secrets storage must not contain symlinks.")
+    if not stat.S_ISDIR(directory_info.st_mode) or not stat.S_ISREG(file_info.st_mode):
+        raise AndroidOwnerConfigError("Owner secrets storage must be a directory and regular file.")
+    # POSIX permission checks are meaningful on Android/Linux. Do not silently
+    # accept group/world-readable credentials on a filesystem that reports them.
+    if directory_info.st_mode & 0o077:
+        raise AndroidOwnerConfigError("Owner secrets directory must be private (mode 0700).")
+    if file_info.st_mode & 0o077:
+        raise AndroidOwnerConfigError("Owner secrets file must be private (mode 0600).")
+
+
 def load_owner_secrets(secrets_path: Path) -> dict:
     """Read TOML configuration without exposing secret values in errors."""
-    if not isinstance(secrets_path, Path) or not secrets_path.is_file():
-        raise AndroidOwnerConfigError("Owner secrets.toml is required.")
+    validate_private_secret_storage(secrets_path)
     try:
         return tomllib.loads(secrets_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
