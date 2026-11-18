@@ -61,7 +61,7 @@ Exact-head APAA Security CI: run #1322 / `44236702192` — **SUCCESS**.
 - Last recorded disposable-host run: `44144480688` — **FAILED** during Chromium execution (FD ownership violation / worker timeout).
 - No root cause is established by this report.
 - No Chromium-native compiled regression test has yet demonstrated the failure and the fix.
-- Owner has now approved proceeding with a disposable-host OCI qualification in this conversation. The workflow requires an exact HTTPS test URL and matching allowed origin on an owner-approved test origin; that origin must be confirmed before dispatch.
+- Owner authorized a disposable-host OCI qualification without a privately owned domain. The reserved public fixture `https://example.com/` was used for a read-only GET check; no credentials, cookies, personal data, or writes were sent.
 - Do not weaken sandbox, FD ownership, seccomp, namespace, cgroup, or default-DROP network controls to obtain a green run.
 
 ## Independent review checklist
@@ -99,3 +99,16 @@ Required outcome: written findings, severity, remediation references, reviewer i
 - Owner authorized proceeding without a privately owned domain.
 - Use the reserved public HTTPS fixture `https://example.com/`, exact allowed origin `https://example.com`, and expected marker `Example Domain`. This is a public, read-only GET smoke-test fixture; it is not represented as an Owner-owned domain and must not receive credentials, cookies, personal data, or writes.
 - This authorization covers only the disposable GitHub-hosted qualification workflow. It does not authorize deployment, enabling Browser/Worker dispatch, Auto-Run, merging, or weakening any sandbox/network control.
+
+
+## Follow-up qualification result — 2026-11-18
+
+- Run #403 / ID `44237181432`, exact head `a636ec57533d425b498796bbebbbe2cad043cbc2`: **FAILED**.
+- Disposable-host preparation succeeded: Podman dependencies, delegated cgroup-v2 subtree, local Chromium image build, deny-by-default seccomp profile discovery, and Chromium user-namespace seccomp profile preparation.
+- The real Chromium execution failed again: the worker command timed out after 45 seconds with zero stdout; Chromium emitted `Network service crashed or was terminated` and `Crashing due to FD ownership violation`.
+- Sanitized evidence artifact upload succeeded. This confirms the failure is inside/around Chromium execution, not an image-build or seccomp-profile preparation failure.
+- No causal attribution is established yet. The FD diagnostic/symbolication work in PR #23 has passing targeted CI, but the real-host crash still needs exact-build evidence and a native regression/fix.
+- Exact-head APAA Security CI on the same commit: run #1325 / ID `44237181386` — **SUCCESS**.
+- Independent security review remains outstanding. Production `IsolatedWorkerBackend` integration and authenticated runtime observation remain unimplemented; do not treat contract tests as production proof.
+
+**Current disposition:** NO-GO. Browser/Worker dispatch OFF; Auto-Run OFF. Do not weaken FD ownership, seccomp, namespaces, cgroups, or default-DROP network policy to force a green result.
