@@ -29,6 +29,7 @@ class LiveBrowsingResult:
     title: str | None = None
     text: str | None = None
     links: tuple[dict[str, str], ...] = ()
+    elements: tuple[dict[str, Any], ...] = ()
     screenshot_png: bytes | None = None
     elapsed_ms: int = 0
 
@@ -168,6 +169,7 @@ class LiveBrowsingController:
             title: str | None = None
             text: str | None = None
             links: tuple[dict[str, str], ...] = ()
+            elements: tuple[dict[str, Any], ...] = ()
             screenshot: bytes | None = None
 
             if job.action == "navigate_exact_origin":
@@ -200,6 +202,63 @@ class LiveBrowsingController:
                         raise LiveBrowsingError("Link metadata exceeds the response byte limit.")
                     approved.append(record)
                 links = tuple(approved)
+            elif job.action == "inspect_elements":
+                # Read-only, bounded DOM metadata only: never return input values,
+                # HTML, cookies, storage, hidden text, or executable handles.
+                raw_elements = page.locator(
+                    "button,a[href],input,select,textarea,[role],[tabindex]"
+                ).evaluate_all(
+                    """nodes => nodes.slice(0, 100).map(node => {
+                      const style = window.getComputedStyle(node);
+                      const rect = node.getBoundingClientRect();
+                      const visible = style.visibility !== "hidden" &&
+                        style.display !== "none" && rect.width > 0 && rect.height > 0;
+                      return {
+                        tag: node.tagName.toLowerCase(),
+                        role: node.getAttribute("role") || "",
+                        label: node.getAttribute("aria-label") || "",
+                        text: visible ? (node.innerText || "").trim() : "",
+                        disabled: Boolean(node.disabled) ||
+                          node.getAttribute("aria-disabled") === "true",
+                        visible,
+                        href: node instanceof HTMLAnchorElement ? node.href : ""
+                      };
+                    })"""
+                )
+                approved_elements: list[dict[str, Any]] = []
+                total = 0
+                for item in raw_elements:
+                    if not isinstance(item, Mapping):
+                        continue
+                    tag = str(item.get("tag", ""))[:20]
+                    if not tag.isalpha():
+                        continue
+                    record: dict[str, Any] = {
+                        "tag": tag,
+                        "role": str(item.get("role", ""))[:64],
+                        "label": str(item.get("label", ""))[:200],
+                        "text": str(item.get("text", ""))[:300],
+                        "disabled": bool(item.get("disabled", False)),
+                        "visible": bool(item.get("visible", False)),
+                    }
+                    href = item.get("href", "")
+                    if href:
+                        try:
+                            target = validate_destination(
+                                href, job.allowed_origins, resolver=resolver
+                            )
+                            record["href"] = target.url
+                        except Exception:
+                            # Do not disclose or return links outside the approved origin.
+                            pass
+                    import json
+                    total += len(json.dumps(record, ensure_ascii=False).encode("utf-8"))
+                    if total > job.max_response_bytes:
+                        raise LiveBrowsingError(
+                            "Element inspection metadata exceeds the response byte limit."
+                        )
+                    approved_elements.append(record)
+                elements = tuple(approved_elements)
             elif job.action == "capture_transient_screenshot":
                 screenshot = page.screenshot(
                     type="png",
@@ -219,6 +278,7 @@ class LiveBrowsingController:
                 title=title,
                 text=text,
                 links=links,
+                elements=elements,
                 screenshot_png=screenshot,
                 elapsed_ms=int((time.monotonic() - started) * 1000),
             )
