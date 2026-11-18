@@ -1,0 +1,67 @@
+name: APAA P93 Chromium FD diagnostic patch validation
+
+on:
+  push:
+    branches:
+      - feature/apaa-p74-chromium-fd-diagnostics
+  pull_request:
+    branches:
+      - feature/apaa-p74-action-12-oci-runtime-network
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apaa-p93-fd-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-patch-and-parser:
+    name: Verify pinned Chromium patch and diagnostic parser
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout APAA
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Fetch exact upstream Chromium source file
+        env:
+          CHROMIUM_REVISION: a21ce95c24ce3964416f09ae1862f53f319eb4d0
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/base/files"
+          curl --fail --silent --show-error --location \
+            "https://chromium.googlesource.com/chromium/src/+/$CHROMIUM_REVISION/base/files/scoped_file_linux.cc?format=TEXT" \
+            -o "$tmp/scoped_file_linux.cc.b64"
+          base64 --decode "$tmp/scoped_file_linux.cc.b64" > "$tmp/base/files/scoped_file_linux.cc"
+          test -s "$tmp/base/files/scoped_file_linux.cc"
+          rm "$tmp/scoped_file_linux.cc.b64"
+          echo "$CHROMIUM_REVISION" > "$tmp/CHROMIUM_REVISION"
+          git -C "$tmp" init -q
+          git -C "$tmp" config user.name "APAA CI"
+          git -C "$tmp" config user.email "apaa-ci@example.invalid"
+          git -C "$tmp" add base/files/scoped_file_linux.cc CHROMIUM_REVISION
+          git -C "$tmp" commit -qm "Pinned upstream Chromium source fixture"
+          echo "CHROMIUM_FIXTURE=$tmp" >> "$GITHUB_ENV"
+      - name: Check and apply diagnostic patch to pinned source
+        run: |
+          set -euo pipefail
+          git -C "$CHROMIUM_FIXTURE" apply --check \
+            "$GITHUB_WORKSPACE/patches/chromium-156-fd-ownership-diagnostics.patch"
+          git -C "$CHROMIUM_FIXTURE" apply \
+            "$GITHUB_WORKSPACE/patches/chromium-156-fd-ownership-diagnostics.patch"
+          grep -q 'APAA_FD_OWNERSHIP_DIAG fd=%d operation=%s' \
+            "$CHROMIUM_FIXTURE/base/files/scoped_file_linux.cc"
+          grep -q 'CrashOnFdOwnershipViolation(fd, "close"' \
+            "$CHROMIUM_FIXTURE/base/files/scoped_file_linux.cc"
+      - name: Run structured diagnostic parser regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -q tests/test_chromium_fd_ownership_log.py
