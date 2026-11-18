@@ -103,8 +103,8 @@ class NavigationPolicy:
             raise NavigationPolicyError("URL is malformed.") from exc
         if scheme not in self.allowed_schemes:
             raise NavigationPolicyError("URL scheme is not allowed.")
-        if not parts.netloc or not host_raw:
-            raise NavigationPolicyError("URL must include a hostname.")
+        if not parts.netloc or not host_raw or parts.netloc.endswith(":"):
+            raise NavigationPolicyError("URL must include a hostname and a valid authority.")
         if parts.username is not None or parts.password is not None or "@" in parts.netloc:
             raise NavigationPolicyError("URL credentials are not allowed.")
         if port is not None and not 1 <= port <= 65535:
@@ -130,13 +130,17 @@ class NavigationPolicy:
             if not allowed:
                 raise NavigationPolicyError("Hostname is not on the explicit allowlist.")
             try:
-                resolved = tuple(self.resolver(host))
+                raw_resolved = self.resolver(host)
             except NavigationPolicyError:
                 raise
             except Exception as exc:
                 raise NavigationPolicyError("Destination hostname could not be resolved.") from exc
-            if isinstance(resolved, (str, bytes)):
+            if isinstance(raw_resolved, (str, bytes)):
                 raise NavigationPolicyError("Resolver must return an iterable of IP address strings.")
+            try:
+                resolved = tuple(raw_resolved)
+            except TypeError as exc:
+                raise NavigationPolicyError("Resolver must return an iterable of IP address strings.") from exc
             if not resolved:
                 raise NavigationPolicyError("Destination hostname has no address records.")
         if any(not _is_public_address(address) for address in resolved):
