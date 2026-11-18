@@ -91,8 +91,9 @@ class NavigationPolicy:
     def validate_url(self, url: str) -> str:
         if not isinstance(url, str) or not url or len(url) > 4096:
             raise NavigationPolicyError("URL must be a non-empty string up to 4096 characters.")
-        if any(ord(ch) < 32 or ord(ch) == 127 for ch in url) or chr(92) in url:
-            raise NavigationPolicyError("URL contains forbidden control or backslash characters.")
+        if (any(ord(ch) < 32 or ord(ch) == 127 for ch in url)
+                or any(ch.isspace() for ch in url) or chr(92) in url):
+            raise NavigationPolicyError("URL contains forbidden whitespace, control or backslash characters.")
         try:
             parts: SplitResult = urlsplit(url)
             scheme = parts.scheme.lower()
@@ -134,6 +135,8 @@ class NavigationPolicy:
                 raise
             except Exception as exc:
                 raise NavigationPolicyError("Destination hostname could not be resolved.") from exc
+            if isinstance(resolved, (str, bytes)):
+                raise NavigationPolicyError("Resolver must return an iterable of IP address strings.")
             if not resolved:
                 raise NavigationPolicyError("Destination hostname has no address records.")
         if any(not _is_public_address(address) for address in resolved):
