@@ -337,11 +337,11 @@ class SearchResult:
     source_page_id: str
 
 
-_EMAIL_PATTERN = re.compile(r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b")
-_PHONE_PATTERN = re.compile(r"(?<!\\w)\\+?\\d[\\d\\s().-]{7,}\\d(?!\\w)")
-_BEARER_PATTERN = re.compile(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}")
+_EMAIL_PATTERN = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+_PHONE_PATTERN = re.compile(r"(?<!\w)\+?\d[\d\s().-]{7,}\d(?!\w)")
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 _NAMED_SECRET_PATTERN = re.compile(
-    r"(?i)\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\\s*[:=]\\s*[^\\s,;]{6,}"
+    r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\s*[:=]\s*[^\s,;]{6,}"
 )
 _SENSITIVE_QUERY_KEYS = frozenset({
     "access_token", "apikey", "api_key", "auth", "auth_token", "authorization",
