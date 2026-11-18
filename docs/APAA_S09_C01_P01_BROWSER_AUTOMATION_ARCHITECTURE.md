@@ -96,6 +96,6 @@ Desktop/Linux CI is not physical Android acceptance. Until an actual Android/Ter
 
 ## 8. Verification record
 
-The existing P01 scope record reports a successful exact-head APAA Security CI run for commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da`. However, the branch currently points to a later documentation commit, `019e1bbd96daef813601a689341a0a24cc12bc57`, and the exact-head workflow/status lookup for that later head returned no records. Therefore the historical P01 pass is evidence for its recorded commit only; it is not represented as a pass for a later head. This architecture document must receive its own exact-head CI result before the branch update is called CI-verified.
+The P01 scope record documents a successful exact-head APAA Security CI run for commit `3a3f03a7fc22e63fa3c2b070151852b80671f2da` (run #1300). The currently inspected PR #10 head is `893f433c42cef6dd2a261e4d5db8e523f582a04b`, which is a later commit. For this head, the available commit-workflow and combined-status lookups returned no run/status records. Therefore the historical PASS remains valid only for `3a3f03a7fc22e63fa3c2b070151852b80671f2da`; it does not verify `893f433c42cef6dd2a261e4d5db8e523f582a04b`. A new push-triggered APAA Security CI run must complete successfully on the latest head before the branch is marked CI-verified.
 
 **Safety posture:** Draft PR only; no merge, deployment, live website access, Auto-Run, payment, purchase, or production activation.
