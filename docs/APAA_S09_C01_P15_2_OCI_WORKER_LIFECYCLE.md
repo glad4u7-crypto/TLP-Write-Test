@@ -39,3 +39,12 @@ No runtime command was executed. No container, network, namespace, firewall rule
 - [ ] Real-worker browser integration matrix passed.
 
 **Decision:** P15.2 repository implementation is PASS; operational acceptance remains **BLOCKED** until the external runtime and network-security evidence is independently verified. Browser execution remains disabled.
+
+
+## Verification addendum — 2026-11-18
+
+- Exact branch head: `a4b2c5be9f9b5563eff1912ad85a9ae95985f2ae`.
+- GitHub Actions APAA Security CI run #1406 completed **SUCCESS**: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44250466439
+- The CI run passed the production worker adapter contract and the remaining security suite, including the OCI lifecycle tests.
+- This is repository-level contract/test evidence only. The mandatory external rootless runtime executor, independently trusted host inspector/key lifecycle, reconciled proxy-to-worker topology, actual host namespace/seccomp/mount/resource/firewall inspection, and direct-egress bypass qualification remain unimplemented/unverified.
+- No runtime command was executed; no container, network, firewall, namespace, mount, browser, or website was created or accessed. Browser dispatch remains disabled. PR #10 remains Draft/Open/Unmerged; no merge or deployment occurred.
