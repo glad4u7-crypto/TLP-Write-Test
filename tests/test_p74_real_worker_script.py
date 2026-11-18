@@ -568,3 +568,27 @@ def test_fd_ownership_structured_diagnostic_proves_fatal_process_identity():
         "fd": 7, "operation": "close", "previous_owned": True,
         "requested_owned": False, "pid": 288, "tid": 288,
     }]
+
+
+def test_chromium_package_metadata_is_bounded_for_exact_dbgsym_lookup(monkeypatch):
+    from subprocess import CompletedProcess
+
+    def fake_run(command, **kwargs):
+        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| amd64\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    assert qualification._chromium_package_metadata("container-id") == (
+        "156.0.8078.79-1~deb12u1", "amd64"
+    )
+
+
+def test_chromium_package_metadata_rejects_unknown_architecture(monkeypatch):
+    from subprocess import CompletedProcess
+
+    def fake_run(command, **kwargs):
+        return CompletedProcess(command, 0, "156.0.8078.79-1~deb12u1| mipsel\\n", "")
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    assert qualification._chromium_package_metadata("container-id") == (
+        "156.0.8078.79-1~deb12u1", None
+    )
