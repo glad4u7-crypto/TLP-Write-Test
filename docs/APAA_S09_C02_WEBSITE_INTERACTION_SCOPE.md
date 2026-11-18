@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** CONTROLLER FOUNDATION IMPLEMENTED; EARLIER CI PASSED; LATEST REDACTION REGEX FIX COMMITTED AFTER ONE TEST FAILURE; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
+**Status:** CONTROLLER FOUNDATION IMPLEMENTED; REDACTION REGEX FIX AND FORGED-INTENT HARDENING COMMITTED; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -53,7 +53,7 @@ File: `tests/test_browser_interaction.py`
 
 ## 5. Verification evidence
 
-Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commit: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448`. The first combined run (`44216224292`) passed all TLS, controller/lifecycle, worker-adapter and host-inspector stages but failed one new search-redaction test: regex boundaries were double-escaped. This was corrected in the latest commit; a new exact-head CI run must pass before the extensions are marked verified.
+Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commits: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448` (redaction regex correction), `c0392701ccd8801248af262819ddd6335e6bb39b` (forged form-intent validation hardening), and `7812704d177ef4ebe55fb4e9f9cfcc76ad0233d9` (adversarial tests for malformed forged intent/evidence). The first combined run (`44216224292`) reported 1261 passed / 1 failed because regex boundaries were double-escaped; corrected in the follow-up commit. Exact-head CI for the follow-up commits remains required.
 
 - GitHub Actions workflow: **APAA Security CI**
 - Run: [44214923346](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44214923346)
