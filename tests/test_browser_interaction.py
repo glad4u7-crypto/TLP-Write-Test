@@ -157,3 +157,115 @@ def test_navigation_rejects_invalid_runtime_and_unknown_keys():
         validate_navigation_plan(base, allowed_origins=ORIGINS)
     with pytest.raises(InteractionPolicyError):
         validate_navigation_plan({**base, "run_anyway": True}, allowed_origins=ORIGINS)
+
+
+def _click_evidence(**overrides):
+    raw = {
+        "interaction_id": "click_0000001",
+        "page_id": "page_0000001",
+        "origin": "https://example.com/catalog",
+        "locator": {"kind": "role", "value": "link"},
+        "match_count": 1,
+        "visible": True,
+        "enabled": True,
+        "element_type": "link",
+        "href": "https://example.com/help",
+        "observed_at": 98,
+    }
+    raw.update(overrides)
+    return raw
+
+
+def _fill_evidence(**overrides):
+    raw = {
+        "interaction_id": "fill_0000001",
+        "page_id": "page_0000001",
+        "origin": "https://example.com/form",
+        "locator": {"kind": "label", "value": "Display name"},
+        "match_count": 1,
+        "visible": True,
+        "enabled": True,
+        "element_type": "input_text",
+        "href": None,
+        "observed_at": 98,
+    }
+    raw.update(overrides)
+    return raw
+
+
+def test_target_evidence_accepts_fresh_unique_visible_link():
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_click_intent(click(), allowed_origins=ORIGINS)
+    evidence = validate_target_evidence(
+        _click_evidence(), intent=intent, allowed_origins=ORIGINS, now_epoch=100
+    )
+    assert evidence.href == intent.destination_url
+    assert evidence.observed_at == 98
+
+
+@pytest.mark.parametrize("changes", [
+    {"match_count": 0},
+    {"match_count": 2},
+    {"visible": False},
+    {"enabled": False},
+    {"page_id": "page_0000002"},
+    {"interaction_id": "click_0000002"},
+    {"href": "https://example.com/other"},
+    {"origin": "https://evil.example/"},
+    {"observed_at": 90},
+    {"observed_at": 101},
+    {"element_type": "button"},
+])
+def test_target_evidence_rejects_ambiguous_stale_or_changed_link(changes):
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_click_intent(click(), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _click_evidence(**changes), intent=intent,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
+
+
+def test_target_evidence_rejects_non_boolean_flags_and_unknown_fields():
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_click_intent(click(), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _click_evidence(visible=1), intent=intent,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            {**_click_evidence(), "dom_snapshot": "untrusted"},
+            intent=intent, allowed_origins=ORIGINS, now_epoch=100,
+        )
+
+
+def test_target_evidence_accepts_matching_draft_form_control():
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_fill_intent(fill(), allowed_origins=ORIGINS)
+    evidence = validate_target_evidence(
+        _fill_evidence(), intent=intent, allowed_origins=ORIGINS, now_epoch=100
+    )
+    assert evidence.element_type == "input_text"
+
+
+@pytest.mark.parametrize("changes", [
+    {"element_type": "input_email"},
+    {"element_type": "button"},
+    {"href": "https://example.com/submit"},
+    {"locator": {"kind": "label", "value": "Other field"}},
+])
+def test_target_evidence_rejects_form_control_type_or_locator_mismatch(changes):
+    from core.browser_interaction import validate_target_evidence
+
+    intent = validate_fill_intent(fill(), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_target_evidence(
+            _fill_evidence(**changes), intent=intent,
+            allowed_origins=ORIGINS, now_epoch=100,
+        )
