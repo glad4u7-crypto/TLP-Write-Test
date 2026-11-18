@@ -589,18 +589,26 @@ class BrowserExecutionCoordinator:
                 request_digest = hashlib.sha256(request_bytes).hexdigest()
                 self._recovery_ledger.claim(job.job_id, request_digest, session_id=session_id)
                 ledger_state = "accepted"
+            except (RecoveryLedgerError, TypeError, ValueError) as exc:
+                raise BrowserExecutionError(
+                    "Browser job was already consumed or could not be durably claimed."
+                ) from exc
+            try:
                 self._recovery_ledger.record_approval_correlation(
                     job.job_id, approval_ref=approval_refs[0], owner_ref=approval_refs[1],
                     session_ref=approval_refs[2], request_digest=request_digest,
                 )
             except (RecoveryLedgerError, TypeError, ValueError) as exc:
-                if ledger_state == "accepted":
-                    try:
-                        self._recovery_ledger.transition(job.job_id, "failed", outcome_code="approval_correlation_failure")
-                        self._recovery_ledger.latch_dispatch_block("approval_correlation_failure")
-                    except Exception:
-                        pass
-                raise BrowserExecutionError("Browser job claim or approval correlation failed; dispatch is blocked.") from exc
+                try:
+                    self._recovery_ledger.transition(
+                        job.job_id, "failed", outcome_code="approval_correlation_failure"
+                    )
+                    self._recovery_ledger.latch_dispatch_block("approval_correlation_failure")
+                except Exception:
+                    pass
+                raise BrowserExecutionError(
+                    "Browser approval correlation failed; dispatch is blocked."
+                ) from exc
         token = CancellationToken()
         termination_confirmed = threading.Event()
         completed = threading.Event()
