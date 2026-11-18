@@ -187,3 +187,21 @@ No behavioral workaround or speculative FD lifecycle change has been made. The p
 **Still not proven/completed:** Debian package patch-series equivalence; CI success; full Chromium compile; OCI execution; actual failing FD record; causal root cause; minimal behavioral fix; defect-specific Chromium-native regression test; 10 cold-start qualification cycles.
 
 The upstream source pin is not proof of Debian source equivalence. The diagnostic patch has not yet been applied to the complete Debian source package or compiled. No speculative behavior change is accepted. Release remains **FAILED / NO-GO**; Browser/Worker disabled; Auto-Run OFF.
+
+
+## Evidence update — real disposable OCI run #44217447973
+
+- Tested commit: `63e3bc7c476fef2c122e97b9a4237eff7248e2d2`; GitHub Actions run [44217447973](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44217447973).
+- Disposable-host preparation passed: delegated cgroup-v2, Chromium worker image build, seccomp profile preparation, namespace/routes, dual-stack proxy listeners, default-DROP nftables attestation, OCI hardening and cleanup.
+- Chromium 156.0.8078.79 (Debian Bookworm; build ID `4a74f6497529d42bb61262c76d7b1add49c4dea6`) still failed its local `data:` `--dump-dom` smoke before proxy/navigation tests: process exit code 0, stdout 0 bytes, stderr 78,166 bytes, explicit FD ownership violation marker present.
+- The diagnostic collector captured 155 bounded snapshots; 10 were triggered by the fatal marker. Up to 12 Chromium processes were observed. A few oversized snapshots hit the prior 180 KB per-snapshot cap; the cap has been raised to 250 KB while retaining an explicit bound.
+- The unprefixed fatal stack's first 10 of 11 frames mapped to the Chromium executable image of host PID 18011 / container PID 288, PPID host PID 8982 / container PID 19. The stack-matched child had 12 FDs; its browser-side parent had 148 FDs in the matching snapshot. The child/parent shared kernel-object candidates were pipes (FD 1 and 2) and memfds (parent 33 → child 6; parent 36 → child 10). These are candidate relationships only, not proof of erroneous inheritance or the offending FD.
+- The last prefixed log line before the unprefixed fatal marker was PID/TID 19:19. This is only preceding log context; it is not proof that PID 19 emitted the fatal stack. The collector now labels it `preceding_log_pid` and keeps it separate from the stack-matched process.
+- `fd_ownership_diagnostics` was empty. Important qualification detail: the source patch that emits `APAA_FD_OWNERSHIP_DIAG fd=... operation=...` passed patch-application/parser validation, but the real worker image still installs Debian's prebuilt Chromium package. The diagnostic patch was **not compiled into that runtime binary**, so the exact FD number and Acquire/Release/close operation were not emitted. The absence of a structured record is therefore expected and must not be interpreted as evidence that the patch failed to apply to source.
+- Symbolication remains `debug-info-not-found`; the exact Debian Chromium build has no matching debug symbols available in the current image. Cleanup was confirmed with zero cleanup errors.
+
+### Required next step — instrument the exact runtime binary
+
+The current P93 patch validation only verifies that the diagnostic source patch applies and its parser tests pass. It does not instrument the Debian Chromium executable used by P74. The next diagnostic iteration must either (a) build a Chromium worker binary from the exact matching source with the diagnostic patch compiled in, or (b) obtain exact-build debug symbols and a separately validated mechanism for identifying the fatal FD transition. Do not treat a patch-validation PASS as runtime instrumentation.
+
+**Current result: FAILED / NO-GO.** The real-host run reproduced the FD ownership crash and improved process attribution, but the exact FD, operation and source call site remain unproven. No sandbox, seccomp, namespace, cgroup or egress policy was weakened.
