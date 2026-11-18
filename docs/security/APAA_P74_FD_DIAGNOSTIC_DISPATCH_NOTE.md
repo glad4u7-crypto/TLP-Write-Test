@@ -16,3 +16,8 @@ The workflow is intentionally gated by the commit marker `[run-p74-real-worker]`
 ## Follow-up run request — improved process attribution
 
 A second disposable-host run is requested after the attribution correction: the last prefixed log PID is now recorded only as preceding-log context; the stack-matched process is kept separate; structured fatal-path FD instrumentation is explicitly marked absent when the runtime binary does not contain the diagnostic patch; and the per-snapshot evidence cap is 250 KB. Use only the same built-in `https://example.com/` read-only local Chromium smoke. Preserve the NO-GO result if the fatal marker reproduces.
+
+
+## Third run request — exact-build symbolication
+
+Run the same read-only `https://example.com/` disposable OCI qualification after adding the Debian debuginfod Build-ID lookup and `eu-addr2line` post-processing step. Preserve the FD ownership NO-GO if it reproduces; symbolication is best-effort and must not alter the worker image or isolation policy.
