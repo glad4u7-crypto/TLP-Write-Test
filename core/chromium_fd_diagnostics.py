@@ -46,6 +46,18 @@ def _proc_stat_identity(raw: str) -> tuple[str, int, int] | None:
     return comm, ord(fields[0]), int(fields[1])
 
 
+def _proc_stat_start_time(raw: str) -> str | None:
+    """Return Linux /proc/<pid>/stat field 22 (starttime) as decimal text."""
+    right = raw.rfind(")")
+    if right < 0:
+        return None
+    fields = raw[right + 1:].strip().split()
+    # fields[0] is stat field 3; starttime is field 22 => index 19.
+    if len(fields) <= 19 or not fields[19].isdigit():
+        return None
+    return fields[19]
+
+
 def _target_class(target: str) -> str:
     for prefix, label in _TARGET_CLASSES:
         if target.startswith(prefix):
@@ -100,7 +112,12 @@ def _executable_mappings(base: Path, executable: str | None) -> list[dict]:
         if len(fields) < 5:
             continue
         path = fields[5].removesuffix(" (deleted)") if len(fields) == 6 else ""
-        if not path.startswith("/") or "x" not in fields[1]:
+        if (
+            not path.startswith("/")
+            or "x" not in fields[1]
+            or executable is None
+            or Path(path).name != executable
+        ):
             continue
         start_end = fields[0].split("-", 1)
         try:
@@ -164,6 +181,9 @@ def _read_process(
     if identity is None:
         return None
     comm, state_code, ppid = identity
+    start_time = _proc_stat_start_time(stat_raw)
+    if start_time is None:
+        return None
     if expected_cgroup_prefix is not None:
         membership = _read_text(base / "cgroup", 4096) or ""
         unified = next((line.partition("::")[2].strip() for line in membership.splitlines()
@@ -215,10 +235,11 @@ def _read_process(
         item = _fd_metadata(base, name)
         if item is not None:
             descriptors.append(item)
-    try:
-        start_time = (_read_text(base / "stat") or "").rsplit(")", 1)[1].split()[19]
-    except (IndexError, AttributeError):
-        start_time = None
+    # /proc/<pid> can be recycled while a snapshot is being assembled. Verify
+    # the kernel start-time identity again before returning mixed procfs data.
+    final_stat = _read_text(base / "stat")
+    if final_stat is None or _proc_stat_start_time(final_stat) != start_time:
+        return None
     return {
         "pid": pid,
         "ppid": ppid,
