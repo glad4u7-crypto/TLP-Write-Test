@@ -84,17 +84,19 @@ def _fetch_security_dbgsym(
     package_version: str | None,
     architecture: str | None,
     temp_root: Path,
-) -> Path | None:
+) -> tuple[Path | None, str, int | None]:
     if (
         not isinstance(package_version, str)
         or not _PACKAGE_VERSION.fullmatch(package_version)
         or architecture not in _ARCHITECTURES
     ):
-        return None
+        return None, "invalid_package_metadata", None
     curl = shutil.which("curl")
     dpkg_deb = shutil.which("dpkg-deb")
-    if not curl or not dpkg_deb:
-        return None
+    if not curl:
+        return None, "curl_unavailable", None
+    if not dpkg_deb:
+        return None, "dpkg_deb_unavailable", None
 
     package_name = f"chromium-dbgsym_{package_version}_{architecture}.deb"
     url = (
@@ -110,10 +112,14 @@ def _fetch_security_dbgsym(
             ],
             capture_output=True, text=True, timeout=130, check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if downloaded.returncode != 0 or not package_path.is_file():
-        return None
+    except subprocess.TimeoutExpired:
+        return None, "download_timeout", None
+    except OSError:
+        return None, "download_tool_error", None
+    if downloaded.returncode != 0:
+        return None, "download_failed", downloaded.returncode
+    if not package_path.is_file():
+        return None, "download_file_missing", downloaded.returncode
 
     extract_root = temp_root / "dbgsym"
     try:
@@ -121,10 +127,12 @@ def _fetch_security_dbgsym(
             [dpkg_deb, "-x", str(package_path), str(extract_root)],
             capture_output=True, text=True, timeout=120, check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    except subprocess.TimeoutExpired:
+        return None, "extract_timeout", None
+    except OSError:
+        return None, "extract_tool_error", None
     if extracted.returncode != 0:
-        return None
+        return None, "extract_failed", extracted.returncode
 
     expected = (
         extract_root / "usr/lib/debug/.build-id" / build_id[:2]
@@ -133,10 +141,11 @@ def _fetch_security_dbgsym(
     if not expected.is_file():
         candidates = list(extract_root.rglob(build_id[2:] + ".debug"))
         expected = candidates[0] if candidates else expected
-    if not expected.is_file() or not _verify_build_id(expected, build_id):
-        return None
-    return expected
-
+    if not expected.is_file():
+        return None, "build_id_debug_file_missing", 0
+    if not _verify_build_id(expected, build_id):
+        return None, "build_id_mismatch_or_unverifiable", 0
+    return expected, "exact_build_id_verified", 0
 
 def _run_addr2line(debug_file: Path, frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
     resolver = shutil.which("eu-addr2line") or shutil.which("addr2line")
@@ -190,8 +199,10 @@ def symbolicate_evidence_file(evidence_path: str | Path) -> dict[str, Any]:
             source = "debuginfod-build-id-mismatch"
 
         package_used = False
+        dbgsym_status = "not_attempted"
+        dbgsym_exit_code = None
         if debug_file is None:
-            debug_file = _fetch_security_dbgsym(
+            debug_file, dbgsym_status, dbgsym_exit_code = _fetch_security_dbgsym(
                 build_id, package_version, architecture, temp_root,
             )
             if debug_file is not None:
@@ -204,6 +215,8 @@ def symbolicate_evidence_file(evidence_path: str | Path) -> dict[str, Any]:
                 "build_id": build_id,
                 "debuginfod_status": source,
                 "debuginfod_exit_code": debuginfod_exit_code,
+                "security_dbgsym_status": dbgsym_status,
+                "security_dbgsym_exit_code": dbgsym_exit_code,
                 "security_dbgsym_package_version": package_version,
                 "security_dbgsym_architecture": architecture,
             })
@@ -234,6 +247,7 @@ def symbolicate_evidence_file(evidence_path: str | Path) -> dict[str, Any]:
             "frames": resolved,
         }
         if package_used:
+            result["security_dbgsym_status"] = dbgsym_status
             result["security_dbgsym_package_version"] = package_version
             result["security_dbgsym_architecture"] = architecture
         return _write_result(path, evidence, failure, result)
