@@ -2,10 +2,7 @@
 
 ## Status
 
-Repository implementation is in progress. **Real-host qualification is NOT RUN**.
-Public Live Browsing, browser worker dispatch, and automatic execution remain
-disabled. Mocked unit tests and GitHub-hosted CI are not evidence of host-level
-network isolation.
+Repository implementation is in progress. **Real-host qualification was attempted twice (runs #427 and #430); both failed during Chromium startup with an FD ownership violation. This is NOT a PASS.** Public Live Browsing, browser worker dispatch, and automatic execution remain disabled. Mocked unit tests and GitHub-hosted CI are not evidence of host-level network isolation.
 
 ## Implemented in this checkpoint branch
 
@@ -38,10 +35,12 @@ network isolation.
 - `containers/chromium-worker/Containerfile`: builds the disposable Chromium
   worker image. Its final local image ID is passed to OCI as an immutable
   `sha256:` identifier with `--pull=never`.
-- `.github/workflows/p74-real-worker.yml`: manual-only qualification on a
-  disposable GitHub-hosted Linux VM. It requires an owner-supplied exact HTTPS
-  test URL and origin, builds the worker image, and uploads a short-retention
-  evidence artifact. It does not enable product browsing.
+- `.github/workflows/p74-real-worker.yml`: gated qualification on a disposable
+  GitHub-hosted Linux VM. The owner-authorized reserved public fixture is
+  `https://example.com/` with exact origin `https://example.com` and marker
+  `Example Domain`; no privately owned domain is required. A push commit must
+  contain `[run-p74-real-worker]` to start the qualification. It uploads a
+  sanitized evidence artifact and does not enable product browsing.
 - Focused unit tests exercise command construction, invalid inputs, rollback,
   default-DROP rules, mixed public/private DNS answers, IPv4/IPv6 pins and
   numeric-IP dialing.
@@ -64,20 +63,16 @@ interface bypass still require sink-side verification on the real host.
 
 ## Required real-host acceptance — all are mandatory
 
-1. Run the manual `APAA P74 real OCI Chromium worker` workflow with an
-   owner-approved HTTPS test URL, exact origin and unique expected HTML marker.
-   The workflow defaults to the reserved `https://example.com/` documentation
-   page with marker `Example Domain`; the owner may override these inputs.
-   Before merge, its push-triggered job runs only when the commit message
-   contains the explicit marker `[run-p74-real-worker]`. Ordinary pushes skip
-   the host qualification. The automated repository-file commits used during
-   this work did not dispatch that new workflow; a user-authored push to this
-   branch is required for pre-merge execution (example commit message:
-   `run(APAA P74): execute isolated worker [run-p74-real-worker]`). The
-   `workflow_dispatch` path becomes available after this workflow exists on
-   the default branch. It creates a disposable
-   GitHub-hosted Linux VM, installs Podman/iproute2/nftables, builds the
-   Chromium worker image and requires a dedicated delegated cgroup subtree.
+1. The disposable-host workflow has been executed twice with the owner-approved
+   public read-only fixture `https://example.com/`, exact origin
+   `https://example.com`, and marker `Example Domain` (runs #427 and #430 below).
+   Both reached real Chromium execution but failed with the same FD ownership
+   violation. This gate remains OPEN. A future run can be triggered by a push
+   commit containing `[run-p74-real-worker]`; ordinary pushes skip it.
+   `workflow_dispatch` becomes available after the workflow exists on the
+   default branch. Each run creates a disposable GitHub-hosted Linux VM,
+   installs Podman/iproute2/nftables, builds the Chromium worker image and
+   requires a dedicated delegated cgroup subtree.
 2. Provision namespace and veth; prove the worker has no route outside the
    approved proxy path. Confirm both IPv4 and IPv6.
 3. Install nftables and capture `nft list ruleset` from the namespace and host.
@@ -143,3 +138,16 @@ recovery must also pass independently.
 4. Implement the production `IsolatedWorkerBackend` adapter and align its UID/GID, memory, CPU, PID, writable-mount and proxy settings exactly with `WorkerLaunchSpec`; do not hardcode a second independent profile.
 5. Bind host-attestor key provisioning, one-time challenge consumption, evidence freshness and cleanup/recovery to the owner-controlled control plane.
 6. Re-run the complete hostile-network, TLS, crash, timeout, orphan and cleanup matrix. Only then consider enabling any browser dispatch, with a separate explicit owner approval.
+
+
+## Observed real-host qualification attempts — 2026-11-18
+
+- **Run #427 / ID `44238475405`** — exact head `618c0fed421d72ede0a8306bb971e2c950605865`. Evidence artifact ID `14398771572`, SHA-256 `1b3ae08658484acbdbee8cab26117c5425cbfc302ae06fd152de07c32e5c577e`.
+- **Run #430 / ID `44239047832`** — exact head `2fc720b56d2f05dde8590794572f3e85c13ddc32`. Evidence artifact ID `14399066537`, SHA-256 `9ff0ec51552d69a4ad6bc1650961711c2d267172e0a9559ab5adc4ae7bbfb3bf`.
+- Both runs passed disposable-host dependency installation, cgroup-v2 preparation, worker image build and seccomp-profile preparation. Both failed in the local Chromium dump-DOM smoke test with `Crashing due to FD ownership violation` and a network-service restart; stdout was empty.
+- Run #427 captured 153 snapshots (10 marker-triggered); run #430 captured 155 (9 marker-triggered). Both had zero collector errors and confirmed cleanup with no cleanup errors.
+- Exact Debian Chromium build ID `4a74f6497529d42bb61262c76d7b1add49c4dea6` was matched and symbolicated. The log PID (container PID 20) did not prove the process that owned the mapped stack; the stack-mapped candidate was a separate child (container PID 280 in #427, 279 in #430). Mapping confidence remains partial.
+- Neither run had the diagnostic patch compiled into its Chromium binary, so neither recorded the exact FD number or whether the violation was an acquire, release, or raw close. The bounded collector has since been updated to retain only safe argv0/process-type/utility-subtype metadata; its targeted tests pass. A third full host run and a full Chromium source build are intentionally not being launched automatically to avoid additional CI budget consumption.
+- Current verification on latest code head `c13ad30cb103bd80051fabbe6d0caf83b5d5df32`: P74 diagnostic tests #26 / ID `44239625919` **SUCCESS**; P93 pinned-source patch/parser validation #99 / ID `44239625923` **SUCCESS**; APAA Security CI #1381 / ID `44239626347` **SUCCESS**. These do not establish a Chromium-native fix or a passing OCI run.
+
+The host qualification gate remains OPEN. Do not weaken sandbox settings to obtain a green run.
