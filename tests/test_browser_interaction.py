@@ -450,7 +450,6 @@ def test_search_result_url_removes_hyphenated_and_common_auth_parameters(secret_
     "/reset/password=supersecretvalue",
 ])
 def test_search_result_url_redacts_sensitive_identifiers_from_path(private_path):
-    from urllib.parse import quote
     from core.browser_interaction import validate_search_results
 
     intent = validate_search_intent(search(), allowed_origins=ORIGINS)
