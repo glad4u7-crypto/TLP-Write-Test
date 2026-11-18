@@ -6,12 +6,16 @@ on:
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
       - feature/apaa-bcs05-chromium-security-qualification
+      - feature/apaa-bcs06-android-compatibility
+      - feature/apaa-bcs07-android-storage-hardening
   pull_request:
     branches:
       - main
       - master
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
+      - feature/apaa-bcs05-chromium-security-qualification
+      - feature/apaa-bcs06-android-compatibility
   workflow_dispatch:
 
 permissions:
@@ -27,7 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Keep Playwright's installed browser path stable when TLS tests isolate HOME.
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
     steps:
       - name: Checkout
@@ -56,6 +59,8 @@ jobs:
           for name in (
               "tests/test_chromium_browser_surfaces.py",
               "scripts/p74_real_worker_chromium_e2e.py",
+              "scripts/android_owner_ui.py",
+              "scripts/android_device_acceptance.py",
           ):
               ast.parse(Path(name).read_text(encoding="utf-8"), filename=name)
               print(f"syntax OK: {name}")
