@@ -6,6 +6,7 @@ on:
       - feature/apaa-s09-c01-p01-browser-launch
       - feature/apaa-p74-action-12-oci-runtime-network
       - feature/apaa-s09-c01-action-history-clean
+      - feature/apaa-s09-c02-website-interaction
       - feature/apaa-s09-c01-approval-gate-hardening
   pull_request:
     branches:
