@@ -1,22 +1,21 @@
 diff --git a/base/files/scoped_file_linux.cc b/base/files/scoped_file_linux.cc
-index 0000000..0000000 100644
+index f911af6..0000000 100644
 --- a/base/files/scoped_file_linux.cc
 +++ b/base/files/scoped_file_linux.cc
-@@ -10,6 +10,8 @@
+@@ -11,6 +11,8 @@
  #include <dlfcn.h>
 +#include <sys/syscall.h>
 +#include <unistd.h>
  
  #include <algorithm>
  #include <array>
-@@ -32,9 +34,20 @@
+@@ -31,9 +33,20 @@
  std::atomic_bool g_is_ownership_enforced{false};
  std::array<std::atomic_bool, kMaxTrackedFds> g_is_fd_owned;
  
 -NOINLINE void CrashOnFdOwnershipViolation() {
--  RAW_LOG(ERROR, "Crashing due to FD ownership violation:\n");
-+// Diagnostic-only instrumentation. This executes only on the fatal path and
-+// does not open, close, duplicate, transfer, or otherwise mutate any FD.
++// Diagnostic-only: this runs only immediately before the existing fatal crash.
++// It must not allocate, open, close, duplicate, or transfer a descriptor.
 +NOINLINE void CrashOnFdOwnershipViolation(int fd,
 +                                          const char* operation,
 +                                          bool previous_owned,
@@ -27,10 +26,9 @@ index 0000000..0000000 100644
 +          "APAA_FD_OWNERSHIP_DIAG fd=%d operation=%s previous_owned=%d "
 +          "requested_owned=%d pid=%d tid=%ld\n",
 +          fd, operation, previous_owned, requested_owned, pid, tid);
-+  RAW_LOG(ERROR, "Crashing due to FD ownership violation:\n");
+   RAW_LOG(ERROR, "Crashing due to FD ownership violation:\n");
    base::debug::StackTrace().Print();
    base::ImmediateCrash();
- }
 @@ -44,11 +57,17 @@
  void UpdateAndCheckFdOwnership(int fd, bool owned) {
 -  if (CanTrack(fd) &&
@@ -47,8 +45,8 @@ index 0000000..0000000 100644
 +                                previous_owned, owned);
    }
  }
-@@ -107,7 +126,7 @@
-   __attribute__((visibility("default"), noinline)) int close(int fd) {
+@@ -107,7 +126,8 @@
+ __attribute__((visibility("default"), noinline)) int close(int fd) {
    static LibcCloseFuncPtr libc_close = LoadCloseSymbol();
    if (base::IsFDOwned(fd) && g_is_ownership_enforced) {
 -    CrashOnFdOwnershipViolation();
