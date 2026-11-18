@@ -313,6 +313,8 @@ class BrowserExecutionCoordinator:
                 raise ValueError("A bounded Owner session scope is required.")
             if not callable(owner_session_check):
                 raise TypeError("An Owner session validator is required.")
+            if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
+                raise TypeError("Owner-approved browser execution requires a durable recovery/approval-correlation ledger.")
         if worker is not None and not callable(getattr(worker, "run", None)):
             raise TypeError("worker must implement run().")
         if not callable(audit):
