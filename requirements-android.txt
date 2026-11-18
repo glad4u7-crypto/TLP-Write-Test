@@ -1,0 +1,4 @@
+# Android/Termux Owner-console dependencies only.
+# Browser automation dependencies are intentionally excluded.
+streamlit[auth]>=1.45,<2.0
+cryptography>=50,<51
