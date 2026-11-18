@@ -19,7 +19,7 @@ def test_build_android_owner_secrets_generates_strong_private_keys():
     assert "require_auth = true" in text
     assert f'redirect_uri = "{REDIRECT_URI}"' in text
     assert "approval_signing_secret_hex" in text
-    assert "client-secret" not in text
+    assert 'client_secret = "private-client-secret"' in text
 
 
 @pytest.mark.parametrize("metadata", [
