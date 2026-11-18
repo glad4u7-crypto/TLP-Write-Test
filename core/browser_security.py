@@ -24,6 +24,7 @@ _ALLOWED_ACTIONS = frozenset({
     "read_page_title",
     "read_link_metadata",
     "capture_transient_screenshot",
+    "inspect_elements",
 })
 _JOB_FIELDS = frozenset({
     "job_id", "url", "allowed_origins", "action", "expires_at",
