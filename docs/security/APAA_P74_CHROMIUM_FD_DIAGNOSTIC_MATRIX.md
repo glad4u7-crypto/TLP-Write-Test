@@ -170,3 +170,20 @@ The diagnostic matrix and collector changes are useful and preserve the existing
 **Not yet complete:** exact Debian source revision mapping; patch application validation; diagnostic Chromium compilation; execution inside disposable OCI worker; capture of an actual failing FD/operation/PID/TID; causal root-cause proof; behavior fix; Chromium-native regression test reproducing the identified defect.
 
 No behavioral workaround or speculative FD lifecycle change has been made. The prior hypotheses remain unproven. Release remains **FAILED / NO-GO**; Browser/Worker dispatch remains disabled and Auto-Run remains OFF. Security invariants are unchanged.
+
+
+## APAA P93 follow-up — pinned upstream source and CI validation
+
+- Confirmed the upstream Chromium release ref `156.0.8078.79` resolves to commit
+  `a21ce95c24ce3964416f09ae1862f53f319eb4d0`.
+- Confirmed `base/files/scoped_file_linux.cc` at that commit has blob
+  `f911af6b458272481142431360352ebcbd0e3c04`.
+- Corrected unified-diff hunk counts and offsets in the diagnostic patch.
+- The build recipe now hard-pins the upstream commit and refuses a dirty source tree.
+- Added a dedicated CI workflow to fetch the exact source file, run `git apply --check`,
+  apply the patch in an isolated fixture, and run parser regression tests.
+- The PR body records these source-provenance details and the outstanding gates.
+
+**Still not proven/completed:** Debian package patch-series equivalence; CI success; full Chromium compile; OCI execution; actual failing FD record; causal root cause; minimal behavioral fix; defect-specific Chromium-native regression test; 10 cold-start qualification cycles.
+
+The upstream source pin is not proof of Debian source equivalence. The diagnostic patch has not yet been applied to the complete Debian source package or compiled. No speculative behavior change is accepted. Release remains **FAILED / NO-GO**; Browser/Worker disabled; Auto-Run OFF.
