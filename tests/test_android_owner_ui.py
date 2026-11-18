@@ -58,6 +58,8 @@ def test_owner_launcher_accepts_valid_auth_required_config(tmp_path):
 def test_owner_ui_command_binds_loopback_only():
     command = owner_ui_command(python_executable="python", app_path=Path("/app/app.py"))
     assert "--server.address=127.0.0.1" in command
+    assert "--server.enableCORS=true" in command
+    assert "--server.enableXsrfProtection=true" in command
     assert not any("0.0.0.0" in part or "--server.address=::" in part for part in command)
 
 
