@@ -25,12 +25,14 @@ def test_termux_is_supported_for_local_owner_ui_but_not_browser_worker():
     assert result.physical_device_verified is False
 
 
-def test_android_without_termux_marker_is_still_detected():
+def test_android_without_termux_marker_is_detected_but_owner_ui_is_not_supported():
     result = assess_android_compatibility(
         platform="linux", environ={"ANDROID_DATA": "/data"}
     )
     assert result.android is True
     assert result.termux is False
+    assert result.owner_ui_supported is False
+    assert result.owner_ui_origin == ""
     assert result.browser_worker_supported is False
 
 
