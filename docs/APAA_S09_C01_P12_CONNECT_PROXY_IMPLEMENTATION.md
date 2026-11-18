@@ -77,3 +77,21 @@ Tests use no live destination and no real browser. They were authored but **not 
 ## 7. Final P12 slice decision
 
 **P12 is in progress, not complete.** This commit provides the first CONNECT proxy implementation slice only. SEC-01 and SEC-03 remain open; SEC-02 has a pinned-IP connector implementation but still needs integration and evidence. Live browsing remains disabled. Do not launch this proxy for general use or expose it beyond loopback. No firewall mutation, deployment, credentials, login, form submission, downloads, payment, purchase, trading, money movement, paid services, Auto-Run, or Android/Termux qualification is authorized.
+
+## 8. Exact-head CI evidence — 2026-11-18
+
+- Proxy relay test fixture correction: `tests/test_egress_proxy.py` now delegates `fileno()` to its wrapped OS socket so the relay's `select.select()` call receives a valid descriptor.
+- Corrective commit: `dca041e54ea1c050954f0ad2d0237fcf1d830d4e`.
+- Exact-head APAA Security CI: [Run 44254269382](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44254269382) — **SUCCESS**.
+- The Python security job completed all 14 steps successfully, including syntax validation, Chromium TLS acceptance/rejection cases, live-browsing controller policy/lifecycle, real Chromium through the restricted local proxy, worker-adapter contract, Linux host-inspector contract, and the remaining security test suite.
+- This verifies the repository CI suite at the exact commit above. It does **not** prove mandatory proxy wiring, worker network isolation, direct-egress blocking, Android compatibility, production OCI qualification, or production readiness.
+
+## 9. Updated P12 status
+
+- [x] Execute the current regression suite on an exact branch head; Run 44254269382 passed.
+- [ ] Reconcile proxy endpoint with isolated worker topology.
+- [ ] Wire browser launcher to the mandatory proxy.
+- [ ] Prove OS/container-level direct-egress blocking and no-direct-fallback.
+- [ ] Complete remaining browser traffic coverage and independent review.
+
+**P12 remains in progress.** The exact-head CI pass closes the observed relay-fixture regression only; it does not close the operational integration gaps above.
