@@ -29,5 +29,5 @@ and Owner approval integration remain mandatory before live execution.
 
 `tests/test_browser_dom_inspector.py` uses a fake asynchronous Playwright
 surface to test visible-body requirement, exact-origin rejection, bounds,
-deadline and basic sensitive-text redaction. These tests do not replace
+deadline cancellation, malformed inputs and sensitive-text redaction. These tests do not replace
 real Chromium or Android qualification.
