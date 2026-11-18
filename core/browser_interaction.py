@@ -350,9 +350,12 @@ _NAMED_SECRET_PATTERN = re.compile(
     r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\s*[:=]\s*[^\s,;]{6,}"
 )
 _SENSITIVE_QUERY_KEYS = frozenset({
-    "access_token", "apikey", "api_key", "auth", "auth_token", "authorization",
-    "client_secret", "code", "csrf", "key", "otp", "password",
-    "refresh_token", "secret", "session", "session_id", "signature", "token", "xsrf",
+    "access_token", "accesstoken", "apikey", "api_key", "assertion", "auth",
+    "auth_token", "authorization", "client_secret", "clientsecret", "code",
+    "credential", "credentials", "csrf", "id_token", "idtoken", "jwt", "key",
+    "otp", "password", "refresh_token", "refreshtoken", "saml", "secret",
+    "session", "session_id", "sessionid", "sig", "signature", "token",
+    "xsrf", "xsrf_token", "xsrftoken",
 })
 
 
