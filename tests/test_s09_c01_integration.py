@@ -19,13 +19,17 @@ PUBLIC = "93.184.216.34"
 
 
 class FakeRequest:
-    def __init__(self, url):
+    def __init__(self, url, *, navigation=False):
         self.url = url
+        self._navigation = navigation
+
+    def is_navigation_request(self):
+        return self._navigation
 
 
 class FakeRoute:
-    def __init__(self, url):
-        self.request = FakeRequest(url)
+    def __init__(self, url, *, navigation=False):
+        self.request = FakeRequest(url, navigation=navigation)
         self.continued = False
         self.aborted = False
 
@@ -60,7 +64,7 @@ class FakePage:
     def goto(self, url, **kwargs):
         handler = self.context.handlers["**/*"]
         for request_url in (url, *self.context.request_urls):
-            route = FakeRoute(request_url)
+            route = FakeRoute(request_url, navigation=(request_url == url))
             self.context.seen.append(route)
             handler(route)
             if route.aborted:
