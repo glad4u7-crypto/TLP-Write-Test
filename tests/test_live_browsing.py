@@ -348,3 +348,85 @@ def test_element_inspection_evaluation_timeout_fails_closed_and_closes_session(m
         )
     assert session.closed == 1
     assert [event["event"] for event in events] == ["job_accepted", "job_failed"]
+
+
+
+def test_element_inspection_caps_duplicate_matches_and_returns_metadata_only(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    class DuplicateLocator:
+        def evaluate_all(self, _script):
+            item = {
+                "tag": "button", "role": "button", "label": "Continue",
+                "text": "Continue", "disabled": False, "visible": True,
+                "href": "", "value": "secret-value", "outerHTML": "<button>secret</button>",
+                "cookies": "secret-cookie", "storage": "secret-storage",
+            }
+            return [dict(item) for _ in range(125)]
+
+    monkeypatch.setattr(context.page, "locator", lambda _selector: DuplicateLocator())
+    result = controller.execute(
+        valid_job(action="inspect_elements"), signed_evidence={},
+        challenge="c" * 64, now=1000, resolver=lambda host: (PUBLIC,),
+    )
+    assert len(result.elements) == 100
+    assert all(set(item) == {"tag", "role", "label", "text", "disabled", "visible"} for item in result.elements)
+    assert all("secret" not in repr(item) for item in result.elements)
+    assert session.closed == 1
+
+
+def test_element_inspection_omits_disallowed_link_targets(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    class LinkLocator:
+        def evaluate_all(self, _script):
+            return [
+                {"tag": "a", "role": "link", "label": "Safe", "text": "Safe",
+                 "disabled": False, "visible": True, "href": "https://example.com/ok"},
+                {"tag": "a", "role": "link", "label": "External", "text": "External",
+                 "disabled": False, "visible": True, "href": "https://evil.example.net/"},
+            ]
+
+    monkeypatch.setattr(context.page, "locator", lambda _selector: LinkLocator())
+    result = controller.execute(
+        valid_job(action="inspect_elements"), signed_evidence={},
+        challenge="c" * 64, now=1000, resolver=lambda host: (PUBLIC,),
+    )
+    assert len(result.elements) == 2
+    assert result.elements[0]["href"] == "https://example.com/ok"
+    assert "href" not in result.elements[1]
+    assert "evil.example.net" not in repr(result.elements)
+    assert session.closed == 1
+
+
+def test_element_inspection_stale_locator_handle_fails_closed(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    class StaleLocator:
+        def evaluate_all(self, _script):
+            raise RuntimeError("stale element handle")
+
+    monkeypatch.setattr(context.page, "locator", lambda _selector: StaleLocator())
+    with pytest.raises(LiveBrowsingError, match="failed or was blocked"):
+        controller.execute(
+            valid_job(action="inspect_elements"), signed_evidence={},
+            challenge="c" * 64, now=1000, resolver=lambda host: (PUBLIC,),
+        )
+    assert session.closed == 1
+    assert [event["event"] for event in events] == ["job_accepted", "job_failed"]
+
+
+def test_element_inspection_selector_creation_failure_fails_closed(monkeypatch):
+    controller, context, session, launches, events = setup_controller(monkeypatch)
+
+    def broken_locator(_selector):
+        raise TimeoutError("selector resolution timed out")
+
+    monkeypatch.setattr(context.page, "locator", broken_locator)
+    with pytest.raises(LiveBrowsingError, match="failed or was blocked"):
+        controller.execute(
+            valid_job(action="inspect_elements"), signed_evidence={},
+            challenge="c" * 64, now=1000, resolver=lambda host: (PUBLIC,),
+        )
+    assert session.closed == 1
+    assert [event["event"] for event in events] == ["job_accepted", "job_failed"]
