@@ -281,7 +281,9 @@ def test_attested_runtime_factory_rejects_duck_typed_bypass():
             calls.append(True)
             return FakeWorker()
 
-    with pytest.raises(TypeError, match="concrete AttestedBrowserRuntime"):
+    # The stronger fail-closed approval gate runs before runtime type checks.
+    # A duck-typed gate must never be invoked while Owner approval binding is absent.
+    with pytest.raises(BrowserExecutionError, match="trusted Owner approval"):
         BrowserExecutionCoordinator.from_attested_runtime(
             FakeGate(), {"signed": "evidence"}, challenge="a" * 64, now=1234,
             audit=lambda event: None,

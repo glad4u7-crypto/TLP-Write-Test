@@ -20,6 +20,7 @@ from core.session_security import bind_session_identity, clear_session_identity,
 from core.storage import TenantKey
 from core.sqlite_security_store import SQLiteSecurityStore, SQLiteExecutionAuditLog
 from core.memory import SQLiteMemoryStore
+from core.action_history_view import read_owner_action_history
 
 st.set_page_config(page_title="Autonomous AI Agent", page_icon="🤖", layout="wide")
 st.title("Autonomous AI Agent")
@@ -192,6 +193,29 @@ st.info(
     "Zero-cost mode is active. The built-in planner is deterministic and "
     "does not call an external AI API. No paid service is configured."
 )
+
+# The browser action ledger is never created by the UI. Show it only when
+# an existing owner-private ledger and an exact Owner identity are configured.
+if principal is not None and apaa_settings.get("browser_recovery_db_path"):
+    st.divider()
+    st.header("Action History & Recovery")
+    try:
+        owner_history = read_owner_action_history(principal, apaa_settings)
+        with st.expander("Verified browser action history", expanded=False):
+            if owner_history:
+                st.dataframe(owner_history, use_container_width=True, hide_index=True)
+                st.caption(
+                    "Read-only Owner view · payload/session data excluded · "
+                    "integrity checked before display"
+                )
+            else:
+                st.caption("No browser action history records are available.")
+    except PermissionError:
+        # Non-Owner authenticated users must not learn whether a ledger exists.
+        pass
+    except Exception:
+        st.error("Action History is unavailable or failed integrity verification. "
+                 "Browser dispatch must remain disabled.")
 
 with st.sidebar:
     st.subheader("Workspace")
