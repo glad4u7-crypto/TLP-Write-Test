@@ -11,3 +11,8 @@ Safety boundary:
 - Any FD ownership failure must preserve the crash stderr, bounded sanitized procfs snapshot and stack evidence; do not weaken isolation or apply a speculative FD lifecycle fix.
 
 The workflow is intentionally gated by the commit marker `[run-p74-real-worker]` on this feature branch. This commit is the explicit opt-in trigger for that disposable-host run.
+
+
+## Follow-up run request — improved process attribution
+
+A second disposable-host run is requested after the attribution correction: the last prefixed log PID is now recorded only as preceding-log context; the stack-matched process is kept separate; structured fatal-path FD instrumentation is explicitly marked absent when the runtime binary does not contain the diagnostic patch; and the per-snapshot evidence cap is 250 KB. Use only the same built-in `https://example.com/` read-only local Chromium smoke. Preserve the NO-GO result if the fatal marker reproduces.
