@@ -112,3 +112,16 @@ Required outcome: written findings, severity, remediation references, reviewer i
 - Independent security review remains outstanding. Production `IsolatedWorkerBackend` integration and authenticated runtime observation remain unimplemented; do not treat contract tests as production proof.
 
 **Current disposition:** NO-GO. Browser/Worker dispatch OFF; Auto-Run OFF. Do not weaken FD ownership, seccomp, namespaces, cgroups, or default-DROP network policy to force a green result.
+
+
+## Diagnostic instrumentation integrated into PR #14 — 2026-11-18
+
+The read-only bounded procfs FD collector, structured FD ownership log parser, exact-build symbolication helper, diagnostic-only Chromium patch/build script, sanitized diagnostic matrix, and their regression tests have now been copied from PR #23 onto this PR branch. The real-worker workflow now collects snapshots around Chromium execution and attempts bounded best-effort symbolication; the sandbox configuration is unchanged.
+
+Validation on the current branch:
+- P74 diagnostic and symbolication targeted suite run #15 / ID `44238302819` — **SUCCESS**.
+- P93 pinned-source diagnostic patch/parser validation run #87 / ID `44238297416` — **SUCCESS** (patch applies to the pinned upstream source and parser regression tests pass).
+- P93 run #88 / ID `44238302745` and APAA Security CI run #1358 / ID `44238302755` are the next validation attempts and must be checked before treating the latest combined head as fully verified.
+- These tests do not compile Chromium or prove the diagnostic patch is in the worker binary. The next disposable OCI qualification must collect the new evidence and may still fail.
+
+The concrete production `IsolatedWorkerBackend` and authenticated production runtime observer are still not implemented. Independent external review is still required.
