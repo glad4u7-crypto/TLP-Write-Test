@@ -394,10 +394,6 @@ class BrowserExecutionCoordinator:
         )
 
     def _require_owner_session(self) -> None:
-        self._require_owner_session()
-
-    def _consume_owner_approval(self, job: BrowserJob, receipt: ApprovalReceipt | None) -> tuple[str, str, str]:
-        """Re-check Owner identity/session and consume the exact one-time job receipt."""
         if (self._approval_authority is None or self._owner_principal is None or
                 self._owner_tenant is None or self._session_scope is None or
                 self._owner_session_check is None):
@@ -412,6 +408,10 @@ class BrowserExecutionCoordinator:
             raise
         except Exception as exc:
             raise BrowserExecutionError("Owner session validation failed; browser dispatch is blocked.") from exc
+
+    def _consume_owner_approval(self, job: BrowserJob, receipt: ApprovalReceipt | None) -> tuple[str, str, str]:
+        """Re-check Owner identity/session and consume the exact one-time job receipt."""
+        self._require_owner_session()
         if not self._approval_authority.consume(
             receipt, "browser_read", _approval_job_payload(job),
             tenant=self._owner_tenant, session_scope=self._session_scope,
