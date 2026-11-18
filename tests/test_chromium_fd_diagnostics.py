@@ -8,6 +8,7 @@ import pytest
 
 from core.chromium_fd_diagnostics import (
     _proc_stat_identity,
+    _proc_stat_start_time,
     _executable_mappings,
     _process_role,
     _target_class,
@@ -44,7 +45,13 @@ def _proc_fixture(tmp_path: Path, *, comm: str = "chrome (network)") -> tuple[Pa
 
 
 def test_proc_stat_parser_handles_spaces_and_parentheses_in_comm():
-    assert _proc_stat_identity(_stat("chrome (network)")) == ("chrome (network)", ord("S"), 1)
+    raw = _stat("chrome (network)")
+    assert _proc_stat_identity(raw) == ("chrome (network)", ord("S"), 1)
+    assert _proc_stat_start_time(raw) == "12345"
+
+
+def test_proc_stat_start_time_rejects_truncated_or_invalid_records():
+    assert _proc_stat_start_time("4242 (chrome) S 1 2") is None
 
 
 @pytest.mark.parametrize(
@@ -200,7 +207,8 @@ def test_executable_mapping_parser_keeps_only_sanitized_module_ranges(tmp_path):
     (proc / "maps").write_text(
         "55555000-55556000 r-xp 00001000 08:01 123 /usr/lib/chromium/chromium\n"
         "7fff0000-7fff1000 rw-p 00000000 00:00 0 [stack]\n"
-        "55556000-55557000 r--p 00002000 08:01 123 /usr/lib/chromium/chromium\n",
+        "55556000-55557000 r--p 00002000 08:01 123 /usr/lib/chromium/chromium\n"
+        "7f000000-7f001000 r-xp 00000000 08:01 456 /usr/lib/libc.so.6\n",
         encoding="ascii",
     )
     mappings = _executable_mappings(proc, "chromium")
@@ -210,3 +218,27 @@ def test_executable_mapping_parser_keeps_only_sanitized_module_ranges(tmp_path):
         "permissions": "r-xp", "device": "08:01", "inode": 123, "module": "chromium",
     }
     assert "[stack]" not in str(mappings)
+    assert "libc.so.6" not in str(mappings)
+
+
+
+def test_snapshot_discards_process_if_pid_is_recycled_mid_capture(tmp_path, monkeypatch):
+    from core import chromium_fd_diagnostics as diagnostics
+
+    proc, cgroup = _proc_fixture(tmp_path)
+    original_read_text = diagnostics._read_text
+    stat_reads = 0
+
+    def changing_stat(path, limit=diagnostics._MAX_LINE):
+        nonlocal stat_reads
+        value = original_read_text(path, limit)
+        if Path(path).name == "stat":
+            stat_reads += 1
+            if stat_reads == 2 and value is not None:
+                return value.replace("12345", "54321")
+        return value
+
+    monkeypatch.setattr(diagnostics, "_read_text", changing_stat)
+    result = snapshot_cgroup(cgroup, proc_root=proc)
+    assert result["process_count_observed"] == 0
+    assert result["processes"] == []
