@@ -159,3 +159,37 @@ Do not make speculative descriptor lifecycle changes or weaken sandbox controls.
 **APAA → S09 → C01 → Browser Automation A–Z → Batch 0 recorded; Batch 1 next.**
 
 Current known blockers: PR #10 latest exact-head CI needs re-observation; P03 exact-head CI pending; P74 real-worker Chromium failure unresolved; production worker/host/proxy integration incomplete; real egress qualification not accepted; Android physical qualification not run; independent review and Owner acceptance pending.
+
+
+## Evidence update — Batch 1 exact-head CI PASS (2026-11-18)
+
+- Audit branch commit: `53a57e51d6716ce31f6e01b173d43c53feee3fd6`.
+- APAA Security CI run #1424 / ID `44352009348`: **SUCCESS** on that exact SHA.
+- All workflow steps completed successfully: Python syntax; P01 launch lifecycle; trusted-CA, hostname-mismatch and expired-certificate TLS tests; live-browsing controller policy/lifecycle; real Chromium through restricted local proxy; production worker adapter contract; Linux host inspector contract; remaining security suite.
+- This closes the repository CI gate for this exact audit-branch head only. It does not override the separately recorded P74 disposable OCI Chromium failure, does not prove production egress isolation, and does not qualify Android/Termux.
+
+## Batch 2 — Chromium FD ownership diagnosis: evidence and hard boundary
+
+The diagnostic evidence in PR #23 / P74 matrix now establishes:
+- The FD ownership crash is reproducible in the disposable OCI worker, including before proxy/navigation (local `data:` smoke).
+- Process attribution is partial. The browser-side log PID and stack-matched child candidate are distinct; they must not be conflated.
+- Shared pipe/memfd inode observations are candidates only, not proof of an erroneous hand-off.
+- Exact failing FD, ownership operation, causal call site and root cause remain **unidentified**.
+- The Debian runtime Chromium binary is not instrumented with the structured fatal-path diagnostic patch. Patch-application/parser PASS is not runtime instrumentation.
+- The upstream Chromium source pin is known, but Debian source-package patch-series equivalence and a compiled matching diagnostic binary remain unproven.
+- A narrow diagnostic patch/build recipe exists. It preserves the existing fatal check and does not mutate descriptors, but it has not yet been compiled into the exact runtime image.
+
+### Software-only work that can proceed now
+1. Audit the diagnostic patch against the pinned upstream source and inspect its parser/build workflow for correctness.
+2. Expand deterministic Python tests for evidence correlation, redaction, PID reuse and bounded capture wherever the current code exposes testable behavior.
+3. Add an explicit compatibility/evidence validator that refuses to label diagnostic output as instrumented unless the runtime binary build identity and diagnostic record provenance are both present.
+4. Keep a precise list of source-package/build-host/OCI steps that cannot be completed by repository-only tooling.
+
+### External execution gates (deferred)
+- Obtain and verify the exact Debian source package and patch series.
+- Compile the diagnostic Chromium binary on a disposable Linux build host.
+- Run it in the disposable OCI worker under unchanged sandbox and egress policy.
+- Capture the first actual FD/operation/PID/TID, then implement only an evidence-justified minimal fix and Chromium-native regression.
+- Repeat at least 10 cold starts after a candidate fix.
+
+No behavioral fix is justified today. Release remains **FAILED / NO-GO**; Browser/Worker disabled; Auto-Run OFF.
