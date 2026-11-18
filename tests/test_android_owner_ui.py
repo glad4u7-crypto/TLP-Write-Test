@@ -16,6 +16,7 @@ TERMUX_ENV = {
 def valid_secrets(*, redirect="http://localhost:8501/oauth2callback", metadata="https://issuer.example/.well-known/openid-configuration"):
     return (
         "[apaa]\nrequire_auth = true\n"
+        'approval_signing_secret_hex = "abababababababababababababababababababababababababababababababab"\n'
         "[auth]\n"
         f'redirect_uri = "{redirect}"\n'
         'cookie_secret = "cccccccccccccccccccccccccccccccc"\n'
