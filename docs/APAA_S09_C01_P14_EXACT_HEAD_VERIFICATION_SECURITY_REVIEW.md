@@ -81,3 +81,14 @@ No host firewall, namespace, container, runtime, Android device or network confi
 - The run completed Python syntax validation, Chromium TLS trusted-CA/hostname-mismatch/expired-certificate checks, live-browsing controller lifecycle tests, real Chromium through the restricted local proxy, worker-adapter contract tests, Linux host-inspector contract tests, and the remaining security suite.
 - This verifies the exact repository head and CI test contracts only. It does not satisfy the operational acceptance gates below.
 - PR #10 remains Draft/Open/Unmerged. Browser/Worker remain disabled; no runtime, host firewall, namespace, container, Android device, or deployment was changed.
+
+
+## Verification addendum — 2026-11-18 (latest PR head)
+
+- PR #10 branch head at verification: `2ad0a914e9cf2a52a3a616d01157a38fdd265bbd`.
+- GitHub Actions APAA Security CI run #1416 completed with conclusion **SUCCESS**: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44254521268
+- The workflow's single `Python security tests` job passed every step: Python syntax check; Chromium TLS trusted-CA acceptance, hostname-mismatch rejection and expired-certificate rejection; live-browsing controller policy/lifecycle; real Chromium through the restricted local proxy; production worker-adapter attestation/lifecycle contract; Linux host-inspector procfs/nftables snapshot contract; and the remaining security test suite.
+- This is exact-head CI evidence for repository tests/contracts. It does **not** prove a production OCI/container backend, real host firewall or namespace isolation, default-deny network egress, or Android/Termux compatibility.
+- Operational blockers remain: no reviewed concrete trusted host/container worker adapter; P12 proxy/worker endpoint mismatch; no actual provisioned and independently inspected container/namespace/seccomp/mount/resource/firewall environment; no operational proof against direct TCP/DNS/UDP/QUIC/IPv4/IPv6 bypass; full isolated-worker browser matrix not run; Android/Termux not qualified.
+- Qualification decision: **repository CI PASS; production sandbox/network isolation NOT ACCEPTED / BLOCKED; Android real-device qualification DEFERRED**.
+- Keep Browser/Worker dispatch disabled and Auto-Run OFF. No firewall/device changes, merge, deployment, live browsing, or production enablement.
