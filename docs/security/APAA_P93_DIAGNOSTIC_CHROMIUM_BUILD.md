@@ -66,3 +66,34 @@ Diagnostic patch and build recipe prepared; binary build, real OCI reproduction,
 root-cause identification, behavioral fix, and Chromium-native regression test
 remain pending until the exact source revision/build environment is available.
 Release remains FAILED / NO-GO.
+
+## Verified upstream source provenance
+
+The upstream Chromium release ref `156.0.8078.79` resolves to commit
+`a21ce95c24ce3964416f09ae1862f53f319eb4d0` in the Chromium GitHub mirror.
+At that commit, `base/files/scoped_file_linux.cc` has Git blob
+`f911af6b458272481142431360352ebcbd0e3c04`. The diagnostic patch is now
+pinned to that exact source commit and file context; the build script refuses
+any other HEAD and a dirty source tree.
+
+This establishes upstream source context, **not** that every Debian packaging
+patch in `156.0.8078.79-1~deb12u1` has been applied or audited. Before claiming
+binary-identical reproduction, obtain the exact Debian source package and
+verify its patch series against the pinned upstream tree. The same file blob
+must be confirmed after Debian patches are applied. A successful upstream
+build is diagnostic instrumentation validation, not proof of a Debian package
+reproduction.
+
+The source provenance was checked against the Chromium release ref and exact
+file content. References:
+- Chromium release source file: https://github.com/chromium/chromium/blob/a21ce95c24ce3964416f09ae1862f53f319eb4d0/base/files/scoped_file_linux.cc
+- Debian source package listing: https://packages.debian.org/bookworm/source/chromium
+
+## Remaining execution boundary
+
+This repository integration environment can write and inspect GitHub files,
+but it does not provide a Chromium source checkout, depot_tools, a configured
+Linux build host, or a disposable OCI host with the APAA worker image. Therefore
+it cannot honestly report a compiled diagnostic binary, an OCI reproduction,
+a real failing FD, a root-cause fix, or a defect-specific Chromium regression
+test. Those remain explicit release gates rather than being marked complete.
