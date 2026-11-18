@@ -12,6 +12,7 @@ import re
 from typing import Any, Sequence
 
 from core.browser_security import BrowserPolicyError, validate_destination
+from core.browser_interaction import _redact_result_text
 
 
 class DOMInspectionError(ValueError):
@@ -23,18 +24,6 @@ class VisibleDOMSnapshot:
     page_id: str
     origin: str
     text: str
-
-
-def _redact_visible_text(value: str) -> str:
-    value = re.sub(r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", "[redacted-email]", value)
-    value = re.sub(r"(?<!\\w)\\+?\\d[\\d\\s().-]{7,}\\d(?!\\w)", "[redacted-phone]", value)
-    value = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{8,}", "Bearer [redacted]", value)
-    value = re.sub(
-        r"(?i)\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\\s*[:=]\\s*[^\\s,;]{6,}",
-        "[redacted-secret]",
-        value,
-    )
-    return value
 
 
 async def extract_visible_dom_text(
@@ -84,5 +73,5 @@ async def extract_visible_dom_text(
     return VisibleDOMSnapshot(
         page_id=page_id,
         origin=destination.origin,
-        text=_redact_visible_text(raw_text),
+        text=_redact_result_text(raw_text),
     )
