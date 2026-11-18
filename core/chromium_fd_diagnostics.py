@@ -209,23 +209,25 @@ def _read_process(
         pass
     role = _process_role(cmdline)
     tokens = [part.decode("utf-8", errors="ignore") for part in cmdline.split(b"\0") if part]
-    allowed_process_types = {
-        "browser", "crashpad-handler", "zygote", "renderer", "gpu-process", "utility",
-        "ppapi", "plugin", "broker",
-    }
-    process_type = next(
-        (token.split("=", 1)[1] for token in tokens if token.startswith("--type=")),
-        None,
+    process_type_candidate = next(
+        (token.split("=", 1)[1] for token in tokens if token.startswith("--type=")), None,
     )
-    if process_type not in allowed_process_types:
-        process_type = None
-    utility_subtype = next(
-        (token.split("=", 1)[1] for token in tokens
-         if token.startswith("--utility-sub-type=")),
-        None,
+    process_type = (
+        process_type_candidate
+        if process_type_candidate is not None and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", process_type_candidate)
+        else None
     )
-    if utility_subtype != "network.mojom.NetworkService":
-        utility_subtype = None
+    utility_subtype_candidate = next(
+        (token.split("=", 1)[1] for token in tokens if token.startswith("--utility-sub-type=")), None,
+    )
+    utility_subtype = (
+        utility_subtype_candidate
+        if utility_subtype_candidate is not None and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", utility_subtype_candidate)
+        else None
+    )
+    argv0_basename = None
+    if tokens and re.fullmatch(r"[A-Za-z0-9._+-]{1,128}", Path(tokens[0]).name):
+        argv0_basename = Path(tokens[0]).name
     status = _parse_status(_read_text(base / "status") or "")
     try:
         fd_names = sorted(
@@ -251,6 +253,7 @@ def _read_process(
         "executable": executable,
         "role": role,
         "cmdline_bytes_observed": len(cmdline),
+        "argv0_basename": argv0_basename,
         "process_type": process_type,
         "utility_subtype": utility_subtype,
         "zygote_disabled": "--no-zygote" in tokens,
