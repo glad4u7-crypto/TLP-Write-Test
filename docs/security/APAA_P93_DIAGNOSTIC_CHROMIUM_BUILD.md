@@ -97,3 +97,10 @@ Linux build host, or a disposable OCI host with the APAA worker image. Therefore
 it cannot honestly report a compiled diagnostic binary, an OCI reproduction,
 a real failing FD, a root-cause fix, or a defect-specific Chromium regression
 test. Those remain explicit release gates rather than being marked complete.
+
+## Local preflight results
+
+- The corrected unified diff was checked with `git apply --check` against a clean fixture containing the exact fetched upstream file content at the pinned commit; result: **PASS**.
+- The structured parser's 6 pytest cases were run in an isolated Python 3 environment using the repository module/test contents; result: **6 passed**.
+- These are source-patch applicability and parser checks only. They do not compile Chromium or exercise the real Chromium FD ownership checker.
+- The dedicated GitHub Actions workflow has been added, but no successful GitHub Actions run result has been observed yet.
