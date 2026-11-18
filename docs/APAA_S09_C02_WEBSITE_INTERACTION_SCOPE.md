@@ -1,6 +1,6 @@
 # APAA-S09-C02 — Website Interaction
 
-**Status:** CONTROLLER FOUNDATION IMPLEMENTED; REDACTION REGEX AND FORGED-INTENT HARDENING COMMITTED; LATEST CI FOUND ONE XSRF ALIAS EDGE CASE (1277 PASSED / 1 FAILED); FIX COMMITTED; EXACT-HEAD CI PENDING; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
+**Status:** P01/P02/P03 CONTROLLER FOUNDATION VERIFIED ON EXACT HEAD `2134767dc9459411bb3b90723101c6dc737e1f32`; LIVE EXECUTION BLOCKED BY S09-C01 RELEASE GATES.  
 **Checkpoint family:** `APAA-S09-C02-P01`, `APAA-S09-C02-P02`, `APAA-S09-C02-P03`  
 **Repository:** `glad4u7-crypto/TLP-Write-Test`  
 **Branch:** `feature/apaa-s09-c02-website-interaction`  
@@ -53,7 +53,7 @@ File: `tests/test_browser_interaction.py`
 
 ## 5. Verification evidence
 
-Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commits: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448` (redaction regex correction), `c0392701ccd8801248af262819ddd6335e6bb39b` (forged form-intent validation hardening), `7812704d177ef4ebe55fb4e9f9cfcc76ad0233d9` (adversarial forged-intent tests), `7c4603b2e7132d5a7493e9266b55c99afcda027e` / `c607380e7dc74a190db5873deda4d5ebc35e883b` (auth-query redaction), and `2138594dca5ba7c28d575dc3612ab54a2e453702` (prefix-insensitive CSRF/XSRF query redaction). Run `44217027903` completed with 1277 passed / 1 failed: the test exposed `x-xsrf-token` not being removed because the key prefix survived normalization. The redaction gate now rejects any normalized query key containing `csrf` or `xsrf`; exact-head CI is required to verify this correction.
+Previously verified code-bearing commit: `8cc845171d323c41a42771a8b315e635b993c956`.\n\nLatest controller implementation commits: `5e54549e7022fbddf47bf7ea4d4dc51c199a5448` (redaction regex correction), `c0392701ccd8801248af262819ddd6335e6bb39b` (forged form-intent validation hardening), `7812704d177ef4ebe55fb4e9f9cfcc76ad0233d9` (adversarial forged-intent tests), `7c4603b2e7132d5a7493e9266b55c99afcda027e` / `c607380e7dc74a190db5873deda4d5ebc35e883b` (auth-query redaction), and `2138594dca5ba7c28d575dc3612ab54a2e453702` (prefix-insensitive CSRF/XSRF query redaction), plus URL-path PII/secret redaction and adversarial tests. Run `44217027903` completed with 1277 passed / 1 failed, exposing an XSRF prefix alias; corrected. The exact final head `2134767dc9459411bb3b90723101c6dc737e1f32` passed APAA Security CI run `44217405295`.
 
 - GitHub Actions workflow: **APAA Security CI**
 - Run: [44214923346](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44214923346)
@@ -67,7 +67,7 @@ This is evidence for the exact commit above only. It does not prove live browser
 | Checkpoint | Controller foundation | Full acceptance status |
 |---|---|---|
 | C02-P01 — Click and Form Filling | Intent validators plus offline unique/fresh target-evidence gate implemented | NOT COMPLETE: no real DOM adapter/target preview, cryptographic evidence attestation, approval binding/consumption, or real adapter qualification |
-| C02-P02 — Search and Filtering | Bounded intent plus visible-result normalization/redaction gate implemented | NOT COMPLETE: no real DOM extraction, pagination/deadline enforcement, adapter visibility proof, or site-semantic side-effect classification |
+| C02-P02 — Search and Filtering | Bounded intent plus visible-result normalization/redaction gate verified by exact-head CI | NOT COMPLETE: no real DOM extraction, pagination/deadline enforcement, adapter visibility proof, or site-semantic side-effect classification |
 | C02-P03 — Multi-page Navigation | IMPLEMENTED; exact-head CI passed | NOT COMPLETE: no redirect/popup/frame enforcement at runtime, page lineage, cancellation/recovery proof, or egress qualification |
 | C02 overall | CONTROLLER FOUNDATION VERIFIED | BLOCKED FOR EXECUTION by C01 and missing C02 runtime acceptance evidence |
 
@@ -85,3 +85,11 @@ This is evidence for the exact commit above only. It does not prove live browser
 ## 8. Authorization boundary
 
 No PR merge, deployment, default-branch modification, payment, purchase, Auto-Run, public access, or live browsing is authorized by this document.
+
+
+## Final verification update — 2026-11-18
+
+- Exact PR head: `2134767dc9459411bb3b90723101c6dc737e1f32`.
+- APAA Security CI: [run 44217405295](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44217405295) — **success**.
+- This exact-head pass includes P01 target-evidence hardening, P02 result normalization and redaction (including URL path PII/secret handling), P03 bounded navigation-plan validation, and the full repository security suite.
+- This verifies controller-level validation only. It does not qualify a live DOM adapter, production Owner approval/worker dispatch, Android runtime or Chromium OCI host isolation. S09-C01 remains NO-GO.
