@@ -5,7 +5,7 @@ from core.safety import authorize_action
 
 @pytest.mark.parametrize("action", [
     "read", "inspect", "plan", "summarize",
-    "read_invoice", "inspect_repository", "summarize_report",
+    "read_invoice", "inspect_repository", "summarize_report", "browser_read",
 ])
 def test_registered_read_only_actions_are_allowed(action):
     assert authorize_action(action).allowed is True
