@@ -267,9 +267,15 @@ def validate_target_evidence(
             raise InteractionPolicyError("Click intent is not a link-only operation.")
         _validate_origin_url(intent.destination_url, allowed_origins)
     else:
-        if intent.field_type not in _ALLOWED_FIELD_TYPES:
+        if type(intent.field_type) is not str or intent.field_type not in _ALLOWED_FIELD_TYPES:
             raise InteractionPolicyError("Fill intent field type is unsupported.")
-        _bounded_string(intent.value, "intent form value", 2048, allow_empty=True)
+        fill_value = _bounded_string(intent.value, "intent form value", 2048, allow_empty=True)
+        if _PROHIBITED_TERMS.search(fill_value):
+            raise InteractionPolicyError("Financial or purchase-related form content is out of scope.")
+        if intent.field_type == "email" and fill_value and (
+            len(fill_value) > 254 or "@" not in fill_value
+        ):
+            raise InteractionPolicyError("Email value is malformed.")
     interaction_id = _validate_id(item["interaction_id"], "interaction_id")
     page_id = _validate_id(item["page_id"], "page_id")
     if interaction_id != intent.interaction_id or page_id != intent.page_id:
@@ -297,7 +303,7 @@ def validate_target_evidence(
     element_type = item["element_type"]
     href = item["href"]
     if isinstance(intent, ClickIntent):
-        if element_type != "link" or type(href) is not str:
+        if type(element_type) is not str or element_type != "link" or type(href) is not str:
             raise InteractionPolicyError("Click target must be an observed link with an href.")
         observed_href = _validate_origin_url(href, allowed_origins)
         if observed_href != intent.destination_url:
@@ -310,7 +316,7 @@ def validate_target_evidence(
             "date": {"input_date"},
             "select": {"select"},
         }
-        if element_type not in expected_types[intent.field_type] or href is not None:
+        if type(element_type) is not str or element_type not in expected_types[intent.field_type] or href is not None:
             raise InteractionPolicyError("Observed form control type does not match the draft-fill intent.")
 
     observed_at = item["observed_at"]
