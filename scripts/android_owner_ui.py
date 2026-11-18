@@ -40,7 +40,8 @@ def owner_ui_command(
         python_executable, "-m", "streamlit", "run", str(app_path),
         "--server.address=127.0.0.1",
         f"--server.port={port}",
-        "--server.headless=true",\n        "--server.enableCORS=true",\n        "--server.enableXsrfProtection=true",
+        "--server.headless=true",
+        "--server.enableCORS=true",\n        "--server.enableXsrfProtection=true",
         "--browser.gatherUsageStats=false",
     ]
 
