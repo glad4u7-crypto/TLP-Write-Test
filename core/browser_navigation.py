@@ -29,7 +29,7 @@ def _system_resolver(host: str) -> tuple[str, ...]:
 
 
 def _normalise_host(host: str) -> str:
-    if not host or "%" in host:
+    if not isinstance(host, str) or not host or "%" in host:
         raise NavigationPolicyError("A valid destination hostname is required.")
     try:
         return ipaddress.ip_address(host).compressed
@@ -68,22 +68,32 @@ class NavigationPolicy:
     resolver: AddressResolver = field(default=_system_resolver, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        if not self.allowed_hosts:
-            raise ValueError("At least one explicitly allowed host is required.")
+        # Keep policy configuration immutable and reject malformed runtime types.
+        if not isinstance(self.allowed_hosts, frozenset) or not self.allowed_hosts:
+            raise ValueError("allowed_hosts must be a non-empty frozenset.")
         if type(self.allow_subdomains) is not bool:
             raise TypeError("allow_subdomains must be a boolean.")
         if type(self.max_redirects) is not int or not 0 <= self.max_redirects <= 10:
             raise ValueError("max_redirects must be an integer from 0 to 10.")
-        if not self.allowed_schemes or not self.allowed_schemes <= {"http", "https"}:
+        if not isinstance(self.allowed_schemes, frozenset) or not self.allowed_schemes:
+            raise ValueError("allowed_schemes must be a non-empty frozenset.")
+        if any(not isinstance(item, str) for item in self.allowed_schemes):
+            raise TypeError("Every allowed scheme must be a string.")
+        schemes = frozenset(item.lower() for item in self.allowed_schemes)
+        if not schemes <= {"http", "https"}:
             raise ValueError("Only explicitly selected http/https schemes are supported.")
+        if not callable(self.resolver):
+            raise TypeError("resolver must be callable.")
         normalised = frozenset(_normalise_host(host) for host in self.allowed_hosts)
         object.__setattr__(self, "allowed_hosts", normalised)
+        object.__setattr__(self, "allowed_schemes", schemes)
 
     def validate_url(self, url: str) -> str:
         if not isinstance(url, str) or not url or len(url) > 4096:
             raise NavigationPolicyError("URL must be a non-empty string up to 4096 characters.")
-        if any(ord(ch) < 32 or ord(ch) == 127 for ch in url) or chr(92) in url:
-            raise NavigationPolicyError("URL contains forbidden control or backslash characters.")
+        if (any(ord(ch) < 32 or ord(ch) == 127 for ch in url)
+                or any(ch.isspace() for ch in url) or chr(92) in url):
+            raise NavigationPolicyError("URL contains forbidden whitespace, control or backslash characters.")
         try:
             parts: SplitResult = urlsplit(url)
             scheme = parts.scheme.lower()
@@ -97,6 +107,10 @@ class NavigationPolicy:
             raise NavigationPolicyError("URL must include a hostname.")
         if parts.username is not None or parts.password is not None or "@" in parts.netloc:
             raise NavigationPolicyError("URL credentials are not allowed.")
+        # urllib.parse treats an explicit empty port (example.com:) as no port.
+        # Reject it rather than silently accepting an ambiguous authority.
+        if parts.netloc.endswith(":"):
+            raise NavigationPolicyError("URL port is invalid.")
         if port is not None and not 1 <= port <= 65535:
             raise NavigationPolicyError("URL port is invalid.")
         host = _normalise_host(host_raw)
@@ -120,7 +134,14 @@ class NavigationPolicy:
             if not allowed:
                 raise NavigationPolicyError("Hostname is not on the explicit allowlist.")
             try:
-                resolved = tuple(self.resolver(host))
+                raw_resolved = self.resolver(host)
+                # Check before tuple(): strings are iterable and would otherwise
+                # become a tuple of characters, obscuring the resolver contract.
+                if isinstance(raw_resolved, (str, bytes)):
+                    raise NavigationPolicyError(
+                        "Resolver must return an iterable of IP address strings."
+                    )
+                resolved = tuple(raw_resolved)
             except NavigationPolicyError:
                 raise
             except Exception as exc:
