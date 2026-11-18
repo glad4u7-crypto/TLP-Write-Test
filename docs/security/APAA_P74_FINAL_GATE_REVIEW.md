@@ -125,3 +125,27 @@ Validation on the current branch:
 - These tests do not compile Chromium or prove the diagnostic patch is in the worker binary. The next disposable OCI qualification must collect the new evidence and may still fail.
 
 The concrete production `IsolatedWorkerBackend` and authenticated production runtime observer are still not implemented. Independent external review is still required.
+
+
+## Latest gate status after OCI runs #427 and #430 — 2026-11-18
+
+Two owner-authorized disposable-host qualifications using the reserved public read-only fixture `https://example.com/` were completed:
+- Run #427 / ID `44238475405`, exact head `618c0fed421d72ede0a8306bb971e2c950605865`; evidence artifact `14398771572`, SHA-256 `1b3ae08658484acbdbee8cab26117c5425cbfc302ae06fd152de07c32e5c577e`.
+- Run #430 / ID `44239047832`, exact head `2fc720b56d2f05dde8590794572f3e85c13ddc32`; evidence artifact `14399066537`, SHA-256 `9ff0ec51552d69a4ad6bc1650961711c2d267172e0a9559ab5adc4ae7bbfb3bf`.
+
+Both passed host dependency, delegated cgroup-v2, worker image, and seccomp-profile preparation. Both failed when real Chromium ran its local dump-DOM smoke test: zero stdout, FD ownership fatal marker, then network-service restart. Run #427 captured 153 snapshots (10 marker-triggered); #430 captured 155 (9 marker-triggered). Both collectors reported zero diagnostic errors and both cleanup checks succeeded with no cleanup errors.
+
+The exact Debian Chromium build ID `4a74f6497529d42bb61262c76d7b1add49c4dea6` was resolved against debug symbols. The stack maps partially to a separate Chromium child process (container PID 280 in #427 and 279 in #430), while the prefixed log PID 20 maps to the browser/launcher parent. The crash PID is not proven. The resolved stack contains `base::GlobalDescriptors::Descriptor` and `crashpad::Ptracer::ReadUpTo` symbols, but this does not prove which ownership transition failed.
+
+The Chromium diagnostic patch was not compiled into either tested browser binary; therefore no exact FD number or operation (duplicate acquire, invalid release, or raw close while owned) was recorded. Chromium's ownership guard checks these classes of transition in its implementation; without the diagnostic build, choosing one would be speculation. See Chromium's `scoped_file_linux.cc` ownership guard source: https://chromium.googlesource.com/chromium/src/+/HEAD/base/files/scoped_file_linux.cc.
+
+After run #430, the collector was improved to retain only safe `argv0_basename`, bounded `process_type`, and bounded `utility_subtype` metadata, and to classify unknown Chromium subprocesses without storing arbitrary argv. Regression tests now cover this behavior. The patch applies to the pinned upstream Chromium source and parser tests pass, but the diagnostic patch has not been compiled into Chromium and no native regression/fix is proven.
+
+Latest code head: `c13ad30cb103bd80051fabbe6d0caf83b5d5df32`.
+- P74 diagnostic/symbolication targeted tests #26 / ID `44239625919` — **SUCCESS**.
+- P93 pinned-source diagnostic patch/parser validation #99 / ID `44239625923` — **SUCCESS**.
+- APAA Security CI #1381 / ID `44239626347` — **SUCCESS**.
+
+A third full OCI qualification and a full Chromium source build are not being launched automatically because they would consume additional CI budget without the native diagnostic binary. The next meaningful Chromium step is a separately budgeted diagnostic build at the pinned source revision, followed by a native regression test and one more disposable-host qualification.
+
+**Still NO-GO:** production `IsolatedWorkerBackend`, authenticated runtime observation provider, full `WorkerLaunchSpec` to OCI readback proof, native Chromium FD root-cause/fix, and independent external security review remain open. Browser/Worker dispatch OFF; Auto-Run OFF; PRs remain Draft/Open/Unmerged.
