@@ -720,12 +720,15 @@ def test_owner_approval_mismatch_is_rejected_before_dns_or_worker():
 
 
 def test_owner_session_is_rechecked_before_consuming_approval():
-    authority = ApprovalAuthority(signing_secret=b"APAA test approval signing secret 32 bytes minimum")
     tenant = TenantKey("https://apaa.test", "owner-1")
     principal = Principal("owner-1", "https://apaa.test", True, ("owner",))
     ledger_dir = tempfile.TemporaryDirectory()
     private_dir = Path(ledger_dir.name)
     private_dir.chmod(0o700)
+    authority = ApprovalAuthority(
+        nonce_store=SQLiteSecurityStore(private_dir / "security.sqlite3"),
+        signing_secret=b"APAA test approval signing secret 32 bytes minimum",
+    )
     ledger = SQLiteBrowserRecoveryLedger(private_dir / "browser.sqlite3")
     session = {"active": True}
     coordinator = _ProductionBrowserExecutionCoordinator(
