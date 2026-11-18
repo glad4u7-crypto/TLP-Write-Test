@@ -345,6 +345,11 @@ class BrowserExecutionCoordinator:
         audit: AuditWriter,
         clock: Callable[[], float] = time.monotonic,
         recovery_ledger: SQLiteBrowserRecoveryLedger | None = None,
+        approval_authority: ApprovalAuthority | None = None,
+        owner_principal: Principal | None = None,
+        owner_tenant: TenantKey | None = None,
+        session_scope: str | None = None,
+        owner_session_check: Callable[[], bool] | None = None,
     ) -> "BrowserExecutionCoordinator":
         """Fail closed until trusted Owner approval is consumed by this execution path.
 
@@ -362,6 +367,14 @@ class BrowserExecutionCoordinator:
             raise TypeError("A concrete AttestedBrowserRuntime gate is required.")
         if type(recovery_ledger) is not SQLiteBrowserRecoveryLedger:
             raise TypeError("Production browser dispatch requires a durable SQLite recovery ledger.")
+        if (
+            not isinstance(approval_authority, ApprovalAuthority)
+            or not isinstance(owner_principal, Principal)
+            or not isinstance(owner_tenant, TenantKey)
+            or type(session_scope) is not str
+            or not callable(owner_session_check)
+        ):
+            raise BrowserExecutionError("Production browser dispatch requires the complete trusted Owner approval boundary.")
         # This factory is a process-start boundary. Interrupted jobs are made
         # terminal and retained for owner review; they are never auto-replayed.
         interrupted = recovery_ledger.recover_interrupted()
@@ -373,7 +386,12 @@ class BrowserExecutionCoordinator:
         worker = runtime_gate.launch(signed_evidence, challenge=challenge, now=now)
         if not callable(getattr(worker, "run", None)) or not callable(getattr(worker, "terminate", None)):
             raise BrowserExecutionError("Attested runtime returned an invalid worker handle.")
-        return cls(worker, audit=audit, clock=clock, recovery_ledger=recovery_ledger)
+        return cls(
+            worker, audit=audit, clock=clock, recovery_ledger=recovery_ledger,
+            approval_authority=approval_authority, owner_principal=owner_principal,
+            owner_tenant=owner_tenant, session_scope=session_scope,
+            owner_session_check=owner_session_check,
+        )
 
     def _consume_owner_approval(self, job: BrowserJob, receipt: ApprovalReceipt | None) -> tuple[str, str, str]:
         """Re-check Owner identity/session and consume the exact one-time job receipt."""
