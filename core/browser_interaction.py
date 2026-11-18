@@ -221,3 +221,93 @@ def validate_navigation_plan(raw: object, *, allowed_origins: Sequence[str]) -> 
     if type(runtime) is not int or not 1 <= runtime <= 60:
         raise InteractionPolicyError("Navigation runtime must be an integer from 1 to 60 seconds.")
     return NavigationPlan(plan_id, tuple(steps), runtime)
+
+
+@dataclass(frozen=True)
+class TargetEvidence:
+    """Short-lived adapter observation; not an approval or execution capability."""
+
+    interaction_id: str
+    page_id: str
+    locator_kind: str
+    locator_value: str
+    element_type: str
+    href: str | None
+    observed_at: int
+
+
+def validate_target_evidence(
+    raw: object,
+    *,
+    intent: ClickIntent | FillIntent,
+    allowed_origins: Sequence[str],
+    now_epoch: int,
+    max_age_seconds: int = 5,
+) -> TargetEvidence:
+    """Require a unique, visible, enabled, fresh target on the intended page.
+
+    This validates a controller/adapter observation only. It does not prove the
+    adapter is honest, bind an Owner approval, or make a browser action safe.
+    """
+    fields = frozenset({
+        "interaction_id", "page_id", "origin", "locator", "match_count",
+        "visible", "enabled", "element_type", "href", "observed_at",
+    })
+    item = _closed_mapping(raw, fields, "target evidence")
+    if not isinstance(intent, (ClickIntent, FillIntent)):
+        raise InteractionPolicyError("Target evidence requires a validated click or fill intent.")
+    interaction_id = _validate_id(item["interaction_id"], "interaction_id")
+    page_id = _validate_id(item["page_id"], "page_id")
+    if interaction_id != intent.interaction_id or page_id != intent.page_id:
+        raise InteractionPolicyError("Target evidence does not match the intended interaction and page.")
+    observed_origin = _validate_origin_url(item["origin"], allowed_origins)
+    expected_origin = _validate_origin_url(intent.origin, allowed_origins)
+    try:
+        observed_parts = validate_destination(observed_origin, allowed_origins)
+        expected_parts = validate_destination(expected_origin, allowed_origins)
+    except (BrowserPolicyError, TypeError) as exc:
+        raise InteractionPolicyError("Target evidence origin is not approved.") from exc
+    if observed_parts.origin != expected_parts.origin:
+        raise InteractionPolicyError("Target evidence belongs to a different origin.")
+
+    locator_kind, locator_value = _validate_locator(item["locator"])
+    if (locator_kind, locator_value) != (intent.locator_kind, intent.locator_value):
+        raise InteractionPolicyError("Observed locator differs from the approved intent.")
+    if type(item["match_count"]) is not int or item["match_count"] != 1:
+        raise InteractionPolicyError("Target locator must resolve to exactly one element.")
+    if type(item["visible"]) is not bool or item["visible"] is not True:
+        raise InteractionPolicyError("Target element must be visible.")
+    if type(item["enabled"]) is not bool or item["enabled"] is not True:
+        raise InteractionPolicyError("Target element must be enabled.")
+
+    element_type = item["element_type"]
+    href = item["href"]
+    if isinstance(intent, ClickIntent):
+        if element_type != "link" or type(href) is not str:
+            raise InteractionPolicyError("Click target must be an observed link with an href.")
+        observed_href = _validate_origin_url(href, allowed_origins)
+        if observed_href != intent.destination_url:
+            raise InteractionPolicyError("Observed link destination changed after planning.")
+    else:
+        expected_types = {
+            "text": {"input_text", "textarea"},
+            "email": {"input_email"},
+            "number": {"input_number"},
+            "date": {"input_date"},
+            "select": {"select"},
+        }
+        if element_type not in expected_types[intent.field_type] or href is not None:
+            raise InteractionPolicyError("Observed form control type does not match the draft-fill intent.")
+
+    observed_at = item["observed_at"]
+    if type(now_epoch) is not int or type(observed_at) is not int:
+        raise InteractionPolicyError("Target evidence timestamps must be integer Unix seconds.")
+    if type(max_age_seconds) is not int or not 1 <= max_age_seconds <= 30:
+        raise InteractionPolicyError("Target evidence age limit is invalid.")
+    if observed_at > now_epoch or now_epoch - observed_at > max_age_seconds:
+        raise InteractionPolicyError("Target evidence is stale or from the future.")
+
+    return TargetEvidence(
+        interaction_id, page_id, locator_kind, locator_value,
+        element_type, href, observed_at,
+    )
