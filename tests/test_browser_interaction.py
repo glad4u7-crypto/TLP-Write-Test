@@ -64,9 +64,11 @@ def test_click_blocks_buttons_submit_and_unsupported_locator(locator):
         validate_click_intent(click(locator=locator), allowed_origins=ORIGINS)
 
 
-def test_click_rejects_cross_origin_destination_and_unknown_fields():
+def test_click_rejects_cross_origin_prohibited_destination_and_unknown_fields():
     with pytest.raises(InteractionPolicyError):
         validate_click_intent(click(destination_url="https://evil.example/"), allowed_origins=ORIGINS)
+    with pytest.raises(InteractionPolicyError):
+        validate_click_intent(click(destination_url="https://example.com/checkout"), allowed_origins=ORIGINS)
     with pytest.raises(InteractionPolicyError):
         validate_click_intent({**click(), "javascript": "alert(1)"}, allowed_origins=ORIGINS)
 
