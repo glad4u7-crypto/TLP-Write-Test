@@ -48,7 +48,7 @@ index f911af6..0000000 100644
 +                                previous_owned, owned);
    }
  }
-@@ -107,6 +124,7 @@
+@@ -103,5 +120,6 @@
  __attribute__((visibility("default"), noinline)) int close(int fd) {
    static LibcCloseFuncPtr libc_close = LoadCloseSymbol();
    if (base::IsFDOwned(fd) && g_is_ownership_enforced) {
