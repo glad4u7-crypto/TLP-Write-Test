@@ -72,3 +72,12 @@ Repository implementation and exact-head CI are **PASS**. Production browser exe
 No host firewall, namespace, container, runtime, Android device or network configuration was changed. No public website, login, form submission, download, payment, purchase, trading, money movement, paid API/provider, Auto-Run, merge, deployment or production enablement occurred.
 
 **Release decision:** Keep browser dispatch and live browsing disabled until every unchecked operational gate is independently evidenced and the Owner explicitly approves.
+
+
+## Verification addendum — 2026-11-18
+
+- Exact branch/PR head: `a4b2c5be9f9b5563eff1912ad85a9ae95985f2ae`.
+- GitHub Actions APAA Security CI run #1406 completed with conclusion **SUCCESS**: https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44250466439
+- The run completed Python syntax validation, Chromium TLS trusted-CA/hostname-mismatch/expired-certificate checks, live-browsing controller lifecycle tests, real Chromium through the restricted local proxy, worker-adapter contract tests, Linux host-inspector contract tests, and the remaining security suite.
+- This verifies the exact repository head and CI test contracts only. It does not satisfy the operational acceptance gates below.
+- PR #10 remains Draft/Open/Unmerged. Browser/Worker remain disabled; no runtime, host firewall, namespace, container, Android device, or deployment was changed.
