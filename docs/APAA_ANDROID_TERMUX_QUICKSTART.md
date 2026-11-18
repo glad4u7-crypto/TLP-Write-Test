@@ -89,6 +89,8 @@ The wizard:
 - refuses to overwrite an existing secrets file;
 - does not print secret values, start the server, or enable browser execution.
 
+At startup, APAA now rejects a symlinked/non-regular secrets file, a symlinked `.streamlit` directory, or group/world-readable permissions. Keep the directory at `0700` and the file at `0600`. If Android/PRoot cannot preserve these permissions, do not bypass the check; stop and report the redacted diagnostic.
+
 The secrets file is git-ignored. Never paste it into chat, GitHub, shared storage, screenshots, or logs. Keep the OIDC client secret private. If you need to change credentials, handle the existing file manually and securely; this wizard deliberately does not overwrite it.
 
 ## 6. Run automated handset diagnostics
@@ -97,7 +99,7 @@ The secrets file is git-ignored. Never paste it into chat, GitHub, shared storag
 python scripts/android_device_acceptance.py
 ```
 
-Expected: D01–D07 PASS. D04 checks that the app process is non-root. D05 checks OIDC presence; D07 checks durable approval-signing configuration; D06 checks loopback TCP. The script never prints secret values.
+Expected: D01–D08 PASS. D04 checks that the app process is non-root. D05 checks OIDC presence; D07 checks durable approval-signing configuration; D06 checks loopback TCP; D08 checks that the secrets directory/file are non-symlink and private (0700/0600). The script never prints secret values.
 
 A failed check means **do not start the Owner UI** until the cause is understood.
 
@@ -125,7 +127,7 @@ Stop the foreground app with `Ctrl+C` in Termux. On a later session, repeat the 
 
 Run the diagnostics first, then record redacted PASS/FAIL only:
 
-- [ ] D01–D07 automated diagnostics pass
+- [ ] D01–D08 automated diagnostics pass
 - [ ] A02 app starts as the non-root `apaa` user
 - [ ] A03 listener is only `127.0.0.1:8501`
 - [ ] A04 Chrome opens the Owner login page
@@ -142,4 +144,4 @@ Evidence must omit passwords, OIDC tokens, cookies, session IDs, signing keys, d
 
 ## Current status
 
-Repository-side Android setup, OIDC validation, private secret provisioning, dependency separation, launcher and diagnostics are implemented as code. **Physical handset acceptance is not complete until the Owner runs these commands and supplies the redacted D01–D07/A01–A12 outcomes.** A GitHub CI run cannot prove that Chrome, OIDC redirects, Android process lifecycle, or storage permissions work on the actual phone.
+Repository-side Android setup, OIDC validation, private secret provisioning, dependency separation, launcher and diagnostics are implemented as code. **Physical handset acceptance is not complete until the Owner runs these commands and supplies the redacted D01–D08/A01–A12 outcomes.** A GitHub CI run cannot prove that Chrome, OIDC redirects, Android process lifecycle, or storage permissions work on the actual phone.
