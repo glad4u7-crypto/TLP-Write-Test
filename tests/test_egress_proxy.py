@@ -205,8 +205,8 @@ def test_proxy_establishes_authorized_pinned_tunnel_and_relays_bytes():
         client.settimeout(2)
         upstream_test.settimeout(2)
         client.sendall(
-            b"CONNECT example.com:443 HTTP/1.1\\r\\n"
-            b"Host: example.com:443\\r\\n\\r\\n"
+            b"CONNECT example.com:443 HTTP/1.1\r\n"
+            b"Host: example.com:443\r\n\r\n"
         )
         response = client.recv(1024)
         assert response.startswith(b"HTTP/1.1 200 Connection Established")
@@ -248,8 +248,8 @@ def test_proxy_returns_bad_gateway_when_all_pinned_upstream_dials_fail():
     try:
         client.settimeout(2)
         client.sendall(
-            b"CONNECT example.com:443 HTTP/1.1\\r\\n"
-            b"Host: example.com:443\\r\\n\\r\\n"
+            b"CONNECT example.com:443 HTTP/1.1\r\n"
+            b"Host: example.com:443\r\n\r\n"
         )
         response = client.recv(1024)
         assert response.startswith(b"HTTP/1.1 502 Bad Gateway")
