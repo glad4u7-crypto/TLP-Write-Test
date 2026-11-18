@@ -24,11 +24,11 @@ The patch adds one structured line immediately before the existing crash:
 Use a disposable Linux build host with a full Chromium source checkout, depot_tools,
 GN, Ninja/autoninja, and enough disk/RAM for a Chromium build.
 
-Pin the exact source commit before building:
+First identify and independently review the exact upstream Chromium source commit corresponding to the Debian 156.0.8078.79-1~deb12u1 package. Do not derive the expected value from the checkout being built. Then pin that reviewed commit:
 
 ```bash
 export APAA_CHROMIUM_SOURCE_DIR=/work/chromium/src
-export APAA_CHROMIUM_EXPECTED_REVISION="$(git -C "$APAA_CHROMIUM_SOURCE_DIR" rev-parse HEAD)"
+export APAA_CHROMIUM_EXPECTED_REVISION="<reviewed-40-character-upstream-source-commit>"
 export APAA_CHROMIUM_DIAG_OUT_DIR=/work/out/apaa-fd-diagnostic
 bash scripts/build_chromium_fd_diagnostic.sh
 ```
