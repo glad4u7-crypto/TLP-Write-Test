@@ -300,10 +300,12 @@ async def extract_visible_search_results(
             snippet = snippet.strip()
             if not title:
                 continue
+            if len(title) > 200 or len(snippet) > 1000:
+                raise DOMInspectionError("A visible search result exceeded its text-size limit.")
             raw_results.append({
-                "title": title[:200],
+                "title": title,
                 "url": destination.url,
-                "snippet": snippet[:1000],
+                "snippet": snippet,
                 "source_page_id": intent.page_id,
                 "visible": True,
             })
