@@ -51,3 +51,11 @@ The latest exact branch-head GitHub Actions lookup and combined status must stil
 - Added regression tests for mutable configuration, mixed-case schemes, invalid scheme entries, invalid resolver values and non-string host entries.
 - These changes harden policy configuration only. They do not change the documented limitation: DNS validation before connection is not protection against DNS rebinding/TOCTOU, and this module does not intercept live browser requests or redirects.
 - Exact-head CI must pass on the new commit before this follow-up is marked verified.
+
+## P02 final hardening — 2026-11-18
+
+- Rejects all URL whitespace, including leading whitespace and whitespace in paths, in addition to control characters and backslashes. This avoids parser normalization of ambiguous input.
+- Rejects a resolver that returns a bare string/bytes value instead of an iterable collection of IP address strings.
+- Added regression coverage for malformed authorities/ports, invalid host labels, resolver return shape, mixed public/non-public DNS answers, and case/trailing-dot allowlist normalization.
+- DNS validation remains a pre-connection check. It cannot prevent DNS rebinding or TOCTOU unless the eventual connection layer pins and verifies the resolved destination. This P02 module is a policy validator, not a browser network interceptor.
+- P02 completion requires successful exact-head repository CI; platform/browser enforcement remains a separate integration qualification.
