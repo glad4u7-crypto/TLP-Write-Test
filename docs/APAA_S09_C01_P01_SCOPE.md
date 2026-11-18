@@ -62,9 +62,9 @@ The workflow file `.github/workflows/apaa-security-ci.yml` declares both `push` 
 ### Repository implementation and CI evidence
 - P01 launcher implementation and focused-test scope are present on this branch.
 - Historical exact-commit CI PASS records are retained above for commits `47e60a0ff0caf68425e569e909508379f86d62d4` (run #836) and `3a3f03a7fc22e63fa3c2b070151852b80671f2da` (run #1300). These results apply only to those exact commits.
-- PR #10 currently points to head `beb033901dba789e2031d3da593f712ec6fe791c`. This is 15 commits ahead of the historical #836 commit and 14 commits ahead of the historical #1300 commit; historical CI success does not verify the current head.
+- At the audit snapshot, PR #10 pointed to head `b5633473f17358f94abc85ee68707dbb485843a6`. This is 16 commits ahead of the historical #836 commit and 15 commits ahead of the historical #1300 commit; historical CI success does not verify this audit head. The final documentation-only correction commit is a later head and is also unverified until its own CI is observed.
 - The workflow has `push`, `pull_request`, and `workflow_dispatch` triggers. Its pull-request base-branch filter does not include PR #10's base branch `feature/apaa-s08-completion`. A push to the feature head is the applicable configured automatic trigger.
-- The available workflow-run connector returns only pull-request-triggered runs. It returned no runs for the current head; the combined-status lookup returned no statuses. It also returned no historical runs when queried again, so this connector cannot independently reproduce the earlier recorded run details in this audit.
+- The available workflow-run connector returns only pull-request-triggered runs. It returned no runs for audit head `b5633473f17358f94abc85ee68707dbb485843a6`; the combined-status lookup returned no statuses for that head. It also returned no historical runs when queried again, so this connector cannot independently reproduce the earlier recorded run details in this audit.
 - No Actions-run listing or workflow-dispatch action is exposed in the available GitHub tools. Therefore current-head CI is **NOT VERIFIED / NOT OBSERVABLE**, not PASS and not proven absent.
 
 ### Remaining qualification
@@ -73,7 +73,7 @@ The workflow file `.github/workflows/apaa-security-ci.yml` declares both `push` 
 - Owner authorization, live URL navigation and website interaction are separate scope items.
 
 ### Final status
-P01 code and focused-test implementation are present, but the full P01 checkpoint remains **IN PROGRESS / CI UNVERIFIED** until a successful Actions run is observed on current head `beb033901dba789e2031d3da593f712ec6fe791c`. Android and production host-boundary qualifications remain pending. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
+P01 code and focused-test implementation are present, but the full P01 checkpoint remains **IN PROGRESS / CI UNVERIFIED** until a successful Actions run is observed on the latest branch head (the audit snapshot was `b5633473f17358f94abc85ee68707dbb485843a6`; the final documentation-only correction is newer and likewise unverified). Android and production host-boundary qualifications remain pending. No merge, deployment, Auto-Run, payment, purchase, or live-site action was performed.
 
 ## Latest audit correction — 2026-11-18
 
