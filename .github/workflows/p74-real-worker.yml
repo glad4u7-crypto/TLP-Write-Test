@@ -125,6 +125,17 @@ jobs:
           sudo chown "$USER":"$USER" "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
           chmod 600 "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json" 2>/dev/null || true
 
+      - name: Resolve exact Debian Chromium debug symbols (best effort)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          DEBUGINFOD_URLS: https://debuginfod.debian.net
+          DEBUGINFOD_PROGRESS: "0"
+        run: |
+          set -euo pipefail
+          python3 scripts/symbolicate_chromium_fd_evidence.py "$RUNNER_TEMP/apaa-p74-real-worker-evidence.json"
+
       - name: Upload sanitized qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
