@@ -106,3 +106,132 @@ sequenceDiagram
 7. Only then consider a narrowly scoped enablement; no enablement is implied by this architecture document.
 
 **Current decision:** Browser/Worker DISABLED, Auto-Run OFF, Ask First, no merge/deployment/production activation. This architecture is the target design; the implementation map above is the honest current state.
+
+
+## 8. Component contracts and ownership boundaries
+
+The following contracts are normative. An implementation that cannot satisfy a contract must fail closed and must not be substituted by a test fake in a production configuration.
+
+| Component | Owns | May do | Must never do |
+|---|---|---|---|
+| Owner/API boundary | authenticated Owner and session identity | accept task, show approval, cancel, display result | expose anonymous/public dispatch or infer approval |
+| Planner | typed proposal | decompose intent into bounded steps | mint approvals, select secrets, bypass policy |
+| Policy/approval service | policy decision and approval receipt | bind Owner, tenant, session, origin, action, expiry and canonical fingerprint | trust page instructions or reuse a receipt |
+| Evidence collector | fresh page/target evidence | inspect visible metadata and redact | infer hidden values or authorize actions |
+| Browser controller | typed browser operations | navigate, inspect, execute an approved operation | arbitrary code evaluation, shell, raw CDP, unrestricted launch flags |
+| Worker adapter | one job's worker lifecycle | provision, attest, start after gate, terminate and destroy | construct synthetic host evidence or start before attestation |
+| Runtime provider | observed OCI process/container facts | read runtime identity and effective settings | accept worker-reported values as host truth |
+| Network provider | observed namespace and effective firewall | collect exact nftables JSON and namespace identity | mutate host networking during evidence collection |
+| Attestor | signed, fresh, challenge-bound evidence | verify and sign approved schema | reuse challenge, accept stale evidence, self-authorize a runtime |
+| Recovery/audit | durable lifecycle and evidence record | record idempotency, cancellation, uncertainty and cleanup | silently retry uncertain non-idempotent work |
+| Release controller | capability enablement decision | keep capability disabled until gates pass | treat CI or documentation as host/device acceptance |
+
+### 8.1 Typed job envelope
+
+Every dispatched job must be represented by a versioned, canonical, bounded envelope. The minimum logical fields are:
+
+- `schema_version`, unique `job_id`, unique `session_id`, Owner subject, tenant/project identity and creation time.
+- Absolute deadline, cancellation identity and idempotency key.
+- Explicit origin allowlist and navigation policy; redirects must be re-evaluated.
+- Ordered typed steps with capability, target evidence reference, risk class and expected postcondition.
+- Data classification and redaction policy; no passwords, payment data, cookies or reusable secrets.
+- Approval reference(s) bound to the canonical job fingerprint, exact origin and action scope.
+- Immutable worker image digest, UID/GID, namespace, mount, resource, seccomp and proxy endpoint requirements.
+- Result schema and evidence references; no arbitrary executable payload or browser script.
+
+Canonicalization must reject unknown fields, duplicate keys, non-finite numbers, ambiguous URL encodings, invalid Unicode, oversized collections and unsupported schema versions. A hash is an identity binding, not proof that the underlying evidence is trustworthy.
+
+### 8.2 Capability and approval matrix
+
+| Capability | Default | Required checks |
+|---|---|---|
+| Open an allowlisted HTTPS origin | Ask First until policy explicitly classifies it low risk | normalized URL, scheme/host/port, DNS/SSRF policy, redirect re-check |
+| Read visible page metadata | Read-only and bounded | current page evidence, output cap, redaction |
+| Click a visible control | Ask First | fresh locator evidence, exact origin, action-specific approval |
+| Fill a non-secret field | Ask First | field classification, exact target evidence, bounded value handling |
+| Submit a form | Deny unless explicitly supported and separately approved | preview of exact form/action, origin, idempotency and postcondition |
+| Upload/download | Deny by default | separately designed quarantine, file type/size policy and explicit approval; not enabled by this architecture |
+| Login, credential extraction, password manager access | Deny | out of scope |
+| Payment, checkout, purchase, trading, money movement | Deny | permanently out of scope for this project |
+| Arbitrary JavaScript, shell, CDP or extension installation | Deny | out of scope |
+
+A user approval is not a blanket permission. Approval must be checked immediately before the relevant action and consumed exactly once. A changed origin, target, action, payload fingerprint or page-state evidence invalidates the receipt.
+
+### 8.3 Worker lifecycle state machine
+
+Normative states:
+
+`PROPOSED → POLICY_CHECKED → AWAITING_APPROVAL → APPROVED → PROVISIONING → ATTESTING → READY → RUNNING → TERMINATING → DESTROYING → SUCCEEDED | FAILED | UNKNOWN | CLEANUP_FAILED`
+
+Rules:
+
+1. State transitions are persisted before externally visible side effects wherever possible.
+2. Only `READY` may transition to `RUNNING`; only after fresh signed attestation passes.
+3. `UNKNOWN` is mandatory when the system cannot prove whether a non-idempotent browser action occurred.
+4. `CLEANUP_FAILED` overrides a nominal task success. No success response is emitted until process exit and ephemeral storage deletion are confirmed.
+5. Restart recovery must reconcile durable state with independently observed runtime identity. It must not recreate or replay an uncertain action.
+6. Cancellation is monotonic. A cancelled job cannot return to an executable state.
+7. Every state transition carries a timestamp, actor/component, job fingerprint and redacted evidence digest.
+
+### 8.4 Evidence and attestation envelope
+
+The signed evidence must bind at minimum:
+
+- schema version, key ID, unique 256-bit challenge and collection timestamp;
+- job/session identity and canonical launch-spec digest;
+- immutable image digest, runtime/container identity and effective UID/GID;
+- PID plus process-start identity, namespace identities, cgroup membership and effective resource limits;
+- read-only root/mount policy, capability set, no-new-privileges and active seccomp profile identity;
+- exact IPv4/IPv6 network policy, exact proxy endpoint pins, effective nftables ruleset digest and namespace inode;
+- inspector/provider identity and signature.
+
+The verifier must enforce key validity, challenge one-time consumption, freshness window, schema strictness, exact spec equality and replay rejection. Evidence from a worker process itself is not independent host evidence. The current collector's caller-owned challenge responsibility and externally provisioned signing key are explicit integration obligations, not completed operational key management.
+
+### 8.5 Network policy contract and known implementation gap
+
+The desired network policy is default-DROP for both address families. Only TCP to the exact pinned proxy address set and port is allowed from the worker. DNS resolution occurs at the proxy; worker DNS, direct TCP/UDP, QUIC/UDP 443, alternate routes and proxy-outage fallback are blocked. IPv6 neighbour discovery, if required for the chosen namespace topology, must be limited to the exact reviewed link-local control traffic and must not become general egress.
+
+The host-inspector parser must validate the complete effective ruleset, not just the existence of an allow rule:
+- exactly the intended table and base chains, hook/type/priority and default policies;
+- all rules, sets, maps, verdict maps, jumps, chains and interface selectors, rejecting unknown constructs;
+- IPv4 and IPv6 destination matches for every configured proxy pin;
+- exact TCP protocol and port, with no broad accept rule or alternate chain;
+- explicitly enumerated and bounded loopback/NDP exceptions only;
+- no unreviewed NAT, redirect, masquerade or forwarding path that changes the effective policy.
+
+**Observed gap (2026-11-19):** `core/browser_nftables.py` currently recognizes an IPv4 `ip daddr` match, TCP and an exact proxy port in its narrow output-rule grammar. It does not yet demonstrate equivalent IPv6 `ip6 daddr` validation or full dual-stack policy equivalence. Therefore the dual-stack network attestation contract is **not implemented/qualified** by this parser today. Do not treat its signed envelope as proof of dual-stack containment until the parser, fixtures and real-host evidence are extended and reviewed.
+
+### 8.6 Browser action and evidence contract
+
+- Navigation returns normalized final URL, redirect chain, response status and origin evidence; each redirect is policy checked before following.
+- Inspection returns only bounded visible text/metadata and stable locator candidates. It never returns hidden inputs, password values, arbitrary attributes, cookies or local storage.
+- Interaction consumes a fresh locator token bound to page generation, frame, origin, role/name or equivalent stable identity, and action type. Stale evidence causes re-inspection, not blind retry.
+- Every mutation records precondition, approved action fingerprint, execution outcome and postcondition evidence.
+- Ambiguous outcomes are UNKNOWN; the controller must not repeat clicks/submits based on a timeout alone.
+- Popups, frames, service workers, WebSockets and subresource requests are within the network threat model even when the top-level page is allowlisted.
+
+### 8.7 Recovery, retention and privacy
+
+The durable audit record stores only the minimum necessary task metadata, redacted evidence, state transitions, hashes and cleanup status. It must not store browser profiles, cookies, passwords, payment data or full page dumps by default. Retention and deletion periods must be explicit configuration owned by the Owner. Backup/restore must preserve replay ledgers and audit integrity without restoring live approvals or reusable session credentials. Restore invalidates all in-flight approvals and challenges.
+
+### 8.8 Deployment profiles
+
+- **Development/test:** fake backend allowed only through explicit test injection; never labelled production or host-qualified.
+- **Disposable Linux qualification:** concrete Podman backend and independently observed runtime; synthetic test data only; no personal browser profile.
+- **Android client:** Android is an Owner interface/control plane unless a separately supported and qualified browser-host design is approved. Current runtime guard intentionally fails closed; this document does not promise Chromium execution on Android/Termux.
+- **Production:** unavailable until independent review, operational key custody, backup/restore, real-host and network qualification, and Owner acceptance all pass.
+
+## 9. Architecture decision records
+
+- **ADR-001 — Owner-first authorization:** accepted. No anonymous/public access by default; sensitive actions require fresh Ask First approval; Auto-Run remains OFF.
+- **ADR-002 — Ephemeral isolated worker:** accepted as target. One job per ephemeral non-root worker; immutable image identity; no personal profile or host secrets.
+- **ADR-003 — Proxy-only egress:** accepted as target. Dual-stack default-DROP and exact pinned proxy only. Implementation evidence remains incomplete.
+- **ADR-004 — Independent host attestation:** accepted as target. Runtime and firewall evidence must be observed independently and signed against a one-time challenge. Operational key custody and production provider remain open.
+- **ADR-005 — Typed browser capabilities:** accepted. Navigation, inspection and mutation are distinct capabilities; no arbitrary code or shell surface.
+- **ADR-006 — Fail closed on uncertainty:** accepted. Unknown action outcome, stale evidence, attestation failure or unconfirmed cleanup cannot be reported as success.
+- **ADR-007 — Android separation:** accepted. Android client support does not imply Android browser-host support; no platform guard bypass.
+- **ADR-008 — No financial actions:** accepted and non-configurable for this project. Payment, purchase, checkout, trading and money movement are prohibited.
+
+## 10. Architecture completion checklist
+
+Architecture/design documentation is considered complete only when each decision has an owner, contract, failure behavior and verification artifact. This document now defines those target contracts. The implementation is **not** thereby complete. Remaining implementation/design validation includes dual-stack nftables grammar and fixtures, concrete production backend composition, runtime-provider contract, authenticated worker control channel, key lifecycle and exact WorkerLaunchSpec-to-OCI mapping for mounts/proxy/resources. These are tracked as software integration blockers, followed by external disposable-host and Owner acceptance gates.
