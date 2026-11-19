@@ -49,9 +49,9 @@ def payload():
       "State":{"Running":True,"Pid":4321},
     }
 
-def spec():
+def spec(uid=65532, gid=65532):
     return OCIWorkerSpec(IMAGE,"/run/netns/w1","/profiles/chromium.json","worker1",
-                         WorkerLimits(),"/apaa/worker1")
+                         WorkerLimits(),"/apaa/worker1",uid,gid)
 
 def test_observer_requires_runtime_and_kernel_evidence(tmp_path):
     proc,cg,ns=make_fs(tmp_path)
@@ -82,7 +82,7 @@ def test_observer_rejects_pid_reuse_during_observation(tmp_path,monkeypatch):
  (lambda p:p["HostConfig"].update(ReadonlyRootfs=False),"security"),
  (lambda p:p["HostConfig"].update(Memory=999),"resource"),
  (lambda p:p["State"].update(Running=False),"not confirmed running"),
- (lambda p:p["Config"].update(User="0:0"),"non-root"),
+ (lambda p:p["Config"].update(User="0:0"),"UID/GID"),
  (lambda p:p.update(Image="latest"),"image ID"),
  (lambda p:p.update(Image="sha256:"+"c"*64),"image ID"),
 ])
@@ -170,3 +170,22 @@ def test_observer_normalizes_bare_podman_immutable_image_id(tmp_path):
     observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
     result=observer.observe(CID,spec())
     assert result.image_id == IMAGE
+
+
+
+def test_observer_accepts_exact_non_default_worker_uid_and_gid(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    p=payload()
+    p["Config"]["User"]="10001:10002"
+    observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    result=observer.observe(CID,spec(uid=10001,gid=10002))
+    assert result.host_pid==4321
+
+
+def test_observer_rejects_uid_or_gid_different_from_worker_spec(tmp_path):
+    proc,cg,ns=make_fs(tmp_path)
+    p=payload()
+    p["Config"]["User"]="10001:10002"
+    observer=PodmanWorkerObserver(Runtime(p),proc_root=proc,cgroup_root=cg,namespace_root=ns)
+    with pytest.raises(WorkerObservationError,match="UID/GID"):
+        observer.observe(CID,spec(uid=10001,gid=10003))
