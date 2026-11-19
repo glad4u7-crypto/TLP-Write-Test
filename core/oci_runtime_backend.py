@@ -47,8 +47,14 @@ class OCIWorkerSpec:
     worker_id: str
     limits: WorkerLimits = WorkerLimits()
     cgroup_parent: str | None = None
+    uid: int = 65532
+    gid: int = 65532
 
     def __post_init__(self) -> None:
+        if type(self.uid) is not int or not 1 <= self.uid <= 65535:
+            raise ValueError("worker UID must be a non-root numeric identity")
+        if type(self.gid) is not int or not 1 <= self.gid <= 65535:
+            raise ValueError("worker GID must be a non-root numeric identity")
         if not _IMAGE_DIGEST.fullmatch(self.image):
             raise ValueError("worker image must be pinned by sha256 digest or immutable local image ID")
         if not _NAMESPACE_PATH.fullmatch(self.network_namespace):
@@ -142,7 +148,7 @@ class PodmanOCIRuntime:
                 "--memory", str(spec.limits.memory_bytes),
                 "--cpus", str(spec.limits.cpu_count),
                 "--pids-limit", str(spec.limits.pids_limit),
-                "--user", "65532:65532",
+                "--user", f"{spec.uid}:{spec.gid}",
             ]
             if spec.cgroup_parent:
                 args.extend(["--cgroup-parent", spec.cgroup_parent])
