@@ -227,7 +227,9 @@ class LiveBrowsingController:
                 )
                 approved_elements: list[dict[str, Any]] = []
                 total = 0
-                for item in raw_elements:
+                # Enforce the cap again in Python; test doubles or alternate
+                # Playwright adapters must not be able to bypass the browser-side slice.
+                for item in raw_elements[:100]:
                     if not isinstance(item, Mapping):
                         continue
                     # Browser-evaluated metadata must retain its expected
