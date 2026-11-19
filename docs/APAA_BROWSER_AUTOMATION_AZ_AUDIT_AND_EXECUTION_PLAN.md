@@ -283,3 +283,18 @@ No merge, deployment, host provisioning, Browser/Worker enablement or Auto-Run a
 - Earlier intermediate head `cc0b644e10071ca8631d2bc250cf06f4e34bf3f4` also passed run `44437819687`, but the final exact-head result above is the authoritative CI evidence.
 - This is parser + CI verification only. It does not prove a real host's effective firewall, dual-stack leak resistance, OCI containment or browser worker production readiness. Disposable-host qualification and independent review remain mandatory.
 - No merge, deployment, host provisioning or capability enablement was performed.
+
+### OCI launch-plan contract mapping follow-up — 2026-11-19
+
+A further source-to-contract review found that the inert OCI argv plan did not yet faithfully map all relevant WorkerLaunchSpec settings:
+- It made the entire /tmp tree writable although the spec declared only job-scoped writable paths.
+- It did not pass the approved proxy endpoint to the worker environment or constrain the worker entrypoint.
+
+PR #29 follow-up changes:
+- OCI plan now mounts only the exact declared job-scoped tmpfs paths with noexec,nosuid,nodev; the broad writable /tmp tmpfs was removed.
+- It passes the explicit approved proxy endpoint to the worker, sets an empty NO_PROXY/no_proxy bypass list, and binds TMPDIR only when /tmp/job is declared.
+- It pins the container entrypoint to /usr/local/bin/apaa-worker.
+- Regression tests assert the exact mount, proxy environment, bypass policy and entrypoint.
+- Commits: 4b3a1db4ec6dce36a89d9398ae9ba3ccd26627b1, bf931e91645313abbd706699302cb1c5623e55fc, 7ad00c57f60d33536fbf4224053f273a05bdb640.
+- Fresh exact-head APAA Security CI for latest head 7ad00c57f60d33536fbf4224053f273a05bdb640 is pending at this update. The previous exact-head CI pass 44437843797 on e731a7715d2697508b249076facdd5d80012f1d1 does not certify these newer OCI mapping changes.
+- This remains an inert argv-plan change; it does not provision or execute a container. The fixed worker entrypoint/image contract must be validated against the actual reviewed worker image before any real host qualification.
