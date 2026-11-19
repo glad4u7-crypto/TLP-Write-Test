@@ -193,3 +193,24 @@ The diagnostic evidence in PR #23 / P74 matrix now establishes:
 - Repeat at least 10 cold starts after a candidate fix.
 
 No behavioral fix is justified today. Release remains **FAILED / NO-GO**; Browser/Worker disabled; Auto-Run OFF.
+
+
+## Architecture addendum and software correction — 2026-11-19
+
+- Added `docs/APAA_BROWSER_AUTOMATION_PRODUCTION_ARCHITECTURE.md`: end-to-end trust domains, authorized execution sequence, security invariants, failure semantics, implementation map and independently evidenced release gates.
+- The architecture explicitly separates the local Playwright launch foundation from the production isolated worker. It does not claim that the existing `IsolatedWorkerBackend` protocol is itself a working Podman backend.
+- Software audit found a false-positive evidence claim in `scripts/p74_real_worker_chromium_e2e.py`: `fd_ownership_crash_pid_proven` was set to `bool(fd_diagnostics)`. A structured record anywhere in shared stderr proves that instrumentation emitted a record, not that the record's process emitted the fatal marker.
+- Corrected the qualification evidence logic to require a structured record before the fatal marker, a PID/TID prefix on that same diagnostic line matching the record, and agreement with the final prefixed log identity before the fatal marker. Instrumentation presence remains a separate field. Missing/mismatched/interleaved identity fails closed.
+- Added regression tests for matching identity, another process logging between the diagnostic record and fatal marker, and a record whose embedded PID/TID disagrees with its log prefix.
+- PR #23 latest code head: `3e54057215d4502ffd72c59c35f9c8245bd2b3d4`.
+- Targeted P74 diagnostic/symbolication tests: run [44435122181](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435122181) — **PASS** on the latest code head.
+- Pinned Chromium patch/parser validation: run [44435122836](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435122836) — **PASS** on the latest code head.
+- Full APAA Security CI run [44435122304](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435122304) is pending at this update. Earlier full CI PASS on `12ae7b4190d8c26771386c916085c386c024b9bf` does not certify the new correction.
+- P74 real OCI job [44435122167](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435122167) was skipped by the explicit Owner gate; it is not runtime qualification.
+- No root cause, offending FD, behavioral fix or production worker qualification is claimed. Browser/Worker remain DISABLED; Auto-Run OFF.
+
+### Batch 3 — production integration audit
+
+The current code confirms `core/browser_worker_adapter.py` defines an injected `IsolatedWorkerBackend` protocol and requires an explicitly supplied backend. The OCI runtime, observer, host inspector, nftables attestation, keyring and challenge-ledger components are present, but a concrete production backend that composes them and starts the browser only after fresh verified attestation is not yet demonstrated. The `WorkerLaunchSpec` ↔ `OCIWorkerSpec` mapping, actual dual-stack host-inspector schema, production control channel and deployment key custody/restore must be implemented and tested before this layer can be called complete.
+
+**Next software-only work:** map exact constructor/field contracts across `WorkerLaunchSpec`, `OCIWorkerSpec`, observer, namespace/firewall provisioners and adapter callbacks; implement only deterministic, testable composition that does not run host provisioning in CI; add fake-runtime contract tests. Real host firewall, OCI Chromium and device acceptance remain external gates.
