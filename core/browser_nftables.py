@@ -80,10 +80,16 @@ def _match(expr: object) -> tuple[str, object] | None:
     left, right = value["left"], value["right"]
     if left == {"meta": {"key": "l4proto"}} and right == "tcp":
         return ("protocol", "tcp")
-    if left == {"payload": {"protocol": "ip", "field": "daddr"}} and type(right) is str:
+    if left in (
+        {"payload": {"protocol": "ip", "field": "daddr"}},
+        {"payload": {"protocol": "ip6", "field": "daddr"}},
+    ) and type(right) is str:
         try:
             address = ipaddress.ip_address(right)
         except ValueError:
+            return None
+        expected_version = 4 if left["payload"]["protocol"] == "ip" else 6
+        if address.version != expected_version:
             return None
         return ("destination_ip", address.compressed.lower())
     if left == {"payload": {"protocol": "tcp", "field": "dport"}} and type(right) is int:
@@ -100,11 +106,11 @@ def parse_nftables_egress(
 ) -> ParsedNftablesEgress:
     """Parse a deliberately narrow nft -j ruleset subset; reject unknown output policy.
 
-    Exactly one inet-family base output chain is supported. It must have policy
-    drop. Every rule in that chain must be a simple TCP + exact IPv4 destination
-    + exact TCP destination-port match followed by accept. No jumps, sets,
-    verdict maps, interface-independent alternate chains or extra expressions
-    are accepted. This conservative subset intentionally fails closed.
+    Exactly one dedicated inet/filter table and one inet/filter output base
+    chain are supported. The chain must have policy drop. Every rule must belong
+    to that sole chain and be a simple TCP + exact IPv4/IPv6 destination + exact
+    TCP destination-port match followed by accept. Extra tables/chains, NAT or
+    forwarding hooks, sets, maps, counters, jumps and unknown objects fail closed.
     """
     document = _json_object(raw)
     if set(document) != {"nftables"} or not isinstance(document["nftables"], list):
@@ -113,36 +119,56 @@ def parse_nftables_egress(
     if type(expected_proxy_port) is not int or not 1 <= expected_proxy_port <= 65535:
         raise HostCollectionError("Approved proxy port is invalid.")
 
-    output_chains: list[dict] = []
+    tables: list[dict] = []
+    chains: list[dict] = []
+    rule_objects: list[dict] = []
     for item in document["nftables"]:
         if not isinstance(item, dict) or len(item) != 1:
             raise HostCollectionError("Malformed nftables object.")
         kind, value = next(iter(item.items()))
-        if kind == "chain":
-            if not isinstance(value, dict):
-                raise HostCollectionError("Malformed nftables chain.")
-            if value.get("hook") == "output":
-                output_chains.append(value)
+        if kind == "metainfo":
+            if not isinstance(value, dict) or set(value) - {"version", "release_name", "json_schema_version"}:
+                raise HostCollectionError("Unsupported nftables metainfo.")
+        elif kind == "table":
+            if not isinstance(value, dict) or set(value) - {"family", "name", "handle"}:
+                raise HostCollectionError("Malformed or unsupported nftables table.")
+            if not {"family", "name"} <= set(value):
+                raise HostCollectionError("Nftables table identity is incomplete.")
+            tables.append(value)
+        elif kind == "chain":
+            if not isinstance(value, dict) or set(value) - {
+                "family", "table", "name", "type", "hook", "prio", "policy", "handle"
+            }:
+                raise HostCollectionError("Malformed or unsupported nftables chain.")
+            chains.append(value)
         elif kind == "rule":
-            if not isinstance(value, dict):
-                raise HostCollectionError("Malformed nftables rule.")
-        elif kind not in {"metainfo", "table", "set", "element", "counter"}:
+            if not isinstance(value, dict) or set(value) - {
+                "family", "table", "chain", "expr", "handle", "comment"
+            }:
+                raise HostCollectionError("Malformed or unsupported nftables rule.")
+            rule_objects.append(value)
+        else:
+            # Reject sets, maps, elements, counters, flowtables and every
+            # unreviewed object: any may affect the effective packet path.
             raise HostCollectionError("Unsupported nftables object type.")
 
-    if len(output_chains) != 1:
-        raise HostCollectionError("Exactly one nftables base output chain is required.")
-    chain = output_chains[0]
-    if (chain.get("family") != "inet" or chain.get("type") != "filter"
-            or chain.get("policy") != "drop" or type(chain.get("name")) is not str):
-        raise HostCollectionError("Output base chain must be inet/filter with default DROP.")
+    if len(tables) != 1 or len(chains) != 1:
+        raise HostCollectionError("Exactly one nftables table and one base chain are required.")
+    table = tables[0]
+    if table.get("family") != "inet" or table.get("name") != "filter":
+        raise HostCollectionError("Only the dedicated inet filter table is supported.")
+    chain = chains[0]
+    if (chain.get("family") != "inet" or chain.get("table") != table["name"]
+            or chain.get("type") != "filter" or chain.get("hook") != "output"
+            or chain.get("policy") != "drop" or type(chain.get("name")) is not str
+            or type(chain.get("prio")) is not int):
+        raise HostCollectionError("Only the inet/filter output base chain with default DROP is supported.")
     chain_name = chain["name"]
     rules: list[tuple[str, str, int]] = []
-    for item in document["nftables"]:
-        value = item.get("rule") if isinstance(item, dict) else None
-        if not isinstance(value, dict) or value.get("chain") != chain_name:
-            continue
-        if value.get("family") != "inet" or value.get("table") != chain.get("table"):
-            raise HostCollectionError("Output rule is attached to an unexpected table.")
+    for value in rule_objects:
+        if (value.get("family") != "inet" or value.get("table") != table["name"]
+                or value.get("chain") != chain_name):
+            raise HostCollectionError("Rule is attached outside the sole approved output chain.")
         expr = value.get("expr")
         if not isinstance(expr, list) or len(expr) != 4 or expr[-1] != {"accept": None}:
             raise HostCollectionError("Output rule is not in the reviewed exact-proxy form.")

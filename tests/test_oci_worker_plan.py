@@ -78,10 +78,11 @@ def test_plan_has_ephemeral_private_runtime_surfaces():
     args = plan().create_argv
     for expected in (
         "--ipc=private", "--pid=private", "--uts=private",
-        "/tmp:rw,noexec,nosuid,nodev,size=64m",
+        "/tmp/job:rw,noexec,nosuid,nodev,size=16m",
         "/run:rw,noexec,nosuid,nodev,size=16m",
     ):
         assert expected in args
+    assert "/tmp:rw,noexec,nosuid,nodev,size=64m" not in args
     assert "--privileged" not in args
     assert "--network=host" not in args
     assert "--pid=host" not in args
@@ -109,6 +110,17 @@ def test_plan_rejects_invalid_spec_type():
             network_name="apaa-egress-prod", job_id="job-123",
             seccomp_profile=SECCOMP, rootless=True,
         )
+
+
+def test_plan_maps_only_approved_proxy_environment_and_worker_entrypoint():
+    args = plan().create_argv
+    assert "APAA_EGRESS_PROXY=http://egress-proxy.internal:3128" in args
+    assert "HTTP_PROXY=http://egress-proxy.internal:3128" in args
+    assert "HTTPS_PROXY=http://egress-proxy.internal:3128" in args
+    assert "NO_PROXY=" in args
+    assert "no_proxy=" in args
+    assert "/usr/local/bin/apaa-worker" in args
+    assert "TMPDIR=/tmp/job" in args
 
 
 def test_plan_does_not_invoke_runtime_or_change_host_state():
