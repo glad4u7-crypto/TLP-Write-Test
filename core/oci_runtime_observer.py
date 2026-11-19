@@ -149,8 +149,8 @@ class PodmanWorkerObserver:
                 or host.get("PidsLimit") != spec.limits.pids_limit
                 or host.get("NanoCpus") != expected_cpu_nanos):
             raise WorkerObservationError("OCI resource limits differ from the immutable worker spec")
-        if config.get("User") != "65532:65532":
-            raise WorkerObservationError("OCI worker is not running with the required non-root UID/GID")
+        if config.get("User") != f"{spec.uid}:{spec.gid}":
+            raise WorkerObservationError("OCI worker UID/GID differs from the immutable worker spec")
         expected_network = f"ns:{spec.network_namespace}"
         if host.get("NetworkMode") != expected_network:
             raise WorkerObservationError("OCI worker network namespace differs from the requested namespace")
