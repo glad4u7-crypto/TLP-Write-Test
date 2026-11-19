@@ -69,7 +69,7 @@ def test_create_uses_digest_pinned_image_and_hardening_flags():
 
 
 def test_create_uses_the_exact_non_root_uid_and_gid_from_oci_spec():
-    runner = FakeRunner([(0, "b" * 64 + "\\n")])
+    runner = FakeRunner([(0, "b" * 64 + "\n")])
     runtime = PodmanOCIRuntime(runner=runner)
     runtime.create(spec(uid=10001, gid=10002))
     command = runner.calls[0][0]
