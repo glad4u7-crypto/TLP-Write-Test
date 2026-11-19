@@ -80,10 +80,16 @@ def _match(expr: object) -> tuple[str, object] | None:
     left, right = value["left"], value["right"]
     if left == {"meta": {"key": "l4proto"}} and right == "tcp":
         return ("protocol", "tcp")
-    if left == {"payload": {"protocol": "ip", "field": "daddr"}} and type(right) is str:
+    if left in (
+        {"payload": {"protocol": "ip", "field": "daddr"}},
+        {"payload": {"protocol": "ip6", "field": "daddr"}},
+    ) and type(right) is str:
         try:
             address = ipaddress.ip_address(right)
         except ValueError:
+            return None
+        expected_version = 4 if left["payload"]["protocol"] == "ip" else 6
+        if address.version != expected_version:
             return None
         return ("destination_ip", address.compressed.lower())
     if left == {"payload": {"protocol": "tcp", "field": "dport"}} and type(right) is int:
