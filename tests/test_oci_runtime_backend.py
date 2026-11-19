@@ -68,6 +68,20 @@ def test_create_uses_digest_pinned_image_and_hardening_flags():
     assert kwargs["timeout"] == 20
 
 
+def test_create_uses_the_exact_non_root_uid_and_gid_from_oci_spec():
+    runner = FakeRunner([(0, "b" * 64 + "\\n")])
+    runtime = PodmanOCIRuntime(runner=runner)
+    runtime.create(spec(uid=10001, gid=10002))
+    command = runner.calls[0][0]
+    assert command[command.index("--user") + 1] == "10001:10002"
+
+
+@pytest.mark.parametrize("field,value", [("uid", 0), ("gid", 0), ("uid", 65536), ("gid", 65536), ("uid", True)])
+def test_oci_spec_rejects_root_or_invalid_numeric_identity(field, value):
+    with pytest.raises(ValueError):
+        spec(**{field: value})
+
+
 def test_create_uses_dedicated_cgroup_parent_when_supplied():
     runner = FakeRunner([(0, "b" * 64 + "\n")])
     runtime = PodmanOCIRuntime(runner=runner)
