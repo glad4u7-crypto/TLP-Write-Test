@@ -270,3 +270,16 @@ No merge, deployment, host provisioning, Browser/Worker enablement or Auto-Run a
 - Initial exact-head APAA Security CI run `44437253176` failed before the parser tests in an existing live-browsing regression: the base branch returned 125 element records despite the 100-item cap. This was traced to missing Python-boundary cap enforcement on the PR base (the separate audit PR #28 already carries the same hardening).
 - Carried the one-line fail-closed 100-element slice into PR #29 to make it safe against its actual base. Corrected-head CI run `44437445462` is in progress; no PASS is claimed yet.
 - No host firewall, OCI worker, Browser/Worker enablement, merge or deployment.
+
+
+### PR #29 dual-stack + whole-ruleset parser exact-head verification — 2026-11-19
+
+- PR #29 current head: `e731a7715d2697508b249076facdd5d80012f1d1` (Draft/Open/Unmerged).
+- Dual-stack exact-match parser changes accept only correctly family-matched IPv4/IPv6 destination expressions, exact TCP destination port and the expected proxy IP allowlist.
+- Whole-ruleset validation now requires exactly one dedicated `inet filter` table and one `inet filter` output base chain with default DROP. Every rule must belong to that chain. Additional tables/chains/hooks, foreign-chain rules, sets, maps, elements, counters and unknown nftables object types are rejected.
+- Adversarial tests cover unexpected IPv4/NAT table, extra forward/prerouting chains, foreign-chain rules, sets/maps/elements and masquerade expression.
+- The 100-element cap is re-enforced at the Python browser-adapter boundary to protect this PR's selected base branch.
+- Exact-head APAA Security CI run [44437843797](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44437843797) on the exact head SHA `e731a7715d2697508b249076facdd5d80012f1d1`: **PASS**. All workflow steps passed, including syntax, P01 launch lifecycle, Chromium TLS positive/negative cases, live browsing with restricted local proxy, worker adapter and Linux host-inspector contracts, and the remaining security test suite.
+- Earlier intermediate head `cc0b644e10071ca8631d2bc250cf06f4e34bf3f4` also passed run `44437819687`, but the final exact-head result above is the authoritative CI evidence.
+- This is parser + CI verification only. It does not prove a real host's effective firewall, dual-stack leak resistance, OCI containment or browser worker production readiness. Disposable-host qualification and independent review remain mandatory.
+- No merge, deployment, host provisioning or capability enablement was performed.
