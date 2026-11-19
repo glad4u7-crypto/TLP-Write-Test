@@ -213,6 +213,47 @@ def _map_failure_to_fd_snapshot(failure: dict, diagnostics: dict) -> dict | None
     return result
 
 
+def _fd_ownership_diagnostic_matches_fatal(
+    stderr: str, crash_identity: dict[str, object], records: list[dict[str, object]],
+) -> bool:
+    """Require same-line PID/TID identity and last-log adjacency before fatal marker.
+
+    stderr can be shared by Chromium child processes. A structured record anywhere
+    in that stream proves instrumentation emitted a record, not that its process
+    emitted the fatal marker. Fail closed unless the final structured record before
+    the marker is also the final prefixed log identity and both PID/TID pairs agree.
+    """
+    marker_at = stderr.rfind("Crashing due to FD ownership violation:")
+    if marker_at < 0 or not records:
+        return False
+    prefix = stderr[:marker_at]
+    diagnostic_lines = [
+        line for line in prefix.splitlines() if "APAA_FD_OWNERSHIP_DIAG" in line
+    ]
+    if not diagnostic_lines:
+        return False
+    line = diagnostic_lines[-1]
+    record = parse_fd_ownership_diagnostics(line)
+    if len(record) != 1:
+        return False
+    identity = re.search(r"\[(\d+):(\d+):\d{4}/\d{6}\.\d+:", line)
+    if identity is None:
+        return False
+    try:
+        record_pid, record_tid = int(record[0]["pid"]), int(record[0]["tid"])
+        prefix_pid, prefix_tid = int(identity.group(1)), int(identity.group(2))
+    except (KeyError, TypeError, ValueError):
+        return False
+    if (record_pid, record_tid) != (prefix_pid, prefix_tid):
+        return False
+    if (
+        crash_identity.get("log_pid") != prefix_pid
+        or crash_identity.get("log_tid") != prefix_tid
+    ):
+        return False
+    return True
+
+
 def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: str, expected_marker: str) -> dict[str, object]:
     stdout = page.stdout or ""
     stderr = page.stderr or ""
@@ -236,7 +277,7 @@ def _chromium_failure_details(page: subprocess.CompletedProcess[str], family: st
         "fd_ownership_stack_frames": fd_crash["stack_frames"],
         "fd_ownership_diagnostics": fd_diagnostics,
         "fd_ownership_instrumentation_present": bool(fd_diagnostics),
-        "fd_ownership_crash_pid_proven": bool(fd_diagnostics),
+        "fd_ownership_crash_pid_proven": _fd_ownership_diagnostic_matches_fatal(stderr, fd_crash, fd_diagnostics),
         "stdout_preview": redact_sensitive_text(stdout[:600], limit=320),
         "stderr_head_preview": redact_sensitive_text(stderr[:600], limit=320),
         "stderr_tail_preview": redact_sensitive_text(stderr[-600:], limit=320),
