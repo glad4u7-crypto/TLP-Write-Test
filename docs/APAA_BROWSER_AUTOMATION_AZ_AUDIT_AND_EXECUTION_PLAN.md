@@ -214,3 +214,24 @@ No behavioral fix is justified today. Release remains **FAILED / NO-GO**; Browse
 The current code confirms `core/browser_worker_adapter.py` defines an injected `IsolatedWorkerBackend` protocol and requires an explicitly supplied backend. The OCI runtime, observer, host inspector, nftables attestation, keyring and challenge-ledger components are present, but a concrete production backend that composes them and starts the browser only after fresh verified attestation is not yet demonstrated. The `WorkerLaunchSpec` ↔ `OCIWorkerSpec` mapping, actual dual-stack host-inspector schema, production control channel and deployment key custody/restore must be implemented and tested before this layer can be called complete.
 
 **Next software-only work:** map exact constructor/field contracts across `WorkerLaunchSpec`, `OCIWorkerSpec`, observer, namespace/firewall provisioners and adapter callbacks; implement only deterministic, testable composition that does not run host provisioning in CI; add fake-runtime contract tests. Real host firewall, OCI Chromium and device acceptance remain external gates.
+
+
+## Batch 3 software integration finding — worker identity mismatch (2026-11-19)
+
+A direct contract comparison found a concrete mismatch:
+- `WorkerLaunchSpec` permits and binds an explicit non-root UID/GID (the existing contract tests use UID/GID 10001).
+- The OCI create path previously hardcoded `--user 65532:65532`.
+- The runtime observer also hardcoded the expected identity as `65532:65532`.
+- Therefore a valid launch spec using another permitted UID/GID could not be faithfully enforced or attested by the OCI implementation.
+
+Software correction on PR #14:
+- `OCIWorkerSpec` now carries bounded non-root `uid` and `gid` fields (backward-compatible defaults 65532).
+- Podman create now uses the exact spec identity rather than a hardcoded identity.
+- `PodmanWorkerObserver` now compares the observed OCI `Config.User` with the exact immutable spec UID/GID.
+- Added regression tests for a non-default UID/GID, mismatched identity, and root/out-of-range/bool identity rejection.
+- PR #14 current code head: `01d9e5e798448e47990cc4573a450b8400c8b6e4`.
+- Targeted P74 diagnostic/symbolication suite on that head: run [44435513420](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435513420) — **PASS**. (This workflow includes the worker qualification script and relevant tests, but does not by itself certify the OCI observer contract.)
+- Full APAA Security CI run [44435513302](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435513302) is queued/pending at this update.
+- Real OCI worker qualification run [44435513283](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435513283) is skipped by the Owner gate, not passed.
+
+**Still open in Batch 3:** exact `WorkerLaunchSpec` mapping for writable mounts and proxy endpoint; concrete production `IsolatedWorkerBackend`; a fixed, authenticated browser-worker control channel; independent host observation of the effective UID/GID and all runtime settings; exact dual-stack nftables parser/provider integration; external key custody/rotation/restore. The UID/GID fix closes only the hardcoded identity mismatch, not the full production integration gate.
