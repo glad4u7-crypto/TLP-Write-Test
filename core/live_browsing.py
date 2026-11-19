@@ -227,7 +227,8 @@ class LiveBrowsingController:
                 )
                 approved_elements: list[dict[str, Any]] = []
                 total = 0
-                for item in raw_elements:
+                # Re-enforce the browser-side bound at the Python adapter boundary.
+                for item in raw_elements[:100]:
                     if not isinstance(item, Mapping):
                         continue
                     # Browser-evaluated metadata must retain its expected
