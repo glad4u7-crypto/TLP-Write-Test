@@ -94,6 +94,25 @@ def nftables():
         ]
     }
 
+def allow_rule_v6(address="2001:db8::2", port=PROXY_PORT):
+    return {
+        "rule": {
+            "family": "inet", "table": "filter", "chain": "egress",
+            "expr": [
+                match({"meta": {"key": "l4proto"}}, "tcp"),
+                match({"payload": {"protocol": "ip6", "field": "daddr"}}, address),
+                match({"payload": {"protocol": "tcp", "field": "dport"}}, port),
+                {"accept": None},
+            ],
+        }
+    }
+
+
+def dual_stack_nftables():
+    document = nftables()
+    document["nftables"].append(allow_rule_v6())
+    return document
+
 
 class FakeHostSource:
     def __init__(self, spec, rules=None):
@@ -148,6 +167,53 @@ def test_parser_rejects_unsafe_or_unknown_output_rules(mutate):
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
             doc, expected_proxy_addresses=[PROXY_IP], expected_proxy_port=PROXY_PORT,
+        )
+
+
+
+def test_parser_accepts_exact_dual_stack_proxy_only_output_policy():
+    parsed = parse_nftables_egress(
+        dual_stack_nftables(),
+        expected_proxy_addresses=[PROXY_IP, "2001:db8::2"],
+        expected_proxy_port=PROXY_PORT,
+    )
+    assert parsed.default_policy == "drop"
+    assert parsed.allowed_egress == (
+        ("172.20.0.2", "tcp", PROXY_PORT),
+        ("2001:db8::2", "tcp", PROXY_PORT),
+    )
+
+
+def test_parser_rejects_ipv4_match_with_ipv6_address_and_vice_versa():
+    doc = nftables()
+    doc["nftables"][3]["rule"]["expr"][1]["match"]["right"] = "2001:db8::2"
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(
+            doc, expected_proxy_addresses=["2001:db8::2"],
+            expected_proxy_port=PROXY_PORT,
+        )
+
+    doc = nftables()
+    doc["nftables"][3]["rule"]["expr"][1]["match"]["left"]["payload"]["protocol"] = "ip6"
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(
+            doc, expected_proxy_addresses=[PROXY_IP],
+            expected_proxy_port=PROXY_PORT,
+        )
+
+
+def test_parser_rejects_missing_or_extra_ipv6_proxy_rule():
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(
+            nftables(), expected_proxy_addresses=[PROXY_IP, "2001:db8::2"],
+            expected_proxy_port=PROXY_PORT,
+        )
+    doc = dual_stack_nftables()
+    doc["nftables"].append(allow_rule_v6("2001:db8::3"))
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(
+            doc, expected_proxy_addresses=[PROXY_IP, "2001:db8::2"],
+            expected_proxy_port=PROXY_PORT,
         )
 
 
