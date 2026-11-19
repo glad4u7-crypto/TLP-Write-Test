@@ -235,3 +235,21 @@ Software correction on PR #14:
 - Real OCI worker qualification run [44435513283](https://github.com/glad4u7-crypto/TLP-Write-Test/actions/runs/44435513283) is skipped by the Owner gate, not passed.
 
 **Still open in Batch 3:** exact `WorkerLaunchSpec` mapping for writable mounts and proxy endpoint; concrete production `IsolatedWorkerBackend`; a fixed, authenticated browser-worker control channel; independent host observation of the effective UID/GID and all runtime settings; exact dual-stack nftables parser/provider integration; external key custody/rotation/restore. The UID/GID fix closes only the hardcoded identity mismatch, not the full production integration gate.
+
+
+## Architecture/design completion update — 2026-11-19
+
+The target architecture decision layer has now been completed in documentation:
+
+- Expanded `docs/APAA_BROWSER_AUTOMATION_PRODUCTION_ARCHITECTURE.md` with normative component ownership/contracts, versioned typed-job envelope, capability/approval matrix, worker lifecycle state machine, signed evidence requirements, browser action/evidence contract, recovery/privacy rules, deployment profiles and an explicit completion checklist.
+- Added `docs/APAA_BROWSER_AUTOMATION_ARCHITECTURE_DECISIONS.md` with nine Architecture Decision Records covering Owner-first authorization, planner/execution separation, capability separation, ephemeral worker, proxy-only dual-stack egress, independent attestation, fail-closed uncertainty, Android host separation and prohibition of financial actions.
+- Explicitly documented that target design completion does not equal implementation or qualification completion.
+- Recorded a concrete code/design mismatch: `core/browser_nftables.py` currently parses a narrow IPv4 destination + TCP + exact-port output allowlist and does not demonstrate IPv6 destination-rule validation. This cannot substantiate the architecture's dual-stack egress claim. The parser/provider/fixtures must be extended and reviewed; no dual-stack attestation claim is accepted until then.
+- Remaining software integration blockers are concrete production `IsolatedWorkerBackend` composition, trusted OCI runtime observation provider, authenticated worker control channel, full `WorkerLaunchSpec` to OCI mapping (including mounts/proxy/resources), complete nftables effective-ruleset validation, and operational attestor key/challenge lifecycle.
+- External qualification blockers remain unresolved Chromium FD ownership root cause, disposable-host OCI/egress qualification, Android support qualification, independent review and Owner acceptance.
+
+Documentation commits on `apaa-browser-az-audit-batch1`:
+- Architecture contract expansion: `2bdfd0ca0f69e125516d638ffa51be9d31a94fbe`
+- Architecture decision records: `b2a824dabd2e33e3a75d5774ef2f872c43d5124c`
+
+No merge, deployment, host provisioning, Browser/Worker enablement or Auto-Run activation was performed.
