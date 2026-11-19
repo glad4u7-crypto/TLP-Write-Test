@@ -99,8 +99,28 @@ def build_oci_worker_plan(
         "--ipc=private",
         "--pid=private",
         "--uts=private",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",
         "--tmpfs", "/run:rw,noexec,nosuid,nodev,size=16m",
+        # Only the exact job-scoped writable paths from the immutable launch
+        # spec are mounted; the whole /tmp tree is not made writable.
+        *tuple(
+            arg
+            for mount_path in spec.writable_mounts
+            for arg in (
+                "--tmpfs",
+                f"{mount_path}:rw,noexec,nosuid,nodev,size=16m",
+            )
+        ),
+        # The worker receives only the explicitly approved proxy endpoint.
+        # NO_PROXY is deliberately empty so it cannot create a bypass list.
+        "--env", f"APAA_EGRESS_PROXY={spec.egress_proxy}",
+        "--env", f"HTTP_PROXY={spec.egress_proxy}",
+        "--env", f"HTTPS_PROXY={spec.egress_proxy}",
+        "--env", f"http_proxy={spec.egress_proxy}",
+        "--env", f"https_proxy={spec.egress_proxy}",
+        "--env", "NO_PROXY=",
+        "--env", "no_proxy=",
+        "--env", "TMPDIR=/tmp/job",
+        "--entrypoint", "/usr/local/bin/apaa-worker",
         "--label", "apaa.managed=true",
         "--label", f"apaa.launch-spec-digest={spec.digest}",
         "--hostname", name,
