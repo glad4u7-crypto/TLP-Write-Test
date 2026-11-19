@@ -253,3 +253,10 @@ Documentation commits on `apaa-browser-az-audit-batch1`:
 - Architecture decision records: `b2a824dabd2e33e3a75d5774ef2f872c43d5124c`
 
 No merge, deployment, host provisioning, Browser/Worker enablement or Auto-Run activation was performed.
+
+
+### PR #14 exact-head CI follow-up — 2026-11-19
+
+- Full APAA Security CI run `44435513302` completed **FAILURE** on SHA `01d9e5e798448e47990cc4573a450b8400c8b6e4`: 1,254 passed, 1 failed. The failure was isolated to the newly added UID/GID test fixture: its stdout used a literal backslash-n instead of a newline, causing the fixture's output ID and cidfile ID to disagree. All preceding TLS, live-browsing, worker-adapter and host-inspector contract steps passed.
+- Corrected only that test fixture on PR #14 in commit `4a8d02b63158cc38cbdb8092a7291b3d78435e81`. This is a test-fixture correction, not a production runtime behavior change.
+- Exact-head CI for the corrected commit must complete before the UID/GID integration correction can be called CI-verified. The earlier P93 run `44435513449` passed on the prior SHA but does not certify the corrected commit.
