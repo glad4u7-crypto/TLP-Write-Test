@@ -260,3 +260,13 @@ No merge, deployment, host provisioning, Browser/Worker enablement or Auto-Run a
 - Full APAA Security CI run `44435513302` completed **FAILURE** on SHA `01d9e5e798448e47990cc4573a450b8400c8b6e4`: 1,254 passed, 1 failed. The failure was isolated to the newly added UID/GID test fixture: its stdout used a literal backslash-n instead of a newline, causing the fixture's output ID and cidfile ID to disagree. All preceding TLS, live-browsing, worker-adapter and host-inspector contract steps passed.
 - Corrected only that test fixture on PR #14 in commit `4a8d02b63158cc38cbdb8092a7291b3d78435e81`. This is a test-fixture correction, not a production runtime behavior change.
 - Exact-head CI for the corrected commit must complete before the UID/GID integration correction can be called CI-verified. The earlier P93 run `44435513449` passed on the prior SHA but does not certify the corrected commit.
+
+
+## Next implementation batch — dual-stack egress parser (2026-11-19)
+
+- Opened Draft PR #29: `apaa-s09-c01-dual-stack-egress`, head currently `bc35fca37fdc311f2d3a0afa79f29f55d5fcb576`, base `feature/apaa-s09-c01-p01-browser-launch`.
+- `core/browser_nftables.py` now recognizes both nftables `ip daddr` (IPv4) and `ip6 daddr` (IPv6) exact matches, checks address-family consistency and continues to require exact TCP protocol, proxy port, proxy address allowlist and output default-DROP.
+- Added regression tests for mixed dual-stack allowlist acceptance, cross-family mismatch rejection, missing IPv6 proxy rule and unexpected extra IPv6 proxy rule.
+- Initial exact-head APAA Security CI run `44437253176` failed before the parser tests in an existing live-browsing regression: the base branch returned 125 element records despite the 100-item cap. This was traced to missing Python-boundary cap enforcement on the PR base (the separate audit PR #28 already carries the same hardening).
+- Carried the one-line fail-closed 100-element slice into PR #29 to make it safe against its actual base. Corrected-head CI run `44437445462` is in progress; no PASS is claimed yet.
+- No host firewall, OCI worker, Browser/Worker enablement, merge or deployment.
