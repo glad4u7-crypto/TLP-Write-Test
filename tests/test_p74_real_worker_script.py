@@ -554,6 +554,7 @@ def test_fd_ownership_structured_diagnostic_proves_fatal_process_identity():
     from subprocess import CompletedProcess
 
     stderr = (
+        "[288:288:1118/014149.894302:ERROR:scoped_file_linux.cc:130] "
         "APAA_FD_OWNERSHIP_DIAG fd=7 operation=close previous_owned=1 "
         "requested_owned=0 pid=288 tid=288\n"
         "Crashing due to FD ownership violation:\n"
@@ -592,3 +593,40 @@ def test_chromium_package_metadata_rejects_unknown_architecture(monkeypatch):
     assert qualification._chromium_package_metadata("container-id") == (
         "156.0.8078.79-1~deb12u1", None
     )
+
+
+
+def test_structured_record_from_other_process_does_not_prove_fatal_pid():
+    from subprocess import CompletedProcess
+
+    stderr = (
+        "[288:288:1118/014149.894302:ERROR:scoped_file_linux.cc:130] "
+        "APAA_FD_OWNERSHIP_DIAG fd=7 operation=close previous_owned=1 "
+        "requested_owned=0 pid=288 tid=288\n"
+        "[19:19:1118/014149.894399:ERROR:network_service.cc:652] "
+        "Network service crashed or was terminated.\n"
+        "Crashing due to FD ownership violation:\n"
+        "#0 0x55b8e346843e <unknown>\n"
+    )
+    details = qualification._chromium_failure_details(
+        CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
+    )
+    assert details["fd_ownership_instrumentation_present"] is True
+    assert details["fd_ownership_crash_pid_proven"] is False
+
+
+def test_structured_record_pid_must_match_its_prefixed_log_identity():
+    from subprocess import CompletedProcess
+
+    stderr = (
+        "[288:288:1118/014149.894302:ERROR:scoped_file_linux.cc:130] "
+        "APAA_FD_OWNERSHIP_DIAG fd=7 operation=close previous_owned=1 "
+        "requested_owned=0 pid=999 tid=999\n"
+        "Crashing due to FD ownership violation:\n"
+        "#0 0x55b8e346843e <unknown>\n"
+    )
+    details = qualification._chromium_failure_details(
+        CompletedProcess(["chromium"], 0, "", stderr), "local-data-url", "marker",
+    )
+    assert details["fd_ownership_instrumentation_present"] is True
+    assert details["fd_ownership_crash_pid_proven"] is False
