@@ -119,7 +119,7 @@ def build_oci_worker_plan(
         "--env", f"https_proxy={spec.egress_proxy}",
         "--env", "NO_PROXY=",
         "--env", "no_proxy=",
-        "--env", "TMPDIR=/tmp/job",
+        *(("--env", "TMPDIR=/tmp/job") if "/tmp/job" in spec.writable_mounts else ()),
         "--entrypoint", "/usr/local/bin/apaa-worker",
         "--label", "apaa.managed=true",
         "--label", f"apaa.launch-spec-digest={spec.digest}",
