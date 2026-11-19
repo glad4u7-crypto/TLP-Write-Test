@@ -217,6 +217,44 @@ def test_parser_rejects_missing_or_extra_ipv6_proxy_rule():
         )
 
 
+
+@pytest.mark.parametrize("mutate", [
+    lambda doc: doc["nftables"].append({"table": {"family": "ip", "name": "nat"}}),
+    lambda doc: doc["nftables"].append({"chain": {
+        "family": "inet", "table": "filter", "name": "forward",
+        "type": "filter", "hook": "forward", "prio": 0, "policy": "drop",
+    }}),
+    lambda doc: doc["nftables"].append({"chain": {
+        "family": "inet", "table": "filter", "name": "prerouting",
+        "type": "nat", "hook": "prerouting", "prio": -100, "policy": "accept",
+    }}),
+    lambda doc: doc["nftables"].append({"rule": {
+        "family": "inet", "table": "filter", "chain": "forward",
+        "expr": [{"accept": None}],
+    }}),
+    lambda doc: doc["nftables"].append({"set": {
+        "family": "inet", "table": "filter", "name": "proxy_set",
+        "type": "ipv4_addr",
+    }}),
+    lambda doc: doc["nftables"].append({"map": {
+        "family": "inet", "table": "filter", "name": "verdict_map",
+        "type": "ipv4_addr : verdict",
+    }}),
+    lambda doc: doc["nftables"].append({"element": {
+        "family": "inet", "table": "filter", "name": "proxy_set",
+        "elem": ["172.20.0.2"],
+    }}),
+    lambda doc: doc["nftables"][3]["rule"]["expr"].__setitem__(3, {"masquerade": None}),
+])
+def test_parser_rejects_unreviewed_effective_ruleset_objects_and_hooks(mutate):
+    doc = nftables()
+    mutate(doc)
+    with pytest.raises(HostCollectionError):
+        parse_nftables_egress(
+            doc, expected_proxy_addresses=[PROXY_IP], expected_proxy_port=PROXY_PORT,
+        )
+
+
 def test_parser_rejects_wrong_proxy_ip_or_port():
     with pytest.raises(HostCollectionError):
         parse_nftables_egress(
